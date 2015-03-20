@@ -28,32 +28,32 @@ struct sfxmp_ctx {
     double dist_time_seek_trigger;          // distance time triggering a seek
     char *filters;                          // simple filter graph
 
-    /* demuxer/decoder thread */
+    /* main vs demuxer/decoder thread negociation */
     pthread_t dec_thread;                   // decoding thread
     pthread_mutex_t queue_lock;             // for any op related to the queue
-    pthread_cond_t queue_reduce;            // notify a reducing queue
-    pthread_cond_t queue_grow;              // notify a growing queue
+    pthread_cond_t queue_reduce;            // notify a reducing queue (MUST be ONLY signaled from main thread)
+    pthread_cond_t queue_grow;              // notify a growing queue (MUST be ONLY signaled from decoding thread)
+
+    /* fields that MUST be protected by queue_lock */
     int queue_terminated;                   // 0 if queue is not going to be filled anymore (because thread is dead), 1 otherwise
     struct Frame *frames;                   // queue of the decoded (and filtered) frames
     int nb_frames;                          // total number of frames in the queue
-    AVRational frame_rate;                  // guessed frame rate
-    double request_seek;
-    int can_seek_again;
+    double request_seek;                    // field used by the main thread to request a seek to the decoding thread
+    int can_seek_again;                     // field used to avoid seeking again until the requested time is reached
+
+    /* fields specific to main thread */
+    struct Frame non_visible;               // frame to display for the "non visible" time zone
+    struct sfxmp_frame rframe;              // user returned frame container
     double last_pushed_frame_ts;            // ts value of the latest pushed frame (it acts as a UID)
 
-    /* special cached frames */
+    /* fields specific to decoding thread */
     AVFrame *decoded_frame;                 // decoded frame
     AVFrame *filtered_frame;                // filtered version of decoded_frame
-    struct Frame non_visible;               // frame to display for the "non visible" time zone
-    struct sfxmp_frame rframe;
-
-    /* demuxing and decoding */
+    AVRational frame_rate;                  // guessed frame rate
     AVFormatContext *fmt_ctx;               // demuxing context
     AVCodecContext  *dec_ctx;               // decoder context
     AVStream *stream;                       // selected stream
     int stream_idx;                         // selected stream index
-
-    /* filtering */
     AVFilterGraph *filter_graph;            // libavfilter graph
     AVFilterContext *buffersink_ctx;        // sink of the graph (from where we pull)
     AVFilterContext *buffersrc_ctx;         // source of the graph (where we push)
