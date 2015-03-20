@@ -18,7 +18,7 @@ struct Frame {
 
 struct sfxmp_ctx {
     /* configurable options */
-    const char *filename;                   // input filename
+    char *filename;                         // input filename
     int avselect;                           // select audio or video
     double visible_time;                    // see public header
     double start_time;                      // see public header
