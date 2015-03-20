@@ -149,6 +149,11 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     s->max_nb_frames          = max_nb_frames < 0 ? 5 : max_nb_frames;
     s->filters                = av_strdup(filters);
 
+    if (s->max_nb_frames < 2) {
+        fprintf(stderr, "max_nb_frames < 2 is not supported\n");
+        goto fail;
+    }
+
     if (!s->filename || (filters && !s->filters))
         goto fail;
 
