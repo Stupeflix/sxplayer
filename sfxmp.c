@@ -724,7 +724,6 @@ const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 
         if (t < s->visible_time) {
             DBG("main", "time requested before visible time, return nothing\n");
-            /* TODO: send a special frame */
             pthread_mutex_unlock(&s->queue_lock);
             return ret_frame(s, &s->non_visible);
         }
