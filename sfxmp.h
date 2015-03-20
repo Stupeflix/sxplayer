@@ -46,11 +46,11 @@ enum sfxmp_media_selection {
 };
 
 struct sfxmp_frame {
-    uint8_t *data;
-    double ts;
-    int linesize;
-    int width;
-    int height;
+    uint8_t *data;      // native RGBA/ABGR plane
+    double ts;          // video timestamp
+    int linesize;       // linesize in bytes (includes padding)
+    int width;          // frame width in pixel
+    int height;         // frame height in pixel
 };
 
 /**
