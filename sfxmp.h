@@ -13,7 +13,7 @@
  *                     t=0    t=visible_time      t=start_time        t=END
  *                      v           v                   v               v
  *                      +-----------+-------------------+---------------+---------
- *  OSG timeline        | B B B B B | 0 0 0 0 0 0 0 0 0 | 1 2 3 4 5 6 7 | 7 7 7 7
+ *      timeline        | B B B B B | 0 0 0 0 0 0 0 0 0 | 1 2 3 4 5 6 7 | 7 7 7 7
  *                      +-----------+-------------------+---------------+---------
  *                                 .                                 ´
  *                                .                                ´
@@ -28,7 +28,7 @@
  *                             <----------------------------->
  *                                      trim_duration
  *
- *  t:  OSG timestamp
+ *  t:  timeline timestamp
  *  Vt: video timestamp
  *  B:  black frame
  *  0:  frame 0
