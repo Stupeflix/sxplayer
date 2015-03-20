@@ -30,8 +30,8 @@ static int test_frame(struct sfxmp_ctx *s,
         const double playback_time = av_clipd(time, start_time, trim_duration < 0 ? DBL_MAX : start_time + trim_duration);
         const double diff = FFABS(playback_time - estimated_time_from_color);
 
-        if ((c == 0xff0000ff && c2 == 0xffffffff) ||
-            (c == 0x00000000 && c2 == 0x00000000)) {
+        if ((c == 0xff0000ff && c2 == 0xffffffff) /* this is for when ENABLE_DBG=1 in sfxmp.c */ ||
+            (c == 0x00000000 && c2 == 0x00000000) /* this is for when ENABLE_DBG=0 in sfxmp.c */) {
             if (time >= visible_time) {
                 fprintf(stderr, "got invisible frame even though it wasn't in visible time %f >= %f\n", time, visible_time);
                 return -1;

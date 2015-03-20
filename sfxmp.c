@@ -68,6 +68,9 @@ struct sfxmp_ctx {
 # define DBG(mod, ...) do { if (0) DBG_SFXMP(mod, __VA_ARGS__); } while (0)
 #endif
 
+/**
+ * Allocate a small frame to be displayed before visible_time
+ */
 static AVFrame *get_invisible_frame()
 {
     AVFrame *frame = av_frame_alloc();
@@ -86,11 +89,13 @@ static AVFrame *get_invisible_frame()
 #define SET_COLOR(x, y, color) *(uint32_t *)&frame->data[0][y*frame->linesize[0] + x*4] = color
 
 #if ENABLE_DBG
+    /* In debug more, we make them colored for visual debug */
     SET_COLOR(0, 0, 0xff0000ff);
     SET_COLOR(1, 1, 0x00ff00ff);
     SET_COLOR(0, 1, 0x0000ffff);
     SET_COLOR(1, 0, 0xffffffff);
 #else
+    /* ...but in production we want it to be black */
     SET_COLOR(0, 0, 0x00000000);
     SET_COLOR(1, 1, 0x00000000);
     SET_COLOR(0, 1, 0x00000000);
@@ -267,6 +272,8 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
 
     s->frame_rate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
 
+    /* If trim_duration is not specified, we try to probe from the stream or
+     * format (presentation) duration */
     if (s->trim_duration < 0) {
         int64_t duration = s->fmt_ctx->duration;
         double scale = av_q2d(AV_TIME_BASE_Q);
@@ -289,11 +296,17 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
     return 0;
 }
 
+/**
+ * Map the timeline time to the video time
+ */
 static double get_video_time(const struct sfxmp_ctx *s, double t)
 {
     return s->skip + av_clipd(t - s->start_time, 0, s->trim_duration);
 }
 
+/**
+ * Request a seek to the demuxer
+ */
 static int seek_to(struct sfxmp_ctx *s, double t)
 {
     const double vt = get_video_time(s, t);
@@ -306,7 +319,9 @@ static int seek_to(struct sfxmp_ctx *s, double t)
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, ts, ts, 0);
 }
 
-/* filter and queue frame(s) */
+/**
+ * Filter and queue frame(s)
+ */
 static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
 {
     int ret = 0;
@@ -428,7 +443,15 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
                 DBG("decoder", "Request seek (%f) not reached yet: %f<%f, skip frame\n",
                     s->request_seek, rescaled_ts, get_video_time(s, s->request_seek));
             } else {
-                f->ts = get_video_time(s, s->request_seek);  // let's lie a bit :)
+                /* Sometimes, because of inaccuracies with floats (or
+                 * eventually a bug in FFmpeg), the first frame picked after a
+                 * seek will be slightly off, creating a negative diff in
+                 * the main loop, which will as a result cause the main thread
+                 * to request a backseek, ended up in an infinite and
+                 * undesirable seek loop.
+                 * In order to avoid this, we lie about the timestamp and make
+                 * it exactly what the user requested. */
+                f->ts = get_video_time(s, s->request_seek);
                 s->can_seek_again = 1;
                 s->request_seek   = -1;
             }
@@ -446,6 +469,11 @@ end:
     return ret;
 }
 
+/**
+ * Setup the libavfilter filtergraph for user filter but also to have a way to
+ * request a pixel format we want, and let libavfilter insert the necessary
+ * scaling filter (typically, an automatic conversion from yuv420p to rgb32).
+ */
 static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
 {
     int ret = 0;
