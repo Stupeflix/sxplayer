@@ -49,7 +49,6 @@ struct sfxmp_ctx {
     /* fields specific to decoding thread */
     AVFrame *decoded_frame;                 // decoded frame
     AVFrame *filtered_frame;                // filtered version of decoded_frame
-    AVRational frame_rate;                  // guessed frame rate
     AVFormatContext *fmt_ctx;               // demuxing context
     AVCodecContext  *dec_ctx;               // decoder context
     AVStream *stream;                       // selected stream
@@ -269,8 +268,6 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
         fprintf(stderr, "Unable to open input video decoder\n");
         return ret;
     }
-
-    s->frame_rate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
 
     /* If trim_duration is not specified, we try to probe from the stream or
      * format (presentation) duration */
