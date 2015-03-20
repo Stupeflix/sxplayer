@@ -52,13 +52,27 @@ struct sfxmp_frame {
     int height;
 };
 
-/* Create media player context */
+/**
+ * Create media player context
+ *
+ * @param avselect               select audio or video stream (see SFXMP_SELECT_*)
+ * @param visible_time           everything before this time will be black
+ * @param start_time             between visible_time and start_time, first frame will be displayed
+ * @param skip                   time to skip in the specified input
+ * @param trim_duration          duration of the video (starting at skip for video time, or start_time for timeline)
+ * @param dist_time_seek_trigger how much time forward will trigger a seek, can be negative for default
+ * @param max_nb_frames          maximum number of frames in the queue, can be negative for default
+ * @param filters                custom user filters, can be NULL
+ */
 struct sfxmp_ctx *sfxmp_create(const char *filename,
                                int avselect,
                                double visible_time,
                                double start_time,
                                double skip,
-                               double trim_duration);
+                               double trim_duration,
+                               double dist_time_seek_trigger,
+                               double max_nb_frames,
+                               const char *filters);
 
 /* Get the frame at an absolute time. The returned frame can be NULL if
  * unchanged from last call. It stays readable until the next call to this

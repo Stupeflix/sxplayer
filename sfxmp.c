@@ -24,9 +24,9 @@ struct sfxmp_ctx {
     double start_time;                      // see public header
     double skip;                            // see public header
     double trim_duration;                   // see public header
-
     int max_nb_frames;                      // maximum number of frames in the queue
     double dist_time_seek_trigger;          // distance time triggering a seek
+    char *filters;                          // simple filter graph
 
     /* demuxer/decoder thread */
     pthread_t dec_thread;                   // decoding thread
@@ -99,12 +99,34 @@ static AVFrame *get_invisible_frame()
     return frame;
 }
 
+static void free_context(struct sfxmp_ctx *s)
+{
+    int i;
+
+    if (!s)
+        return;
+
+    if (s->frames) {
+        for (i = 0; i < s->max_nb_frames; i++)
+            av_frame_free(&s->frames[i].frame);
+        av_freep(&s->frames);
+    }
+
+    av_frame_free(&s->non_visible.frame);
+    av_freep(&s->filename);
+    av_freep(&s->filters);
+    av_freep(&s);
+}
+
 struct sfxmp_ctx *sfxmp_create(const char *filename,
                                int avselect,
                                double visible_time,
                                double start_time,
                                double skip,
-                               double trim_duration)
+                               double trim_duration,
+                               double dist_time_seek_trigger,
+                               double max_nb_frames,
+                               const char *filters)
 {
     int i;
     struct sfxmp_ctx *s;
@@ -117,15 +139,18 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     if (!s)
         return NULL;
 
-    s->filename      = av_strdup(filename);
-    s->avselect      = avselect;
-    s->visible_time  = visible_time;
-    s->start_time    = start_time;
-    s->skip          = skip;
-    s->trim_duration = trim_duration;
+    s->filename               = av_strdup(filename);
+    s->avselect               = avselect;
+    s->visible_time           = visible_time;
+    s->start_time             = start_time;
+    s->skip                   = skip;
+    s->trim_duration          = trim_duration;
+    s->dist_time_seek_trigger = dist_time_seek_trigger < 0 ? 3 : dist_time_seek_trigger;
+    s->max_nb_frames          = max_nb_frames < 0 ? 5 : max_nb_frames;
+    s->filters                = av_strdup(filters); // TODO: unused
 
-    s->dist_time_seek_trigger = 3; // TODO: make configurable
-    s->max_nb_frames = 5; // TODO: make configurable
+    if (!s->filename || (filters && !s->filters))
+        goto fail;
 
     s->frames = av_malloc_array(s->max_nb_frames, sizeof(*s->frames));
     if (!s->frames)
@@ -133,7 +158,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     for (i = 0; i < s->max_nb_frames; i++) {
         s->frames[i].frame = av_frame_alloc();
         if (!s->frames[i].frame)
-            return NULL;
+            goto fail;
     }
 
     s->last_pushed_frame_ts = DBL_MIN;
@@ -141,7 +166,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     s->non_visible.ts    = -1;
     s->non_visible.frame = get_invisible_frame();
     if (!s->non_visible.frame)
-        return NULL;
+        goto fail;
 
     s->queue_terminated = 1;
 
@@ -155,13 +180,12 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     return s;
 
 fail:
-    av_freep(&s);
+    free_context(s);
     return NULL;
 }
 
 void sfxmp_free(struct sfxmp_ctx **ss)
 {
-    int i;
     struct sfxmp_ctx *s = *ss;
 
     DBG("free", "calling sfxmp_free() (%p)\n", s);
@@ -181,15 +205,7 @@ void sfxmp_free(struct sfxmp_ctx **ss)
     pthread_cond_destroy(&s->queue_reduce);
     pthread_cond_destroy(&s->queue_grow);
     pthread_mutex_destroy(&s->queue_lock);
-
-    for (i = 0; i < s->max_nb_frames; i++)
-        av_frame_free(&s->frames[i].frame);
-    av_freep(&s->frames);
-
-    av_frame_free(&s->non_visible.frame);
-    av_freep(&s->filename);
-
-    av_freep(ss);
+    free_context(s);
 }
 
 static int decode_packet(struct sfxmp_ctx *s, AVPacket *pkt,

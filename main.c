@@ -97,7 +97,8 @@ static int test_instant_gets(const char *filename)
 
         struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
                                            visible_time, start_time,
-                                           skip, trim_duration);
+                                           skip, trim_duration,
+                                           -1, -1, NULL);
 
         printf("Test instant get @ t=%f\n", instant_gets[i]);
 
@@ -127,7 +128,8 @@ static int test_seeks(const char *filename)
 
     struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
                                        visible_time, start_time,
-                                       skip, trim_duration);
+                                       skip, trim_duration,
+                                       -1, -1, NULL);
 
     printf("Test: %s\n", __FUNCTION__);
 
@@ -162,7 +164,8 @@ static int test_full_run(const char *filename, int refresh_rate,
 
     struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
                                        visible_time, start_time,
-                                       skip, trim_duration);
+                                       skip, trim_duration,
+                                       -1, -1, NULL);
 
     printf("Test: %s\n", __FUNCTION__);
 
@@ -209,7 +212,7 @@ int main(int ac, char **av)
     if (test_seeks(av[1]) < 0)
         return 1;
 
-    if (test_full_run(NULL, 0, 0, 0, 0, 0) < 0 ||
+    if (test_full_run("dummy", 0, 0, 0, 0, 0) < 0 ||
         test_full_run(av[1], 30, 0, 0, 0, -1) < 0 ||
         test_full_run(av[1], 10, 3.2, 5.4, 1.1, 18.6) < 0 ||
         test_full_run(av[1], 10, 3.2, 5.4, 1.1, 18.6) < 0 ||
