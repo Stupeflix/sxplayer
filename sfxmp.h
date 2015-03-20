@@ -47,6 +47,7 @@ enum sfxmp_media_selection {
 
 struct sfxmp_frame {
     uint8_t *data;
+    double ts;
     int linesize;
     int width;
     int height;

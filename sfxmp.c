@@ -640,6 +640,7 @@ static const struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Fra
     s->rframe.linesize = rframe->linesize[0];
     s->rframe.width    = rframe->width;
     s->rframe.height   = rframe->height;
+    s->rframe.ts       = frame->ts;
     return &s->rframe;
 }
 
