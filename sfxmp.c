@@ -655,6 +655,16 @@ static int consume_queue(struct sfxmp_ctx *s, int n)
     return n;
 }
 
+static void request_seek(struct sfxmp_ctx *s, double t)
+{
+    if (s->can_seek_again) {
+        DBG("main", "request seek at @ %f [cur:%f]\n", t, s->request_seek);
+        s->request_seek = t;
+    } else {
+        DBG("main", "can not seek again, waiting\n");
+    }
+}
+
 const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 {
     DBG("main", " >> get frame for t=%f\n", t);
@@ -709,18 +719,10 @@ const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 
         if (diff < 0) {
             /* past seek */
-
-            if (s->can_seek_again) {
-                DBG("main", "request past seek at @ %f [cur:%f]\n", t, s->request_seek);
-                s->request_seek = t;
-            } else {
-                DBG("main", "can not past seek again, waiting\n");
-            }
-
+            request_seek(s, t);
             consume_queue(s, s->nb_frames);
             pthread_mutex_unlock(&s->queue_lock);
             pthread_cond_signal(&s->queue_reduce);
-
         } else {
             int best_id = 0;
             int i, need_more_frames;
@@ -739,16 +741,8 @@ const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
             DBG("main", "best frame: %d/%d | need more: %d (terminated:%d)\n",
                 best_id+1, s->nb_frames, need_more_frames, s->queue_terminated);
 
-            if (diff > s->dist_time_seek_trigger) {
-                /* future seek */
-
-                if (s->can_seek_again) {
-                    DBG("main", "request future seek at @ %f [cur:%f]\n", t, s->request_seek);
-                    s->request_seek = t;
-                } else {
-                    DBG("main", "can not future seek again, waiting\n");
-                }
-            }
+            if (diff > s->dist_time_seek_trigger) /* future seek */
+                request_seek(s, t);
 
             if (!consume_queue(s, best_id) && need_more_frames) {
                 DBG("decoder", "nothing consumed but needs more frame, wait for grow\n");
