@@ -147,7 +147,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     s->trim_duration          = trim_duration;
     s->dist_time_seek_trigger = dist_time_seek_trigger < 0 ? 3 : dist_time_seek_trigger;
     s->max_nb_frames          = max_nb_frames < 0 ? 5 : max_nb_frames;
-    s->filters                = av_strdup(filters); // TODO: unused
+    s->filters                = av_strdup(filters);
 
     if (!s->filename || (filters && !s->filters))
         goto fail;
@@ -447,6 +447,8 @@ static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
     char args[512];
     const AVRational time_base = s->stream->time_base;
     const AVRational framerate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
+    char *complete_filtergraph = s->filters ? av_asprintf("%s,%s", s->filters, filtergraph)
+                                            : av_strdup(filtergraph);
     AVFilter *buffersrc  = avfilter_get_by_name("buffer");
     AVFilter *buffersink = avfilter_get_by_name("buffersink");
     AVFilterInOut *outputs = avfilter_inout_alloc();
@@ -454,7 +456,7 @@ static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
 
     s->filter_graph = avfilter_graph_alloc();
 
-    if (!inputs || !outputs || !s->filter_graph) {
+    if (!inputs || !outputs || !s->filter_graph || !complete_filtergraph) {
         ret = AVERROR(ENOMEM);
         goto end;
     }
@@ -493,7 +495,7 @@ static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
     /* create our filter graph */
     inputs->filter_ctx  = s->buffersink_ctx;
     outputs->filter_ctx = s->buffersrc_ctx;
-    ret = avfilter_graph_parse_ptr(s->filter_graph, filtergraph,
+    ret = avfilter_graph_parse_ptr(s->filter_graph, complete_filtergraph,
                                    &inputs, &outputs, NULL);
     if (ret < 0)
         goto end;
@@ -503,6 +505,7 @@ static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
         goto end;
 
 end:
+    av_freep(&complete_filtergraph);
     avfilter_inout_free(&inputs);
     avfilter_inout_free(&outputs);
     return ret;
