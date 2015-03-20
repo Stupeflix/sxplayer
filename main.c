@@ -59,10 +59,8 @@ static int test_frame(struct sfxmp_ctx *s,
     } else {
 
         if (time < *prev_time) {
-            if (time < visible_time) {// FIXME: drop, we should probably send a black frame here
-                fprintf(stderr, "ERROR: time went backward but got no frame update\n");
-                return -1;
-            }
+            fprintf(stderr, "ERROR: time went backward but got no frame update\n");
+            return -1;
         }
 
         if (time - *prev_time > 1.5/SOURCE_FPS) {
