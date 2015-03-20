@@ -535,9 +535,6 @@ static void *decoder_thread(void *arg)
     if (!s->decoded_frame || !s->filtered_frame)
         goto end;
 
-    s->request_seek   = -1;
-    s->can_seek_again = 1;
-
     av_init_packet(&pkt);
 
     /* read frames from the file */
@@ -676,7 +673,11 @@ const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 
         if (s->queue_terminated && !s->nb_frames) {
             DBG("main", "spawn decoding thread\n");
+
             s->queue_terminated = 0;
+            s->request_seek     = -1;
+            s->can_seek_again   = 1;
+
             if (pthread_create(&s->dec_thread, NULL, decoder_thread, s)) {
                 fprintf(stderr, "Unable to spawn decoding thread\n");
                 s->queue_terminated = 1;
