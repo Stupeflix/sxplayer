@@ -28,7 +28,7 @@ struct sfxmp_ctx {
     double dist_time_seek_trigger;          // distance time triggering a seek
     char *filters;                          // simple filter graph
 
-    /* main vs demuxer/decoder thread negociation */
+    /* main vs demuxer/decoder thread negotiation */
     pthread_t dec_thread;                   // decoding thread
     pthread_mutex_t queue_lock;             // for any op related to the queue
     pthread_cond_t queue_reduce;            // notify a reducing queue (MUST be ONLY signaled from main thread)
