@@ -2,12 +2,15 @@
 #include <pthread.h>
 #include <float.h> /* for DBL_MAX */
 
+#include <libavcodec/avfft.h>
 #include <libavformat/avformat.h>
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
+#include <libavutil/avassert.h>
 #include <libavutil/avstring.h>
 #include <libavutil/opt.h>
+#include <libavutil/timestamp.h>
 
 #include "sfxmp.h"
 
@@ -15,6 +18,10 @@ struct Frame {
     AVFrame *frame;         // a frame the user might want
     double ts;              // rescaled timestamp
 };
+
+#define AUDIO_NBITS      10
+#define AUDIO_NBSAMPLES  (1<<(AUDIO_NBITS))
+#define AUDIO_NBCHANNELS 2
 
 struct sfxmp_ctx {
     /* configurable options */
@@ -26,7 +33,10 @@ struct sfxmp_ctx {
     double trim_duration;                   // see public header
     int max_nb_frames;                      // maximum number of frames in the queue
     double dist_time_seek_trigger;          // distance time triggering a seek
-    char *filters;                          // simple filter graph
+
+    /* misc general fields */
+    enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
+    const char *media_type_string;          // "audio" or "video" according to avselect
 
     /* main vs demuxer/decoder thread negotiation */
     pthread_t dec_thread;                   // decoding thread
@@ -49,13 +59,18 @@ struct sfxmp_ctx {
     /* fields specific to decoding thread */
     AVFrame *decoded_frame;                 // decoded frame
     AVFrame *filtered_frame;                // filtered version of decoded_frame
+    AVFrame *audio_texture_frame;           // wave/fft texture in case of audio
     AVFormatContext *fmt_ctx;               // demuxing context
     AVCodecContext  *dec_ctx;               // decoder context
     AVStream *stream;                       // selected stream
     int stream_idx;                         // selected stream index
     AVFilterGraph *filter_graph;            // libavfilter graph
+    char *filter_graph_str;                 // libavfilter graph string
     AVFilterContext *buffersink_ctx;        // sink of the graph (from where we pull)
     AVFilterContext *buffersrc_ctx;         // source of the graph (where we push)
+    float *window_func_lut;                 // audio window function lookup table
+    RDFTContext *rdft;                      // real discrete fourier transform context
+    FFTSample *rdft_data[AUDIO_NBCHANNELS]; // real discrete fourier transform data for each channel
 };
 
 #define ENABLE_DBG 0
@@ -70,15 +85,25 @@ struct sfxmp_ctx {
 /**
  * Allocate a small frame to be displayed before visible_time
  */
-static AVFrame *get_invisible_frame()
+static AVFrame *get_invisible_frame(enum AVMediaType media_type)
 {
     AVFrame *frame = av_frame_alloc();
     if (!frame)
         return NULL;
 
     frame->format = AV_PIX_FMT_RGB32;
-    frame->width  = 2;
-    frame->height = 2;
+
+    if (media_type == AVMEDIA_TYPE_VIDEO) {
+        frame->width  = 2;
+        frame->height = 2;
+    } else {
+        frame->width  = AUDIO_NBSAMPLES/2;      // samples are float (32 bits), pix fmt is rgb32 (32 bits as well)
+        /* height:
+         *   AUDIO_NBCHANNELS (waves lines)
+         * + AUDIO_NBCHANNELS (fft lines of width AUDIO_NBCHANNELS/2, or 1<<(AUDIO_NBITS-1))
+         * + AUDIO_NBITS-1 AUDIO_NBCHANNELS (fft lines downscaled) */
+        frame->height = (1 + AUDIO_NBITS) * AUDIO_NBCHANNELS;
+    }
 
     if (av_frame_get_buffer(frame, 16) < 0) {
         av_frame_free(&frame);
@@ -87,6 +112,7 @@ static AVFrame *get_invisible_frame()
 
 #define SET_COLOR(x, y, color) *(uint32_t *)&frame->data[0][y*frame->linesize[0] + x*4] = color
 
+    if (media_type == AVMEDIA_TYPE_VIDEO) {
 #if ENABLE_DBG
     /* In debug more, we make them colored for visual debug */
     SET_COLOR(0, 0, 0xff0000ff);
@@ -100,6 +126,9 @@ static AVFrame *get_invisible_frame()
     SET_COLOR(0, 1, 0x00000000);
     SET_COLOR(1, 0, 0x00000000);
 #endif
+    } else {
+        memset(frame->data[0], 0, frame->height * frame->linesize[0]);
+    }
     return frame;
 }
 
@@ -118,8 +147,21 @@ static void free_context(struct sfxmp_ctx *s)
 
     av_frame_free(&s->non_visible.frame);
     av_freep(&s->filename);
-    av_freep(&s->filters);
+    av_freep(&s->filter_graph_str);
     av_freep(&s);
+}
+
+static char *get_filter_graph_str(enum AVMediaType media_type, const char *filters)
+{
+    char buf[512];
+
+    if (media_type == AVMEDIA_TYPE_VIDEO)
+        snprintf(buf, sizeof(buf), "format=rgb32");
+    else
+        snprintf(buf, sizeof(buf), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
+
+    return filters ? av_asprintf("%s,%s", filters, buf)
+                   : av_strdup(buf);
 }
 
 struct sfxmp_ctx *sfxmp_create(const char *filename,
@@ -151,14 +193,26 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     s->trim_duration          = trim_duration;
     s->dist_time_seek_trigger = dist_time_seek_trigger < 0 ? 3 : dist_time_seek_trigger;
     s->max_nb_frames          = max_nb_frames < 0 ? 5 : max_nb_frames;
-    s->filters                = av_strdup(filters);
+
+    switch (s->avselect) {
+    case SFXMP_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
+    case SFXMP_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
+    default:
+        fprintf(stderr, "unknown avselect value %d\n", s->avselect);
+        goto fail;
+    }
+
+    s->media_type_string = av_get_media_type_string(s->media_type);
+    av_assert0(s->media_type_string);
+
+    s->filter_graph_str = get_filter_graph_str(s->media_type, filters);
 
     if (s->max_nb_frames < 2) {
         fprintf(stderr, "max_nb_frames < 2 is not supported\n");
         goto fail;
     }
 
-    if (!s->filename || (filters && !s->filters))
+    if (!s->filename || !s->filter_graph_str)
         goto fail;
 
     s->frames = av_malloc_array(s->max_nb_frames, sizeof(*s->frames));
@@ -173,7 +227,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     s->last_pushed_frame_ts = DBL_MIN;
 
     s->non_visible.ts    = -1;
-    s->non_visible.frame = get_invisible_frame();
+    s->non_visible.frame = get_invisible_frame(s->media_type);
     if (!s->non_visible.frame)
         goto fail;
 
@@ -224,9 +278,15 @@ static int decode_packet(struct sfxmp_ctx *s, AVPacket *pkt,
 
     *got_frame = 0;
     if (pkt->stream_index == s->stream_idx) {
-        int ret = avcodec_decode_video2(s->dec_ctx, frame, got_frame, pkt);
+        int ret;
+
+        if (s->media_type == AVMEDIA_TYPE_VIDEO)
+            ret = avcodec_decode_video2(s->dec_ctx, frame, got_frame, pkt);
+        else
+            ret = avcodec_decode_audio4(s->dec_ctx, frame, got_frame, pkt);
+
         if (ret < 0) {
-            fprintf(stderr, "Error decoding video frame\n");
+            fprintf(stderr, "Error decoding %s frame\n", s->media_type_string);
             return ret;
         }
         decoded = FFMIN(ret, pkt->size);
@@ -253,9 +313,9 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
         return ret;
     }
 
-    ret = av_find_best_stream(s->fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &dec, 0);
+    ret = av_find_best_stream(s->fmt_ctx, s->media_type, -1, -1, &dec, 0);
     if (ret < 0) {
-        fprintf(stderr, "Unable to find a video stream in the input file\n");
+        fprintf(stderr, "Unable to find a %s stream in the input file\n", s->media_type_string);
         return ret;
     }
     s->stream_idx = ret;
@@ -265,7 +325,7 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
 
     ret = avcodec_open2(s->dec_ctx, dec, NULL);
     if (ret < 0) {
-        fprintf(stderr, "Unable to open input video decoder\n");
+        fprintf(stderr, "Unable to open input %s decoder\n", s->media_type_string);
         return ret;
     }
 
@@ -316,7 +376,91 @@ static int seek_to(struct sfxmp_ctx *s, double t)
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, ts, ts, 0);
 }
 
-static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph);
+static int setup_filtergraph(struct sfxmp_ctx *s);
+
+/**
+ * Convert an audio frame (PCM data) to a textured video frame with waves and
+ * FFT lines
+ */
+static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video,
+                                         const AVFrame *audio_src)
+{
+    int i, ch;
+    const int nb_samples = audio_src->nb_samples;
+    const float scale = 1.f / sqrt(AUDIO_NBSAMPLES/2 + 1);
+
+    memset(dst_video->data[0], 0, dst_video->height * dst_video->linesize[0]);
+
+    /* Copy waves */
+    for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
+        const int lz = dst_video->linesize[0];
+        float *samples_dst = (float *)(dst_video->data[0] + ch * lz);
+        const float *samples_src = (const float *)audio_src->extended_data[ch];
+
+        for (i = 0; i < nb_samples/2; i++)
+            samples_dst[i] = (samples_src[nb_samples/4 + i] + 1.f) / 2.f;
+    }
+
+    for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
+        const int lz = dst_video->linesize[0];
+        float *fft_dst = (float *)(dst_video->data[0] + (AUDIO_NBCHANNELS + ch) * lz);
+        const float *samples_src = (const float *)audio_src->extended_data[ch];
+        float *bins = s->rdft_data[ch];
+
+        /* Apply window function to input samples */
+        for (i = 0; i < nb_samples; i++)
+            bins[i] = samples_src[i] * s->window_func_lut[i];
+
+        /* Run transform */
+        av_rdft_calc(s->rdft, bins);
+
+        /* Get magnitude of frequency bins and copy result into texture */
+#define MAGNITUDE(re, im) sqrtf(((re)*(re) + (im)*(im)) * scale)
+        for (i = 0; i < nb_samples / 2 - 1; i++)
+            fft_dst[i] = MAGNITUDE(bins[2*(i + 1)], bins[2*(i + 1) + 1]);
+        fft_dst[nb_samples/2 - 1] = MAGNITUDE(bins[1], 0);
+        //fft_dst[           0] = MAGNITUDE(bins[0], 0);
+        //fft_dst[nb_samples/2] = MAGNITUDE(bins[1], 0);
+    }
+
+
+    {
+        const int width = nb_samples/2;
+
+        for (i = 0; i < AUDIO_NBITS-1; i++) {
+            for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
+                int j;
+                const int lz = dst_video->linesize[0];
+                const int source_line = (i + 1)*AUDIO_NBCHANNELS + ch;
+                float *fft_src = (float *)(dst_video->data[0] +  source_line                     * lz);
+                float *fft_dst = (float *)(dst_video->data[0] + (source_line + AUDIO_NBCHANNELS) * lz);
+
+                const int source_step = 1 << i;
+                const int nb_identical_values = source_step << 1;
+                const int nb_dest_pixels = width / nb_identical_values;
+
+                DBG("audio2tex", "line %2d->%2d: %3d different pixels (copied %3dx) as destination, step source: %d\n",
+                    source_line, source_line + AUDIO_NBCHANNELS, nb_dest_pixels, nb_identical_values, source_step);
+
+                for (j = 0; j < nb_dest_pixels; j++) {
+                    int x;
+                    const float avg = (fft_src[ j*2      * source_step] +
+                                       fft_src[(j*2 + 1) * source_step]) / 2.f;
+
+                    for (x = 0; x < nb_identical_values; x++)
+                        fft_dst[j*nb_identical_values + x] = avg;
+                }
+            }
+        }
+
+    }
+}
+
+static int64_t get_best_effort_ts(const AVFrame *f)
+{
+    const int64_t t = av_frame_get_best_effort_timestamp(f);
+    return t != AV_NOPTS_VALUE ? t : f->pts;
+}
 
 /**
  * Filter and queue frame(s)
@@ -326,7 +470,9 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
     int ret = 0;
 
     if (inframe) {
-        inframe->pts = av_frame_get_best_effort_timestamp(inframe);
+        inframe->pts = get_best_effort_ts(inframe);
+
+        DBG("decoder", "push frame with ts=%s into filtergraph\n", av_ts2str(inframe->pts));
 
         /* push the decoded frame into the filtergraph */
         ret = av_buffersrc_write_frame(s->buffersrc_ctx, inframe);
@@ -352,6 +498,13 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
             goto end;
         }
+
+        DBG("decoder", "decoded frame @ ts=%s %"PRId64"\n",
+            av_ts2str(get_best_effort_ts(s->filtered_frame)), s->filtered_frame->pts);
+
+        /* if audio, get the audio texture from the filtered audio frame */
+        if (s->media_type == AVMEDIA_TYPE_AUDIO)
+            audio_frame_to_sound_texture(s, s->audio_texture_frame, s->filtered_frame);
 
         /* we have a frame, wait for the queue to be ready for queuing it */
         DBG("decoder", "locking\n");
@@ -390,6 +543,7 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
                 av_frame_unref(s->filtered_frame);
                 goto end;
             }
+            DBG("decoder", "seek OK (ret=%d)\n", ret);
 
             /* flush decoder and filters; we can do this after the unlock since
              * only this thread is decoding and pushing frames in the
@@ -397,11 +551,9 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             if (pkt)
                 pkt->size = 0;
             avcodec_flush_buffers(s->dec_ctx);
-            while (av_buffersink_get_frame(s->buffersink_ctx, NULL) >= 0)
-                ;
             av_frame_unref(s->filtered_frame);
 
-            ret = setup_filtergraph(s, "format=rgb32");
+            ret = setup_filtergraph(s);
             if (ret < 0)
                 goto end;
 
@@ -419,8 +571,9 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
         }
 
         /* interpolate (if needed) and rescale timestamp */
-        ts = av_frame_get_best_effort_timestamp(s->filtered_frame);
+        ts = get_best_effort_ts(s->filtered_frame);
         if (ts == AV_NOPTS_VALUE) {
+            DBG("decoder", "need TS interpolation\n");
             if (s->nb_frames) {
                 AVRational frame_rate = av_guess_frame_rate(s->fmt_ctx, s->stream, s->filtered_frame);
                 rescaled_ts = s->frames[s->nb_frames - 1].ts + 1./av_q2d(frame_rate);
@@ -436,7 +589,12 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
 
         /* finally queue the frame */
         f = &s->frames[s->nb_frames++];
-        av_frame_move_ref(f->frame, s->filtered_frame);
+        if (s->media_type == AVMEDIA_TYPE_VIDEO) {
+            av_frame_move_ref(f->frame, s->filtered_frame);
+        } else {
+            av_frame_ref(f->frame, s->audio_texture_frame);
+            av_frame_unref(s->filtered_frame);
+        }
         f->ts = rescaled_ts;
         DBG("decoder", "queuing frame %2d/%d @ ts=%f\n", s->nb_frames, s->max_nb_frames, f->ts);
 
@@ -477,23 +635,21 @@ end:
  * request a pixel format we want, and let libavfilter insert the necessary
  * scaling filter (typically, an automatic conversion from yuv420p to rgb32).
  */
-static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
+static int setup_filtergraph(struct sfxmp_ctx *s)
 {
     int ret = 0;
     char args[512];
     const AVRational time_base = s->stream->time_base;
     const AVRational framerate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
-    char *complete_filtergraph = s->filters ? av_asprintf("%s,%s", s->filters, filtergraph)
-                                            : av_strdup(filtergraph);
-    AVFilter *buffersrc  = avfilter_get_by_name("buffer");
-    AVFilter *buffersink = avfilter_get_by_name("buffersink");
+    AVFilter *buffersrc  = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffer" : "abuffer");
+    AVFilter *buffersink = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
     AVFilterInOut *outputs = avfilter_inout_alloc();
     AVFilterInOut *inputs  = avfilter_inout_alloc();
 
     avfilter_graph_free(&s->filter_graph);
     s->filter_graph = avfilter_graph_alloc();
 
-    if (!inputs || !outputs || !s->filter_graph || !complete_filtergraph) {
+    if (!inputs || !outputs || !s->filter_graph) {
         ret = AVERROR(ENOMEM);
         goto end;
     }
@@ -506,11 +662,22 @@ static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
     }
 
     /* create buffer filter source (where we push the frame) */
-    snprintf(args, sizeof(args),
-             "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
-             s->dec_ctx->width, s->dec_ctx->height, s->dec_ctx->pix_fmt,
-             time_base.num, time_base.den,
-             s->dec_ctx->sample_aspect_ratio.num, s->dec_ctx->sample_aspect_ratio.den);
+    if (s->media_type == AVMEDIA_TYPE_VIDEO) {
+        snprintf(args, sizeof(args),
+                 "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
+                 s->dec_ctx->width, s->dec_ctx->height, s->dec_ctx->pix_fmt,
+                 time_base.num, time_base.den,
+                 s->dec_ctx->sample_aspect_ratio.num, s->dec_ctx->sample_aspect_ratio.den);
+    } else {
+        snprintf(args, sizeof(args), "time_base=%d/%d:sample_rate=%d:sample_fmt=%s",
+                 1, s->dec_ctx->sample_rate, s->dec_ctx->sample_rate,
+                 av_get_sample_fmt_name(s->dec_ctx->sample_fmt));
+        if (s->dec_ctx->channel_layout)
+            av_strlcatf(args, sizeof(args), ":channel_layout=0x%"PRIx64, s->dec_ctx->channel_layout);
+        else
+            av_strlcatf(args, sizeof(args), ":channels=%d", s->dec_ctx->channels);
+    }
+
     if (framerate.num && framerate.den)
         av_strlcatf(args, sizeof(args), ":frame_rate=%d/%d", framerate.num, framerate.den);
 
@@ -532,7 +699,7 @@ static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
     /* create our filter graph */
     inputs->filter_ctx  = s->buffersink_ctx;
     outputs->filter_ctx = s->buffersrc_ctx;
-    ret = avfilter_graph_parse_ptr(s->filter_graph, complete_filtergraph,
+    ret = avfilter_graph_parse_ptr(s->filter_graph, s->filter_graph_str,
                                    &inputs, &outputs, NULL);
     if (ret < 0)
         goto end;
@@ -542,7 +709,6 @@ static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
         goto end;
 
 end:
-    av_freep(&complete_filtergraph);
     avfilter_inout_free(&inputs);
     avfilter_inout_free(&outputs);
     return ret;
@@ -558,14 +724,43 @@ static void *decoder_thread(void *arg)
     if (ret < 0)
         goto end;
 
-    ret = setup_filtergraph(s, "format=rgb32");
+    ret = setup_filtergraph(s);
     if (ret < 0)
         goto end;
 
-    s->decoded_frame  = av_frame_alloc();
     s->filtered_frame = av_frame_alloc();
+    s->decoded_frame  = av_frame_alloc();
     if (!s->decoded_frame || !s->filtered_frame)
         goto end;
+
+    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
+        s->audio_texture_frame = get_invisible_frame(AVMEDIA_TYPE_AUDIO);
+        if (!s->audio_texture_frame)
+            goto end;
+    }
+
+    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
+        int i;
+
+        /* Pre-calc windowing function */
+        s->window_func_lut = av_malloc_array(AUDIO_NBSAMPLES, sizeof(*s->window_func_lut));
+        if (!s->window_func_lut)
+            goto end;
+        for (i = 0; i < AUDIO_NBSAMPLES; i++)
+            s->window_func_lut[i] = .5f * (1 - cos(2*M_PI*i / (AUDIO_NBSAMPLES-1)));
+
+        /* Real Discrete Fourier Transform context (Real to Complex) */
+        s->rdft = av_rdft_init(AUDIO_NBITS, DFT_R2C);
+        if (!s->rdft) {
+            fprintf(stderr, "Unable to init RDFT context with N=%d\n", AUDIO_NBITS);
+            goto end;
+        }
+
+        s->rdft_data[0] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*s->rdft_data[0]));
+        s->rdft_data[1] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*s->rdft_data[1]));
+        if (!s->rdft_data[0] || !s->rdft_data[1])
+            goto end;
+    }
 
     av_init_packet(&pkt);
 
@@ -616,6 +811,17 @@ end:
     av_frame_free(&s->decoded_frame);
     av_frame_free(&s->filtered_frame);
     avfilter_graph_free(&s->filter_graph);
+
+    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
+        av_frame_free(&s->audio_texture_frame);
+        av_freep(&s->window_func_lut);
+        av_freep(&s->rdft_data[0]);
+        av_freep(&s->rdft_data[1]);
+        if (s->rdft) {
+            av_rdft_end(s->rdft);
+            s->rdft = NULL;
+        }
+    }
 
     pthread_mutex_lock(&s->queue_lock);
     s->queue_terminated = 1;

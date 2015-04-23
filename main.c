@@ -13,9 +13,19 @@
 static int test_frame(struct sfxmp_ctx *s,
                       double time, int *prev_frame_id, double *prev_time,
                       double visible_time, double start_time,
-                      double skip, double trim_duration)
+                      double skip, double trim_duration, int avselect)
 {
     const struct sfxmp_frame *frame = sfxmp_get_frame(s, time);
+
+    if (avselect == SFXMP_SELECT_AUDIO) {
+        // TODO
+        if (frame) {
+            const double playback_time = av_clipd(time, start_time, trim_duration < 0 ? DBL_MAX : start_time + trim_duration);
+            const double diff = FFABS(playback_time - frame->ts);
+            printf("AUDIO TEST FRAME %dx%d pt:%f ft:%f diff:%f\n", frame->width, frame->height, playback_time, frame->ts, diff);
+        }
+        return 0;
+    }
 
     if (frame) {
         const uint32_t c = *(const uint32_t *)frame->data;
@@ -77,7 +87,7 @@ static int test_frame(struct sfxmp_ctx *s,
     return 0;
 }
 
-static int test_instant_gets(const char *filename)
+static int test_instant_gets(const char *filename, int avselect)
 {
     int i, ret = 0;
     const double visible_time  = 15.2;
@@ -93,7 +103,7 @@ static int test_instant_gets(const char *filename)
         int prev_frame_id = -1;
         double prev_time = DBL_MIN;
 
-        struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
+        struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
                                            visible_time, start_time,
                                            skip, trim_duration,
                                            -1, -1, NULL);
@@ -104,7 +114,8 @@ static int test_instant_gets(const char *filename)
             return -1;
 
         ret = test_frame(s, instant_gets[i], &prev_frame_id, &prev_time,
-                         visible_time, start_time, skip, trim_duration);
+                         visible_time, start_time, skip, trim_duration,
+                         avselect);
 
         sfxmp_free(&s);
 
@@ -114,7 +125,7 @@ static int test_instant_gets(const char *filename)
     return ret;
 }
 
-static int test_seeks(const char *filename)
+static int test_seeks(const char *filename, int avselect)
 {
     int i, ret = 0;
     const double visible_time  = 12.;
@@ -124,7 +135,7 @@ static int test_seeks(const char *filename)
 
     const double instant_gets[] = {32., 31., 31.2, 60.};
 
-    struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
+    struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
                                        visible_time, start_time,
                                        skip, trim_duration,
                                        -1, -1, NULL);
@@ -139,7 +150,8 @@ static int test_seeks(const char *filename)
         double prev_time = DBL_MIN;
 
         ret = test_frame(s, instant_gets[i], &prev_frame_id, &prev_time,
-                         visible_time, start_time, skip, trim_duration);
+                         visible_time, start_time, skip, trim_duration,
+                         avselect);
 
         if (ret < 0)
             break;
@@ -151,7 +163,8 @@ static int test_seeks(const char *filename)
 
 static int test_full_run(const char *filename, int refresh_rate,
                          double visible_time, double start_time,
-                         double skip, double trim_duration)
+                         double skip, double trim_duration,
+                         int avselect)
 {
     int i, ret = 0, prev_frame_id = -1;
     double prev_time = DBL_MIN;
@@ -160,7 +173,7 @@ static int test_full_run(const char *filename, int refresh_rate,
     const double request_duration   = request_end_time - request_start_time;
     const int nb_calls = request_duration * refresh_rate;
 
-    struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
+    struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
                                        visible_time, start_time,
                                        skip, trim_duration,
                                        -1, -1, NULL);
@@ -190,7 +203,8 @@ static int test_full_run(const char *filename, int refresh_rate,
 
         ret = test_frame(s, time, &prev_frame_id, &prev_time,
                          visible_time, start_time,
-                         skip, trim_duration);
+                         skip, trim_duration,
+                         avselect);
         if (ret < 0)
             break;
     }
@@ -200,6 +214,24 @@ end:
     return ret;
 }
 
+static int run_tests(const char *filename, int avselect)
+{
+    if (test_seeks(filename, avselect) < 0)
+        return 1;
+
+    if (test_full_run("dummy", 0, 0, 0, 0, 0, avselect) < 0 ||
+        test_full_run(filename, 30, 0, 0, 0, -1, avselect) < 0 ||
+        test_full_run(filename, 10, 3.2, 5.4, 1.1, 18.6, avselect) < 0 ||
+        test_full_run(filename, 10, 3.2, 5.4, 1.1, 18.6, avselect) < 0 ||
+        test_full_run(filename, 60, 2.3, 4.5, 3.7, 12.2, avselect) < 0)
+        return 1;
+
+    if (test_instant_gets(filename, avselect) < 0)
+        return 1;
+
+    return 0;
+}
+
 int main(int ac, char **av)
 {
     if (ac != 2) {
@@ -207,17 +239,8 @@ int main(int ac, char **av)
         return 1;
     }
 
-    if (test_seeks(av[1]) < 0)
-        return 1;
-
-    if (test_full_run("dummy", 0, 0, 0, 0, 0) < 0 ||
-        test_full_run(av[1], 30, 0, 0, 0, -1) < 0 ||
-        test_full_run(av[1], 10, 3.2, 5.4, 1.1, 18.6) < 0 ||
-        test_full_run(av[1], 10, 3.2, 5.4, 1.1, 18.6) < 0 ||
-        test_full_run(av[1], 60, 2.3, 4.5, 3.7, 12.2) < 0)
-        return 1;
-
-    if (test_instant_gets(av[1]) < 0)
+    if (run_tests(av[1], SFXMP_SELECT_VIDEO) < 0 ||
+        run_tests(av[1], SFXMP_SELECT_AUDIO) < 0)
         return 1;
 
     printf("All tests OK\n");
