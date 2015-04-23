@@ -294,9 +294,9 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
 }
 
 /**
- * Map the timeline time to the video time
+ * Map the timeline time to the media time
  */
-static double get_video_time(const struct sfxmp_ctx *s, double t)
+static double get_media_time(const struct sfxmp_ctx *s, double t)
 {
     return s->skip + av_clipd(t - s->start_time, 0, s->trim_duration);
 }
@@ -306,13 +306,13 @@ static double get_video_time(const struct sfxmp_ctx *s, double t)
  */
 static int seek_to(struct sfxmp_ctx *s, double t)
 {
-    const double vt = get_video_time(s, t);
+    const double vt = get_media_time(s, t);
     const int64_t ts = vt * AV_TIME_BASE;
 
     if (ENABLE_DBG)
-        DBG("decoder", "Seek in video at %f (t=%f)\n", vt, t);
+        DBG("decoder", "Seek in media at %f (t=%f)\n", vt, t);
     else
-        printf("Seek in video at %f (t=%f)\n", vt, t);
+        printf("Seek in media at %f (t=%f)\n", vt, t);
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, ts, ts, 0);
 }
 
@@ -442,9 +442,9 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
 
         /* we haven't reach the time requested yet, skipping frame */
         if (s->request_seek != -1) {
-            if (rescaled_ts < get_video_time(s, s->request_seek)) {
+            if (rescaled_ts < get_media_time(s, s->request_seek)) {
                 DBG("decoder", "Request seek (%f) not reached yet: %f<%f, skip frame\n",
-                    s->request_seek, rescaled_ts, get_video_time(s, s->request_seek));
+                    s->request_seek, rescaled_ts, get_media_time(s, s->request_seek));
             } else {
                 /* Sometimes, because of inaccuracies with floats (or
                  * eventually a bug in FFmpeg), the first frame picked after a
@@ -454,7 +454,7 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
                  * undesirable seek loop.
                  * In order to avoid this, we lie about the timestamp and make
                  * it exactly what the user requested. */
-                f->ts = get_video_time(s, s->request_seek);
+                f->ts = get_media_time(s, s->request_seek);
                 s->can_seek_again = 1;
                 s->request_seek   = -1;
             }
@@ -658,7 +658,7 @@ static const struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Fra
 static double get_frame_dist(const struct sfxmp_ctx *s, int i, double t)
 {
     const double frame_ts = s->frames[i].ts;
-    const double req_frame_ts = get_video_time(s, t);
+    const double req_frame_ts = get_media_time(s, t);
     const double dist = req_frame_ts - frame_ts;
     DBG("main", "frame[%2d/%2d]: %p t:%f ts:%f req:%f -> dist:%f\n",
         i+1, s->nb_frames, s->frames[i].frame, t, frame_ts, req_frame_ts, dist);
