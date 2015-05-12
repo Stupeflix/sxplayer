@@ -316,6 +316,8 @@ static int seek_to(struct sfxmp_ctx *s, double t)
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, ts, ts, 0);
 }
 
+static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph);
+
 /**
  * Filter and queue frame(s)
  */
@@ -398,6 +400,10 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             while (av_buffersink_get_frame(s->buffersink_ctx, NULL) >= 0)
                 ;
             av_frame_unref(s->filtered_frame);
+
+            ret = setup_filtergraph(s, "format=rgb32");
+            if (ret < 0)
+                goto end;
 
             return 0;
         }
@@ -484,6 +490,7 @@ static int setup_filtergraph(struct sfxmp_ctx *s, const char *filtergraph)
     AVFilterInOut *outputs = avfilter_inout_alloc();
     AVFilterInOut *inputs  = avfilter_inout_alloc();
 
+    avfilter_graph_free(&s->filter_graph);
     s->filter_graph = avfilter_graph_alloc();
 
     if (!inputs || !outputs || !s->filter_graph || !complete_filtergraph) {
