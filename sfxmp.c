@@ -460,7 +460,6 @@ end:
     return ret;
 }
 
-
 /**
  * Convert an audio frame (PCM data) to a textured video frame with waves and
  * FFT lines
@@ -468,8 +467,9 @@ end:
 static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video,
                                          const AVFrame *audio_src)
 {
-    int i, ch;
+    int i, j, ch;
     const int nb_samples = audio_src->nb_samples;
+    const int width = nb_samples / 2;
     const float scale = 1.f / sqrt(AUDIO_NBSAMPLES/2 + 1);
 
     memset(dst_video->data[0], 0, dst_video->height * dst_video->linesize[0]);
@@ -480,10 +480,11 @@ static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video
         float *samples_dst = (float *)(dst_video->data[0] + ch * lz);
         const float *samples_src = (const float *)audio_src->extended_data[ch];
 
-        for (i = 0; i < nb_samples/2; i++)
-            samples_dst[i] = (samples_src[nb_samples/4 + i] + 1.f) / 2.f;
+        for (i = 0; i < width; i++)
+            samples_dst[i] = (samples_src[width/2 + i] + 1.f) / 2.f;
     }
 
+    /* Fourier transform */
     for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
         const int lz = dst_video->linesize[0];
         float *fft_dst = (float *)(dst_video->data[0] + (AUDIO_NBCHANNELS + ch) * lz);
@@ -499,20 +500,14 @@ static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video
 
         /* Get magnitude of frequency bins and copy result into texture */
 #define MAGNITUDE(re, im) sqrtf(((re)*(re) + (im)*(im)) * scale)
-        for (i = 0; i < nb_samples / 2 - 1; i++)
+        for (i = 0; i < width - 1; i++)
             fft_dst[i] = MAGNITUDE(bins[2*(i + 1)], bins[2*(i + 1) + 1]);
-        fft_dst[nb_samples/2 - 1] = MAGNITUDE(bins[1], 0);
-        //fft_dst[           0] = MAGNITUDE(bins[0], 0);
-        //fft_dst[nb_samples/2] = MAGNITUDE(bins[1], 0);
+        fft_dst[width - 1] = MAGNITUDE(bins[1], 0);
     }
 
-
-    {
-        const int width = nb_samples/2;
-
+    /* Downscaled versions of the FFT */
         for (i = 0; i < AUDIO_NBITS-1; i++) {
             for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
-                int j;
                 const int lz = dst_video->linesize[0];
                 const int source_line = (i + 1)*AUDIO_NBCHANNELS + ch;
                 float *fft_src = (float *)(dst_video->data[0] +  source_line                     * lz);
@@ -535,8 +530,6 @@ static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video
                 }
             }
         }
-
-    }
 }
 
 static int64_t get_best_effort_ts(const AVFrame *f)
