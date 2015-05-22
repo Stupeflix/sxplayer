@@ -506,30 +506,30 @@ static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video
     }
 
     /* Downscaled versions of the FFT */
-        for (i = 0; i < AUDIO_NBITS-1; i++) {
-            for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
-                const int lz = dst_video->linesize[0];
-                const int source_line = (i + 1)*AUDIO_NBCHANNELS + ch;
-                float *fft_src = (float *)(dst_video->data[0] +  source_line                     * lz);
-                float *fft_dst = (float *)(dst_video->data[0] + (source_line + AUDIO_NBCHANNELS) * lz);
+    for (i = 0; i < AUDIO_NBITS-1; i++) {
+        for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
+            const int lz = dst_video->linesize[0];
+            const int source_line = (i + 1)*AUDIO_NBCHANNELS + ch;
+            float *fft_src = (float *)(dst_video->data[0] +  source_line                     * lz);
+            float *fft_dst = (float *)(dst_video->data[0] + (source_line + AUDIO_NBCHANNELS) * lz);
 
-                const int source_step = 1 << i;
-                const int nb_identical_values = source_step << 1;
-                const int nb_dest_pixels = width / nb_identical_values;
+            const int source_step = 1 << i;
+            const int nb_identical_values = source_step << 1;
+            const int nb_dest_pixels = width / nb_identical_values;
 
-                DBG("audio2tex", "line %2d->%2d: %3d different pixels (copied %3dx) as destination, step source: %d\n",
-                    source_line, source_line + AUDIO_NBCHANNELS, nb_dest_pixels, nb_identical_values, source_step);
+            DBG("audio2tex", "line %2d->%2d: %3d different pixels (copied %3dx) as destination, step source: %d\n",
+                source_line, source_line + AUDIO_NBCHANNELS, nb_dest_pixels, nb_identical_values, source_step);
 
-                for (j = 0; j < nb_dest_pixels; j++) {
-                    int x;
-                    const float avg = (fft_src[ j*2      * source_step] +
-                                       fft_src[(j*2 + 1) * source_step]) / 2.f;
+            for (j = 0; j < nb_dest_pixels; j++) {
+                int x;
+                const float avg = (fft_src[ j*2      * source_step] +
+                                   fft_src[(j*2 + 1) * source_step]) / 2.f;
 
-                    for (x = 0; x < nb_identical_values; x++)
-                        fft_dst[j*nb_identical_values + x] = avg;
-                }
+                for (x = 0; x < nb_identical_values; x++)
+                    fft_dst[j*nb_identical_values + x] = avg;
             }
         }
+    }
 }
 
 static int64_t get_best_effort_ts(const AVFrame *f)
