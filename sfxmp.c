@@ -495,13 +495,30 @@ static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video
         for (i = 0; i < nb_samples; i++)
             bins[i] = samples_src[i] * s->window_func_lut[i];
 
-        /* Run transform */
+        /* Run transform.
+         *
+         * After av_rdft_calc(), the bins is an array of successive real and
+         * imaginary floats, except for the first two bins which are
+         * respectively the real corresponding to the lower frequency and the
+         * real for the higher frequency.
+         *
+         * The imaginary parts for these two frequencies are always 0 so they
+         * are assumed as such. This trick allowed an in-place processing for
+         * the N samples into N+1 complex.
+         */
         av_rdft_calc(s->rdft, bins);
 
-        /* Get magnitude of frequency bins and copy result into texture */
+        /* Get magnitude of frequency bins and copy result into texture
+         *
+         * Note: since we only have space for N samples in the texture, we skip
+         * the first complex (lower frequency one).
+         */
 #define MAGNITUDE(re, im) sqrtf(((re)*(re) + (im)*(im)) * scale)
-        for (i = 0; i < width - 1; i++)
-            fft_dst[i] = MAGNITUDE(bins[2*(i + 1)], bins[2*(i + 1) + 1]);
+        for (i = 1; i < width - 1; i++)
+            fft_dst[i] = MAGNITUDE(bins[2*i], bins[2*i + 1]);
+
+        /* Last complex (higher frequency one) is one of the the special case
+         * mentioned above */
         fft_dst[width - 1] = MAGNITUDE(bins[1], 0);
     }
 
