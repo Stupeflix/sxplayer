@@ -1,2 +1,4 @@
-*.o
+libsfxmp.a
+main.o
 sfxmp
+sfxmp.o
