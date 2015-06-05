@@ -6,7 +6,7 @@ LIBNAME = lib$(NAME).a
 PCNAME  = lib$(NAME).pc
 FFMPEG_LIBS = libavformat libavfilter libavcodec libavutil
 
-CFLAGS += -Wall -O2 -Werror=missing-prototypes -g
+CFLAGS += -Wall -O2 -Werror=missing-prototypes -g -fPIC
 CFLAGS := $(shell $(PKG_CONFIG) --cflags $(FFMPEG_LIBS)) $(CFLAGS)
 LDLIBS := $(shell $(PKG_CONFIG) --libs   $(FFMPEG_LIBS)) $(LDLIBS) -lm -lpthread
 
