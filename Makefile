@@ -21,12 +21,18 @@ LIBNAME = lib$(NAME).$(LIBSUFFIX)
 PCNAME  = lib$(NAME).pc
 FFMPEG_LIBS = libavformat libavfilter libavcodec libavutil
 
+OBJS = $(NAME).o
+
+ifeq ($(TARGET_OS),Darwin)
+EXTRALIBS = -framework CoreFoundation -framework VideoToolbox -framework CoreMedia -framework QuartzCore
+OBJS += hwaccel_vt.o
+endif
+
 CFLAGS += -Wall -O2 -Werror=missing-prototypes -g -fPIC
 CFLAGS := $(shell $(PKG_CONFIG) --cflags $(FFMPEG_LIBS)) $(CFLAGS)
-LDLIBS := $(shell $(PKG_CONFIG) --libs   $(FFMPEG_LIBS)) $(LDLIBS) -lm -lpthread
+LDLIBS := $(shell $(PKG_CONFIG) --libs   $(FFMPEG_LIBS)) $(LDLIBS) -lm -lpthread $(EXTRALIBS)
 
 TESTOBJS = main.o
-OBJS = $(NAME).o
 
 $(LIBNAME): $(OBJS)
 ifeq ($(SHARED),yes)

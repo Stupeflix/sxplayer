@@ -10,14 +10,25 @@
 #include <libavutil/avassert.h>
 #include <libavutil/avstring.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/timestamp.h>
+//#include <libswresample/swresample.h>
+//#include <libswscale/swscale.h>
 
 #include "sfxmp.h"
+#include "internal.h"
 
 struct Frame {
     AVFrame *frame;         // a frame the user might want
     double ts;              // rescaled timestamp
 };
+
+#if __APPLE__
+extern const struct hwaccel hwaccel_vt;
+static const struct hwaccel *hwaccel_def = &hwaccel_vt;
+#else
+static const struct hwaccel *hwaccel_def = NULL;
+#endif
 
 #define AUDIO_NBITS      10
 #define AUDIO_NBSAMPLES  (1<<(AUDIO_NBITS))
@@ -71,16 +82,45 @@ struct sfxmp_ctx {
     float *window_func_lut;                 // audio window function lookup table
     RDFTContext *rdft;                      // real discrete fourier transform context
     FFTSample *rdft_data[AUDIO_NBCHANNELS]; // real discrete fourier transform data for each channel
+    struct hwaccel_ctx hwaccel;             // hw accel context which will be accessible through AVCodecContext.opaque
+    enum AVPixelFormat last_frame_format;   // format of the last frame decoded
 };
 
-#define ENABLE_DBG 0
+static enum AVPixelFormat hwaccel_get_format(AVCodecContext *avctx, const enum AVPixelFormat *pix_fmts)
+{
+    int ret;
+    struct hwaccel_ctx *hwaccel = avctx->opaque;
+    const enum AVPixelFormat *p;
 
-#define DBG_SFXMP(mod, ...) do { printf("[sfxmp:"mod"] " __VA_ARGS__); fflush(stdout); } while (0)
-#if ENABLE_DBG
-# define DBG(mod, ...) DBG_SFXMP(mod, __VA_ARGS__)
-#else
-# define DBG(mod, ...) do { if (0) DBG_SFXMP(mod, __VA_ARGS__); } while (0)
-#endif
+    DBG("hwaccel", "available pixel formats:\n");
+    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++)
+        DBG("hwaccel", "  %s\n", av_get_pix_fmt_name(*p));
+
+    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(*p);
+
+        if (!(desc->flags & AV_PIX_FMT_FLAG_HWACCEL))
+            break;
+
+        if (*p != hwaccel_def->pix_fmt)
+            continue;
+
+        if (hwaccel->out_pix_fmt != *p) {
+            DBG("hwaccel", "active pixel format changed (%s -> %s), re-init hwaccel\n",
+                av_get_pix_fmt_name(hwaccel->out_pix_fmt), av_get_pix_fmt_name(*p));
+
+            ret = hwaccel_def->decoder_init(avctx);
+            if (ret < 0) {
+                fprintf(stderr, "Failed to initialize hwaccel\n");
+                continue;
+            }
+            hwaccel->out_pix_fmt = *p;
+        }
+        break;
+    }
+
+    return *p;
+}
 
 /**
  * Allocate a small frame to be displayed before visible_time
@@ -176,6 +216,28 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
 {
     int i;
     struct sfxmp_ctx *s;
+    const struct {
+        const char *libname;
+        unsigned build_version;
+        unsigned runtime_version;
+    } fflibs[] = {
+        {"avutil",     LIBAVUTIL_VERSION_INT,     avutil_version()},
+        {"avcodec",    LIBAVCODEC_VERSION_INT,    avcodec_version()},
+        {"avformat",   LIBAVFORMAT_VERSION_INT,   avformat_version()},
+        //{"swscale",    LIBSWSCALE_VERSION_INT,    swscale_version()},
+        {"avfilter",   LIBAVFILTER_VERSION_INT,   avfilter_version()},
+        //{"swresample", LIBSWRESAMPLE_VERSION_INT, swresample_version()},
+    };
+
+#define VFMT(v) (v)>>16, (v)>>8 & 0xff, (v) & 0xff
+    for (i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {
+        const unsigned bversion = fflibs[i].build_version;
+        const unsigned rversion = fflibs[i].runtime_version;
+        DBG("init", "lib%-12s build:%3d.%3d.%3d runtime:%3d.%3d.%3d\n",
+            fflibs[i].libname, VFMT(bversion), VFMT(rversion));
+        if (bversion != rversion)
+            fprintf(stderr, "WARNING: build and runtime version of FFmpeg mismatch\n");
+    }
 
     av_register_all();
     avfilter_register_all();
@@ -271,6 +333,8 @@ void sfxmp_free(struct sfxmp_ctx **ss)
     free_context(s);
 }
 
+static int setup_filtergraph(struct sfxmp_ctx *s);
+
 static int decode_packet(struct sfxmp_ctx *s, AVPacket *pkt,
                          AVFrame *frame, int *got_frame)
 {
@@ -290,6 +354,34 @@ static int decode_packet(struct sfxmp_ctx *s, AVPacket *pkt,
             return ret;
         }
         decoded = FFMIN(ret, pkt->size);
+
+        DBG("decoder", "decoded pkt->size=%d decoded=%d\n", pkt->size, decoded);
+
+        if (*got_frame) {
+
+            DBG("decoder", "got frame (in %s) [avctx->pixfmt:%s]\n",
+                av_get_pix_fmt_name(frame->format), av_get_pix_fmt_name(s->dec_ctx->pix_fmt));
+
+            /* if there is an acceleration, try to "convert" it from the hw
+             * accelerated pixel format to the normal/exploitable one. */
+            if (hwaccel_def && frame->format == hwaccel_def->pix_fmt) {
+                ret = hwaccel_def->get_frame(s->dec_ctx, frame);
+                if (ret < 0) {
+                    fprintf(stderr, "Unable to retrieve hw accelerated data\n");
+                    return ret;
+                }
+            }
+
+            /* lazy filtergraph configuration: we need to wait for the first
+             * frame to see what pixel format is getting decoded (no other way
+             * with hardware acceleration apparently) */
+            if (s->media_type != AVMEDIA_TYPE_VIDEO || s->last_frame_format != frame->format) {
+                s->last_frame_format = frame->format;
+                ret = setup_filtergraph(s);
+                if (ret < 0)
+                    return ret;
+            }
+        }
     }
     return decoded;
 }
@@ -320,8 +412,20 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
     }
     s->stream_idx = ret;
     s->stream = s->fmt_ctx->streams[s->stream_idx];
-    s->dec_ctx = s->stream->codec;
+
+    s->dec_ctx = avcodec_alloc_context3(NULL);
+    if (!s->dec_ctx)
+        return AVERROR(ENOMEM);
+    avcodec_copy_context(s->dec_ctx, s->stream->codec);
     av_opt_set_int(s->dec_ctx, "refcounted_frames", 1, 0);
+
+    s->hwaccel.out_pix_fmt = AV_PIX_FMT_NONE;
+    s->last_frame_format   = AV_PIX_FMT_NONE;
+    if (hwaccel_def) {
+        s->dec_ctx->opaque = &s->hwaccel;
+        s->dec_ctx->get_format = hwaccel_get_format;
+        s->dec_ctx->thread_count = 1;
+    }
 
     ret = avcodec_open2(s->dec_ctx, dec, NULL);
     if (ret < 0) {
@@ -410,8 +514,8 @@ static int setup_filtergraph(struct sfxmp_ctx *s)
     /* create buffer filter source (where we push the frame) */
     if (s->media_type == AVMEDIA_TYPE_VIDEO) {
         snprintf(args, sizeof(args),
-                 "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
-                 s->dec_ctx->width, s->dec_ctx->height, s->dec_ctx->pix_fmt,
+                 "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
+                 s->dec_ctx->width, s->dec_ctx->height, av_get_pix_fmt_name(s->last_frame_format),
                  time_base.num, time_base.den,
                  s->dec_ctx->sample_aspect_ratio.num, s->dec_ctx->sample_aspect_ratio.den);
     } else {
@@ -426,6 +530,8 @@ static int setup_filtergraph(struct sfxmp_ctx *s)
 
     if (framerate.num && framerate.den)
         av_strlcatf(args, sizeof(args), ":frame_rate=%d/%d", framerate.num, framerate.den);
+
+    DBG("decoder", "graph buffer source args: %s\n", args);
 
     ret = avfilter_graph_create_filter(&s->buffersrc_ctx, buffersrc,
                                        outputs->name, args, NULL, s->filter_graph);
@@ -733,10 +839,6 @@ static void *decoder_thread(void *arg)
     if (ret < 0)
         goto end;
 
-    ret = setup_filtergraph(s);
-    if (ret < 0)
-        goto end;
-
     s->filtered_frame = av_frame_alloc();
     s->decoded_frame  = av_frame_alloc();
     if (!s->decoded_frame || !s->filtered_frame)
@@ -815,6 +917,8 @@ static void *decoder_thread(void *arg)
 end:
     if (s->fmt_ctx) {
         avcodec_close(s->dec_ctx);
+        if (hwaccel_def)
+            hwaccel_def->uninit(s->dec_ctx);
         avformat_close_input(&s->fmt_ctx);
     }
     av_frame_free(&s->decoded_frame);

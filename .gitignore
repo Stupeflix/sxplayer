@@ -1,5 +1,5 @@
+*.o
 libsfxmp.a
 libsfxmp.pc
-main.o
+libsfxmp.so
 sfxmp
-sfxmp.o
