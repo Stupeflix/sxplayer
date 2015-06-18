@@ -1,8 +1,23 @@
 PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
 
+SHARED ?= no
+
+OS = $(shell uname -s)
+ifeq ($(SHARED),yes)
+ifeq ($(OS),Linux)
+	LIBSUFFIX = so
+else
+ifeq ($(OS),Darwin)
+	LIBSUFFIX = dylib
+endif # darwin
+endif # linux
+else
+	LIBSUFFIX = a
+endif # shared
+
 NAME = sfxmp
-LIBNAME = lib$(NAME).a
+LIBNAME = lib$(NAME).$(LIBSUFFIX)
 PCNAME  = lib$(NAME).pc
 FFMPEG_LIBS = libavformat libavfilter libavcodec libavutil
 
@@ -14,7 +29,11 @@ TESTOBJS = main.o
 OBJS = $(NAME).o
 
 $(LIBNAME): $(OBJS)
+ifeq ($(SHARED),yes)
+	$(CC) $^ -shared -o $@ $(LDLIBS)
+else
 	$(AR) rcs $@ $^
+endif
 
 $(NAME): $(OBJS) $(TESTOBJS)
 
@@ -27,7 +46,11 @@ test: $(NAME)
 testmem: $(NAME)
 	valgrind --leak-check=full ./$(NAME) media.mkv
 $(PCNAME): $(PCNAME).tpl
-	sed -e "s#PREFIX#$(PREFIX)#" -e "s#DEP_LIBS#$(LDLIBS)#" $^ > $@
+ifeq ($(SHARED),yes)
+	sed -e "s#PREFIX#$(PREFIX)#;s#DEP_LIBS##;s#DEP_PRIVATE_LIBS#$(LDLIBS)#" $^ > $@
+else
+	sed -e "s#PREFIX#$(PREFIX)#;s#DEP_LIBS#$(LDLIBS)#;s#DEP_PRIVATE_LIBS##" $^ > $@
+endif
 install: $(LIBNAME) $(PCNAME)
 	install -d $(DESTDIR)$(PREFIX)/lib
 	install -d $(DESTDIR)$(PREFIX)/lib/pkgconfig

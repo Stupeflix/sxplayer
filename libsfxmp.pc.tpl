@@ -8,3 +8,4 @@ Description: Stupeflix Media Player library
 Version: 1.0.0
 Cflags: -I${includedir}
 Libs: -L${libdir} -lsfxmp DEP_LIBS
+Libs.private: DEP_PRIVATE_LIBS
