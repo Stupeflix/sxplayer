@@ -3,12 +3,12 @@ PKG_CONFIG ?= pkg-config
 
 SHARED ?= no
 
-OS = $(shell uname -s)
+TARGET_OS ?= $(shell uname -s)
 ifeq ($(SHARED),yes)
-ifeq ($(OS),Linux)
+ifeq ($(TARGET_OS),Linux)
 	LIBSUFFIX = so
 else
-ifeq ($(OS),Darwin)
+ifeq ($(TARGET_OS),Darwin)
 	LIBSUFFIX = dylib
 endif # darwin
 endif # linux
