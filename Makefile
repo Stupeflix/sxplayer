@@ -40,7 +40,7 @@ $(NAME): $(OBJS) $(TESTOBJS)
 all: $(LIBNAME) $(PCNAME) $(NAME)
 
 clean:
-	$(RM) $(LIBNAME) $(NAME) $(OBJS) $(TESTOBJS) $(PCNAME)
+	$(RM) lib$(NAME).so lib$(NAME).dylib lib$(NAME).a $(NAME) $(OBJS) $(TESTOBJS) $(PCNAME)
 test: $(NAME)
 	./$(NAME) media.mkv
 testmem: $(NAME)
