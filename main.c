@@ -15,7 +15,7 @@ static int test_frame(struct sfxmp_ctx *s,
                       double visible_time, double start_time,
                       double skip, double trim_duration, int avselect)
 {
-    const struct sfxmp_frame *frame = sfxmp_get_frame(s, time);
+    struct sfxmp_frame *frame = sfxmp_get_frame(s, time);
 
     if (avselect == SFXMP_SELECT_AUDIO) {
         // TODO
@@ -24,6 +24,7 @@ static int test_frame(struct sfxmp_ctx *s,
             const double diff = FFABS(playback_time - frame->ts);
             printf("AUDIO TEST FRAME %dx%d pt:%f ft:%f diff:%f\n", frame->width, frame->height, playback_time, frame->ts, diff);
         }
+        sfxmp_release_frame(frame);
         return 0;
     }
 
@@ -44,10 +45,12 @@ static int test_frame(struct sfxmp_ctx *s,
             (c == 0x00000000 && c2 == 0x00000000) /* this is for when ENABLE_DBG=0 in sfxmp.c */) {
             if (time >= visible_time) {
                 fprintf(stderr, "got invisible frame even though it wasn't in visible time %f >= %f\n", time, visible_time);
+                sfxmp_release_frame(frame);
                 return -1;
             } else {
                 printf("Got invisible time\n");
                 *prev_time = time;
+                sfxmp_release_frame(frame);
                 return 0;
             }
         }
@@ -57,11 +60,13 @@ static int test_frame(struct sfxmp_ctx *s,
 
         if (diff > 2./SOURCE_FPS) {
             fprintf(stderr, "ERROR: frame diff is too big %f>%f\n", diff, 2./SOURCE_FPS);
+            sfxmp_release_frame(frame);
             return -1;
         }
 
         if (frame_id == *prev_frame_id) {
             fprintf(stderr, "ERROR: Got a frame, but it has the same content as the previous one\n");
+            sfxmp_release_frame(frame);
             return -1;
         }
 
@@ -70,6 +75,7 @@ static int test_frame(struct sfxmp_ctx *s,
 
         if (time < *prev_time) {
             fprintf(stderr, "ERROR: time went backward but got no frame update\n");
+            sfxmp_release_frame(frame);
             return -1;
         }
 
@@ -77,6 +83,7 @@ static int test_frame(struct sfxmp_ctx *s,
             if (time > start_time && time < start_time + trim_duration) {
                 fprintf(stderr, "ERROR: the difference between current and previous time (%f) "
                         "is large enough to get a new frame, but got none\n", time - *prev_time);
+                sfxmp_release_frame(frame);
                 return -1;
             }
         }
@@ -84,6 +91,7 @@ static int test_frame(struct sfxmp_ctx *s,
         printf("frame t=%f: no frame\n", time);
     }
     *prev_time = time;
+    sfxmp_release_frame(frame);
     return 0;
 }
 

@@ -64,7 +64,6 @@ struct sfxmp_ctx {
 
     /* fields specific to main thread */
     struct Frame non_visible;               // frame to display for the "non visible" time zone
-    struct sfxmp_frame rframe;              // user returned frame container
     double last_pushed_frame_ts;            // ts value of the latest pushed frame (it acts as a UID)
 
     /* fields specific to decoding thread */
@@ -947,9 +946,10 @@ end:
 /* Return the frame only if different from previous one. We do not make a
  * simple pointer check because of the frame reference counting (and thus
  * pointer reuse, depending on many parameters)  */
-static const struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *frame)
+static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *frame)
 {
-    const AVFrame *rframe = frame->frame;
+    struct sfxmp_frame *ret;
+    AVFrame *cloned_frame;
 
     if (!frame) {
         DBG("main", " <<< return nothing\n");
@@ -965,16 +965,28 @@ static const struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Fra
             s->last_pushed_frame_ts, frame->ts);
     }
 
+    ret = av_mallocz(sizeof(*ret));
+    if (!ret) {
+        return NULL;
+    }
+
+    cloned_frame = av_frame_clone(frame->frame);
+    if (!cloned_frame) {
+        av_free(ret);
+        return NULL;
+    }
+
     s->last_pushed_frame_ts = frame->ts;
 
-    s->rframe.data     = rframe->data[0];
-    s->rframe.linesize = rframe->linesize[0];
-    s->rframe.width    = rframe->width;
-    s->rframe.height   = rframe->height;
-    s->rframe.ts       = frame->ts;
+    ret->internal = cloned_frame;
+    ret->data     = cloned_frame->data[0];
+    ret->linesize = cloned_frame->linesize[0];
+    ret->width    = cloned_frame->width;
+    ret->height   = cloned_frame->height;
+    ret->ts       = frame->ts;
 
-    DBG("main", " <<< return frame @ ts=%f\n", frame->ts);
-    return &s->rframe;
+    DBG("main", " <<< return frame @ ts=%f\n", ret->ts);
+    return ret;
 }
 
 /**
@@ -1024,7 +1036,16 @@ static void request_seek(struct sfxmp_ctx *s, double t)
     }
 }
 
-const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
+void sfxmp_release_frame(struct sfxmp_frame *frame)
+{
+    if (frame) {
+        AVFrame *avframe = frame->internal;
+        av_frame_free(&avframe);
+        av_free(frame);
+    }
+}
+
+struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 {
     DBG("main", " >>> get frame for t=%f\n", t);
 

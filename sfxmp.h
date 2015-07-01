@@ -51,6 +51,7 @@ struct sfxmp_frame {
     int linesize;       // linesize in bytes (includes padding)
     int width;          // frame width in pixel
     int height;         // frame height in pixel
+    void *internal;     // sfxmp internal frame context frame, do not alter
 };
 
 /**
@@ -76,9 +77,12 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
                                const char *filters);
 
 /* Get the frame at an absolute time. The returned frame can be NULL if
- * unchanged from last call. It stays readable until the next call to this
- * function (or call to sfxmp_free()). */
-const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
+ * unchanged from last call. The returned frame needs to be released using
+ * sfxmp_release_frame(). */
+struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
+
+/* Release a frame obtained with sfxmp_get_frame() */
+void sfxmp_release_frame(struct sfxmp_frame *frame);
 
 /* Close and free everything */
 void sfxmp_free(struct sfxmp_ctx **ss);
