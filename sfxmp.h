@@ -45,12 +45,18 @@ enum sfxmp_media_selection {
     SFXMP_SELECT_AUDIO,
 };
 
+enum sfxmp_pixel_format {
+    SFXMP_PIXFMT_BGRA,
+    SFXMP_PIXFMT_VT,
+};
+
 struct sfxmp_frame {
     uint8_t *data;      // native RGBA/ABGR plane
     double ts;          // video timestamp
     int linesize;       // linesize in bytes (includes padding)
     int width;          // frame width in pixel
     int height;         // frame height in pixel
+    int pix_fmt;        // sfxmp_pixel_format
     void *internal;     // sfxmp internal frame context frame, do not alter
 };
 

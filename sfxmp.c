@@ -75,7 +75,7 @@ struct sfxmp_ctx {
     AVStream *stream;                       // selected stream
     int stream_idx;                         // selected stream index
     AVFilterGraph *filter_graph;            // libavfilter graph
-    char *filter_graph_str;                 // libavfilter graph string
+    char *filters;                          // user filter graph string
     AVFilterContext *buffersink_ctx;        // sink of the graph (from where we pull)
     AVFilterContext *buffersrc_ctx;         // source of the graph (where we push)
     float *window_func_lut;                 // audio window function lookup table
@@ -186,21 +186,8 @@ static void free_context(struct sfxmp_ctx *s)
 
     av_frame_free(&s->non_visible.frame);
     av_freep(&s->filename);
-    av_freep(&s->filter_graph_str);
+    av_freep(&s->filters);
     av_freep(&s);
-}
-
-static char *get_filter_graph_str(enum AVMediaType media_type, const char *filters)
-{
-    char buf[512];
-
-    if (media_type == AVMEDIA_TYPE_VIDEO)
-        snprintf(buf, sizeof(buf), "format=rgb32");
-    else
-        snprintf(buf, sizeof(buf), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
-
-    return filters ? av_asprintf("%s,%s", filters, buf)
-                   : av_strdup(buf);
 }
 
 struct sfxmp_ctx *sfxmp_create(const char *filename,
@@ -241,6 +228,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     av_register_all();
     avfilter_register_all();
     av_log_set_level(AV_LOG_ERROR);
+    //av_log_set_level(AV_LOG_VERBOSE);
 
     s = av_mallocz(sizeof(*s));
     if (!s)
@@ -255,6 +243,12 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     s->dist_time_seek_trigger = dist_time_seek_trigger < 0 ? 3 : dist_time_seek_trigger;
     s->max_nb_frames          = max_nb_frames < 0 ? 5 : max_nb_frames;
 
+    if (filters) {
+        s->filters = av_strdup(filters);
+        if (!s->filters)
+            goto fail;
+    }
+
     switch (s->avselect) {
     case SFXMP_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
     case SFXMP_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
@@ -266,14 +260,12 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     s->media_type_string = av_get_media_type_string(s->media_type);
     av_assert0(s->media_type_string);
 
-    s->filter_graph_str = get_filter_graph_str(s->media_type, filters);
-
     if (s->max_nb_frames < 2) {
         fprintf(stderr, "max_nb_frames < 2 is not supported\n");
         goto fail;
     }
 
-    if (!s->filename || !s->filter_graph_str)
+    if (!s->filename)
         goto fail;
 
     s->frames = av_malloc_array(s->max_nb_frames, sizeof(*s->frames));
@@ -417,6 +409,7 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
         return AVERROR(ENOMEM);
     avcodec_copy_context(s->dec_ctx, s->stream->codec);
     av_opt_set_int(s->dec_ctx, "refcounted_frames", 1, 0);
+    //av_opt_set(s->dec_ctx, "skip_frame", "noref", 0);
 
     s->hwaccel.out_pix_fmt = AV_PIX_FMT_NONE;
     s->last_frame_format   = AV_PIX_FMT_NONE;
@@ -494,8 +487,15 @@ static int setup_filtergraph(struct sfxmp_ctx *s)
     AVFilter *buffersink = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
     AVFilterInOut *outputs = avfilter_inout_alloc();
     AVFilterInOut *inputs  = avfilter_inout_alloc();
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
 
     avfilter_graph_free(&s->filter_graph);
+
+    if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL) {
+        ret = 0;
+        goto end;
+    }
+
     s->filter_graph = avfilter_graph_alloc();
 
     if (!inputs || !outputs || !s->filter_graph) {
@@ -547,11 +547,21 @@ static int setup_filtergraph(struct sfxmp_ctx *s)
         goto end;
     }
 
+    /* define the output of the graph */
+    snprintf(args, sizeof(args), "%s", s->filters ? s->filters : "");
+    if (s->media_type == AVMEDIA_TYPE_VIDEO) {
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
+        const char *pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? "rgb32" : av_get_pix_fmt_name(s->last_frame_format);
+        av_strlcatf(args, sizeof(args), "%sformat=%s", *args ? "," : "", pix_fmt);
+    } else {
+        av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
+    }
+
     /* create our filter graph */
     inputs->filter_ctx  = s->buffersink_ctx;
     outputs->filter_ctx = s->buffersrc_ctx;
-    ret = avfilter_graph_parse_ptr(s->filter_graph, s->filter_graph_str,
-                                   &inputs, &outputs, NULL);
+
+    ret = avfilter_graph_parse_ptr(s->filter_graph, args, &inputs, &outputs, NULL);
     if (ret < 0)
         goto end;
 
@@ -665,11 +675,12 @@ static int64_t get_best_effort_ts(const AVFrame *f)
  */
 static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
 {
-    int ret = 0;
+    int ret = 0, done = 0;
 
     if (inframe) {
         inframe->pts = get_best_effort_ts(inframe);
 
+        if (s->filter_graph) {
         DBG("decoder", "push frame with ts=%s into filtergraph\n", av_ts2str(inframe->pts));
 
         /* push the decoded frame into the filtergraph */
@@ -681,20 +692,27 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
 
         /* the frame is sent into the filtergraph, we don't need it anymore */
         av_frame_unref(inframe);
+        }
     }
 
-    for (;;) {
+    while (!done) {
         struct Frame *f;
         int64_t ts;
         double rescaled_ts;
 
         /* try to get a frame from the filergraph */
+        if (s->filter_graph) {
         ret = av_buffersink_get_frame(s->buffersink_ctx, s->filtered_frame);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
             break;
         if (ret < 0) {
             fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
             goto end;
+        }
+        } else {
+            av_assert0(inframe);
+            av_frame_move_ref(s->filtered_frame, inframe);
+            done = 1;
         }
 
         DBG("decoder", "decoded frame @ ts=%s %"PRId64"\n",
@@ -904,6 +922,7 @@ static void *decoder_thread(void *arg)
     } while (got_frame);
 
     /* flush filtergraph */
+    if (s->filter_graph) {
     ret = av_buffersrc_write_frame(s->buffersrc_ctx, NULL);
     if (ret < 0) {
         fprintf(stderr, "Error sending EOF in filtergraph\n");
@@ -912,6 +931,7 @@ static void *decoder_thread(void *arg)
     do {
         ret = queue_frame(s, NULL, NULL);
     } while (ret >= 0);
+    }
 
 end:
     if (s->fmt_ctx) {
@@ -943,6 +963,15 @@ end:
     return NULL;
 }
 
+static enum sfxmp_pixel_format remap_pix_fmt(enum AVPixelFormat pix_fmt)
+{
+    switch (pix_fmt) {
+    case AV_PIX_FMT_VIDEOTOOLBOX:   return SFXMP_PIXFMT_VT;
+    case AV_PIX_FMT_BGRA:           return SFXMP_PIXFMT_BGRA;
+    default: av_assert0(0);
+    }
+}
+
 /* Return the frame only if different from previous one. We do not make a
  * simple pointer check because of the frame reference counting (and thus
  * pointer reuse, depending on many parameters)  */
@@ -966,12 +995,15 @@ static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *fr
     }
 
     ret = av_mallocz(sizeof(*ret));
-    if (!ret) {
+    if (!ret)
         return NULL;
-    }
 
+    DBG("main", "cloning frame->frame %p [%p %p %p %p]\n", frame->frame,
+        frame->frame->data[0], frame->frame->data[1],
+        frame->frame->data[2], frame->frame->data[3]);
     cloned_frame = av_frame_clone(frame->frame);
     if (!cloned_frame) {
+        fprintf(stderr, "Unable to clone frame\n");
         av_free(ret);
         return NULL;
     }
@@ -979,11 +1011,12 @@ static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *fr
     s->last_pushed_frame_ts = frame->ts;
 
     ret->internal = cloned_frame;
-    ret->data     = cloned_frame->data[0];
+    ret->data     = cloned_frame->data[cloned_frame->format == AV_PIX_FMT_VIDEOTOOLBOX ? 3 : 0];
     ret->linesize = cloned_frame->linesize[0];
     ret->width    = cloned_frame->width;
     ret->height   = cloned_frame->height;
     ret->ts       = frame->ts;
+    ret->pix_fmt  = remap_pix_fmt(cloned_frame->format);
 
     DBG("main", " <<< return frame @ ts=%f\n", ret->ts);
     return ret;
@@ -998,8 +1031,13 @@ static double get_frame_dist(const struct sfxmp_ctx *s, int i, double t)
     const double frame_ts = s->frames[i].ts;
     const double req_frame_ts = get_media_time(s, t);
     const double dist = req_frame_ts - frame_ts;
-    DBG("main", "frame[%2d/%2d]: %p t:%f ts:%f req:%f -> dist:%f\n",
-        i+1, s->nb_frames, s->frames[i].frame, t, frame_ts, req_frame_ts, dist);
+    DBG("main", "frame[%2d/%2d]: %p [%p %p %p %p] t:%f ts:%f req:%f -> dist:%f\n",
+        i+1, s->nb_frames, s->frames[i].frame,
+        s->frames[i].frame->data[0],
+        s->frames[i].frame->data[1],
+        s->frames[i].frame->data[2],
+        s->frames[i].frame->data[3],
+        t, frame_ts, req_frame_ts, dist);
     return dist;
 }
 
