@@ -951,9 +951,14 @@ static const struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Fra
 {
     const AVFrame *rframe = frame->frame;
 
+    if (!frame) {
+        DBG("main", " <<< return nothing\n");
+        return NULL;
+    }
+
     /* if same frame as previously, do not raise it again */
     if (s->last_pushed_frame_ts == frame->ts) {
-        DBG("main", "same frame as previously, return NULL\n");
+        DBG("main", " <<< same frame as previously, return NULL\n");
         return NULL;
     } else {
         DBG("main", "last_pushed_frame_ts:%f frame_ts:%f\n",
@@ -1025,7 +1030,7 @@ const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 
     if (t < 0) {
         fprintf(stderr, "ERR: attempt to get a frame at a negative time\n");
-        return NULL;
+        return ret_frame(s, NULL);
     }
 
     for (;;) {
@@ -1046,7 +1051,7 @@ const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
                 fprintf(stderr, "Unable to spawn decoding thread\n");
                 s->queue_terminated = 1;
                 pthread_mutex_unlock(&s->queue_lock);
-                return NULL;
+                return ret_frame(s, NULL);
             }
         }
 
@@ -1065,7 +1070,7 @@ const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
             // this can happen if the decoding thread wasn't able to decode
             // anything
             pthread_mutex_unlock(&s->queue_lock);
-            return NULL;
+            return ret_frame(s, NULL);
         }
 
         diff = get_frame_dist(s, 0, t);
