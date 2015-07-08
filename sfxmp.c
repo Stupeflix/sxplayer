@@ -967,6 +967,8 @@ static const struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Fra
     s->rframe.width    = rframe->width;
     s->rframe.height   = rframe->height;
     s->rframe.ts       = frame->ts;
+
+    DBG("main", " <<< return frame @ ts=%f\n", frame->ts);
     return &s->rframe;
 }
 
@@ -1019,7 +1021,7 @@ static void request_seek(struct sfxmp_ctx *s, double t)
 
 const struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 {
-    DBG("main", " >> get frame for t=%f\n", t);
+    DBG("main", " >>> get frame for t=%f\n", t);
 
     if (t < 0) {
         fprintf(stderr, "ERR: attempt to get a frame at a negative time\n");
