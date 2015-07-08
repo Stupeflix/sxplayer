@@ -2,10 +2,13 @@
 #define SFXMP_INTERNAL_H
 
 #include <stdio.h>
+#include <libavcodec/avcodec.h>
 
 #define ENABLE_DBG 0
 
-#define DBG_SFXMP(mod, ...) do { printf("[sfxmp:"mod"] " __VA_ARGS__); fflush(stdout); } while (0)
+void do_log(const char *mod, const char *fmt, ...);
+
+#define DBG_SFXMP(mod, ...) do { do_log(mod, __VA_ARGS__); fflush(stdout); } while (0)
 #if ENABLE_DBG
 # define DBG(mod, ...) DBG_SFXMP(mod, __VA_ARGS__)
 #else

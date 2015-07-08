@@ -21,7 +21,7 @@ LIBNAME = lib$(NAME).$(LIBSUFFIX)
 PCNAME  = lib$(NAME).pc
 FFMPEG_LIBS = libavformat libavfilter libavcodec libavutil
 
-OBJS = $(NAME).o
+OBJS = $(NAME).o log.o
 
 ifeq ($(TARGET_OS),Darwin)
 EXTRALIBS = -framework CoreFoundation -framework VideoToolbox -framework CoreMedia -framework QuartzCore
