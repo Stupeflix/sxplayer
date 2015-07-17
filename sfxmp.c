@@ -916,9 +916,9 @@ static void *decoder_thread(void *arg)
 
 end:
     if (s->fmt_ctx) {
-        avcodec_free_context(&s->dec_ctx);
         if (hwaccel_def)
             hwaccel_def->uninit(s->dec_ctx);
+        avcodec_free_context(&s->dec_ctx);
         avformat_close_input(&s->fmt_ctx);
     }
     av_frame_free(&s->decoded_frame);
