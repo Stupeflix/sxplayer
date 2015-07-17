@@ -130,5 +130,5 @@ const struct hwaccel hwaccel_vt = {
     .decoder_init   = vt_decoder_init,
     .uninit         = vt_uninit,
     .get_frame      = vt_get_frame,
-    .pix_fmt        = AV_PIX_FMT_VIDEOTOOLBOX_VLD,
+    .pix_fmt        = AV_PIX_FMT_VIDEOTOOLBOX,
 };
