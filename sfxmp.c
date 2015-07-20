@@ -324,7 +324,109 @@ void sfxmp_free(struct sfxmp_ctx **ss)
     free_context(s);
 }
 
-static int setup_filtergraph(struct sfxmp_ctx *s);
+/**
+ * Setup the libavfilter filtergraph for user filter but also to have a way to
+ * request a pixel format we want, and let libavfilter insert the necessary
+ * scaling filter (typically, an automatic conversion from yuv420p to rgb32).
+ */
+static int setup_filtergraph(struct sfxmp_ctx *s)
+{
+    int ret = 0;
+    char args[512];
+    const AVRational time_base = s->stream->time_base;
+    const AVRational framerate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
+    AVFilter *buffersrc  = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffer" : "abuffer");
+    AVFilter *buffersink = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
+    AVFilterInOut *outputs = avfilter_inout_alloc();
+    AVFilterInOut *inputs  = avfilter_inout_alloc();
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
+
+    avfilter_graph_free(&s->filter_graph);
+
+    if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL) {
+        ret = 0;
+        goto end;
+    }
+
+    s->filter_graph = avfilter_graph_alloc();
+
+    if (!inputs || !outputs || !s->filter_graph) {
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
+
+    inputs->name  = av_strdup("out");
+    outputs->name = av_strdup("in");
+    if (!inputs->name || !outputs->name) {
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
+
+    /* create buffer filter source (where we push the frame) */
+    if (s->media_type == AVMEDIA_TYPE_VIDEO) {
+        snprintf(args, sizeof(args),
+                 "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
+                 s->dec_ctx->width, s->dec_ctx->height, av_get_pix_fmt_name(s->last_frame_format),
+                 time_base.num, time_base.den,
+                 s->dec_ctx->sample_aspect_ratio.num, s->dec_ctx->sample_aspect_ratio.den);
+    } else {
+        snprintf(args, sizeof(args), "time_base=%d/%d:sample_rate=%d:sample_fmt=%s",
+                 1, s->dec_ctx->sample_rate, s->dec_ctx->sample_rate,
+                 av_get_sample_fmt_name(s->dec_ctx->sample_fmt));
+        if (s->dec_ctx->channel_layout)
+            av_strlcatf(args, sizeof(args), ":channel_layout=0x%"PRIx64, s->dec_ctx->channel_layout);
+        else
+            av_strlcatf(args, sizeof(args), ":channels=%d", s->dec_ctx->channels);
+    }
+
+    if (framerate.num && framerate.den)
+        av_strlcatf(args, sizeof(args), ":frame_rate=%d/%d", framerate.num, framerate.den);
+
+    DBG("decoder", "graph buffer source args: %s\n", args);
+
+    ret = avfilter_graph_create_filter(&s->buffersrc_ctx, buffersrc,
+                                       outputs->name, args, NULL, s->filter_graph);
+    if (ret < 0) {
+        fprintf(stderr, "Unable to create buffer filter source\n");
+        goto end;
+    }
+
+    /* create buffer filter sink (where we pull the frame) */
+    ret = avfilter_graph_create_filter(&s->buffersink_ctx, buffersink,
+                                       inputs->name, NULL, NULL, s->filter_graph);
+    if (ret < 0) {
+        fprintf(stderr, "Unable to create buffer filter sink\n");
+        goto end;
+    }
+
+    /* define the output of the graph */
+    snprintf(args, sizeof(args), "%s", s->filters ? s->filters : "");
+    if (s->media_type == AVMEDIA_TYPE_VIDEO) {
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
+        const char *pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? "rgb32" : av_get_pix_fmt_name(s->last_frame_format);
+        av_strlcatf(args, sizeof(args), "%sformat=%s", *args ? "," : "", pix_fmt);
+    } else {
+        av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
+    }
+
+    /* create our filter graph */
+    inputs->filter_ctx  = s->buffersink_ctx;
+    outputs->filter_ctx = s->buffersrc_ctx;
+
+    ret = avfilter_graph_parse_ptr(s->filter_graph, args, &inputs, &outputs, NULL);
+    if (ret < 0)
+        goto end;
+
+    ret = avfilter_graph_config(s->filter_graph, NULL);
+    if (ret < 0)
+        goto end;
+
+end:
+    avfilter_inout_free(&inputs);
+    avfilter_inout_free(&outputs);
+    return ret;
+}
+
 
 static int decode_packet(struct sfxmp_ctx *s, AVPacket *pkt,
                          AVFrame *frame, int *got_frame)
@@ -470,109 +572,6 @@ static int seek_to(struct sfxmp_ctx *s, double t)
     else
         printf("Seek in media at %f (t=%f)\n", vt, t);
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, ts, ts, 0);
-}
-
-/**
- * Setup the libavfilter filtergraph for user filter but also to have a way to
- * request a pixel format we want, and let libavfilter insert the necessary
- * scaling filter (typically, an automatic conversion from yuv420p to rgb32).
- */
-static int setup_filtergraph(struct sfxmp_ctx *s)
-{
-    int ret = 0;
-    char args[512];
-    const AVRational time_base = s->stream->time_base;
-    const AVRational framerate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
-    AVFilter *buffersrc  = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffer" : "abuffer");
-    AVFilter *buffersink = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
-    AVFilterInOut *outputs = avfilter_inout_alloc();
-    AVFilterInOut *inputs  = avfilter_inout_alloc();
-    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
-
-    avfilter_graph_free(&s->filter_graph);
-
-    if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL) {
-        ret = 0;
-        goto end;
-    }
-
-    s->filter_graph = avfilter_graph_alloc();
-
-    if (!inputs || !outputs || !s->filter_graph) {
-        ret = AVERROR(ENOMEM);
-        goto end;
-    }
-
-    inputs->name  = av_strdup("out");
-    outputs->name = av_strdup("in");
-    if (!inputs->name || !outputs->name) {
-        ret = AVERROR(ENOMEM);
-        goto end;
-    }
-
-    /* create buffer filter source (where we push the frame) */
-    if (s->media_type == AVMEDIA_TYPE_VIDEO) {
-        snprintf(args, sizeof(args),
-                 "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
-                 s->dec_ctx->width, s->dec_ctx->height, av_get_pix_fmt_name(s->last_frame_format),
-                 time_base.num, time_base.den,
-                 s->dec_ctx->sample_aspect_ratio.num, s->dec_ctx->sample_aspect_ratio.den);
-    } else {
-        snprintf(args, sizeof(args), "time_base=%d/%d:sample_rate=%d:sample_fmt=%s",
-                 1, s->dec_ctx->sample_rate, s->dec_ctx->sample_rate,
-                 av_get_sample_fmt_name(s->dec_ctx->sample_fmt));
-        if (s->dec_ctx->channel_layout)
-            av_strlcatf(args, sizeof(args), ":channel_layout=0x%"PRIx64, s->dec_ctx->channel_layout);
-        else
-            av_strlcatf(args, sizeof(args), ":channels=%d", s->dec_ctx->channels);
-    }
-
-    if (framerate.num && framerate.den)
-        av_strlcatf(args, sizeof(args), ":frame_rate=%d/%d", framerate.num, framerate.den);
-
-    DBG("decoder", "graph buffer source args: %s\n", args);
-
-    ret = avfilter_graph_create_filter(&s->buffersrc_ctx, buffersrc,
-                                       outputs->name, args, NULL, s->filter_graph);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to create buffer filter source\n");
-        goto end;
-    }
-
-    /* create buffer filter sink (where we pull the frame) */
-    ret = avfilter_graph_create_filter(&s->buffersink_ctx, buffersink,
-                                       inputs->name, NULL, NULL, s->filter_graph);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to create buffer filter sink\n");
-        goto end;
-    }
-
-    /* define the output of the graph */
-    snprintf(args, sizeof(args), "%s", s->filters ? s->filters : "");
-    if (s->media_type == AVMEDIA_TYPE_VIDEO) {
-        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
-        const char *pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? "rgb32" : av_get_pix_fmt_name(s->last_frame_format);
-        av_strlcatf(args, sizeof(args), "%sformat=%s", *args ? "," : "", pix_fmt);
-    } else {
-        av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
-    }
-
-    /* create our filter graph */
-    inputs->filter_ctx  = s->buffersink_ctx;
-    outputs->filter_ctx = s->buffersrc_ctx;
-
-    ret = avfilter_graph_parse_ptr(s->filter_graph, args, &inputs, &outputs, NULL);
-    if (ret < 0)
-        goto end;
-
-    ret = avfilter_graph_config(s->filter_graph, NULL);
-    if (ret < 0)
-        goto end;
-
-end:
-    avfilter_inout_free(&inputs);
-    avfilter_inout_free(&outputs);
-    return ret;
 }
 
 /**
