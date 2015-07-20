@@ -1,7 +1,5 @@
 #include <libavcodec/avcodec.h>
 #include <libavcodec/videotoolbox.h>
-#include <libavutil/avassert.h>
-#include <libavutil/imgutils.h>
 
 #include "internal.h"
 
