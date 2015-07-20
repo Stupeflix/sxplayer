@@ -153,17 +153,17 @@ static AVFrame *get_invisible_frame(enum AVMediaType media_type)
 
     if (media_type == AVMEDIA_TYPE_VIDEO) {
 #if ENABLE_DBG
-    /* In debug more, we make them colored for visual debug */
-    SET_COLOR(0, 0, 0xff0000ff);
-    SET_COLOR(1, 1, 0x00ff00ff);
-    SET_COLOR(0, 1, 0x0000ffff);
-    SET_COLOR(1, 0, 0xffffffff);
+        /* In debug more, we make them colored for visual debug */
+        SET_COLOR(0, 0, 0xff0000ff);
+        SET_COLOR(1, 1, 0x00ff00ff);
+        SET_COLOR(0, 1, 0x0000ffff);
+        SET_COLOR(1, 0, 0xffffffff);
 #else
-    /* ...but in production we want it to be black */
-    SET_COLOR(0, 0, 0x00000000);
-    SET_COLOR(1, 1, 0x00000000);
-    SET_COLOR(0, 1, 0x00000000);
-    SET_COLOR(1, 0, 0x00000000);
+        /* ...but in production we want it to be black */
+        SET_COLOR(0, 0, 0x00000000);
+        SET_COLOR(1, 1, 0x00000000);
+        SET_COLOR(0, 1, 0x00000000);
+        SET_COLOR(1, 0, 0x00000000);
 #endif
     } else {
         memset(frame->data[0], 0, frame->height * frame->linesize[0]);
@@ -253,8 +253,8 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     case SFXMP_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
     case SFXMP_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
     default:
-        fprintf(stderr, "unknown avselect value %d\n", s->avselect);
-        goto fail;
+         fprintf(stderr, "unknown avselect value %d\n", s->avselect);
+         goto fail;
     }
 
     s->media_type_string = av_get_media_type_string(s->media_type);
@@ -681,17 +681,17 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
         inframe->pts = get_best_effort_ts(inframe);
 
         if (s->filter_graph) {
-        DBG("decoder", "push frame with ts=%s into filtergraph\n", av_ts2str(inframe->pts));
+            DBG("decoder", "push frame with ts=%s into filtergraph\n", av_ts2str(inframe->pts));
 
-        /* push the decoded frame into the filtergraph */
-        ret = av_buffersrc_write_frame(s->buffersrc_ctx, inframe);
-        if (ret < 0) {
-            fprintf(stderr, "Error while feeding the filtergraph\n");
-            goto end;
-        }
+            /* push the decoded frame into the filtergraph */
+            ret = av_buffersrc_write_frame(s->buffersrc_ctx, inframe);
+            if (ret < 0) {
+                fprintf(stderr, "Error while feeding the filtergraph\n");
+                goto end;
+            }
 
-        /* the frame is sent into the filtergraph, we don't need it anymore */
-        av_frame_unref(inframe);
+            /* the frame is sent into the filtergraph, we don't need it anymore */
+            av_frame_unref(inframe);
         }
     }
 
@@ -702,13 +702,13 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
 
         /* try to get a frame from the filergraph */
         if (s->filter_graph) {
-        ret = av_buffersink_get_frame(s->buffersink_ctx, s->filtered_frame);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-            break;
-        if (ret < 0) {
-            fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
-            goto end;
-        }
+            ret = av_buffersink_get_frame(s->buffersink_ctx, s->filtered_frame);
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                break;
+            if (ret < 0) {
+                fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
+                goto end;
+            }
         } else {
             av_assert0(inframe);
             av_frame_move_ref(s->filtered_frame, inframe);
@@ -923,14 +923,14 @@ static void *decoder_thread(void *arg)
 
     /* flush filtergraph */
     if (s->filter_graph) {
-    ret = av_buffersrc_write_frame(s->buffersrc_ctx, NULL);
-    if (ret < 0) {
-        fprintf(stderr, "Error sending EOF in filtergraph\n");
-        goto end;
-    }
-    do {
-        ret = queue_frame(s, NULL, NULL);
-    } while (ret >= 0);
+        ret = av_buffersrc_write_frame(s->buffersrc_ctx, NULL);
+        if (ret < 0) {
+            fprintf(stderr, "Error sending EOF in filtergraph\n");
+            goto end;
+        }
+        do {
+            ret = queue_frame(s, NULL, NULL);
+        } while (ret >= 0);
     }
 
 end:
