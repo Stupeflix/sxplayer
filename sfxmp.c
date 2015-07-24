@@ -714,7 +714,8 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             done = 1;
         }
 
-        DBG("decoder", "decoded frame @ ts=%s %"PRId64"\n",
+        DBG("decoder", "decoded %s frame @ ts=%s %"PRId64"\n",
+            av_get_pix_fmt_name(s->filtered_frame->format),
             av_ts2str(get_best_effort_ts(s->filtered_frame)), s->filtered_frame->pts);
 
         /* if audio, get the audio texture from the filtered audio frame */
