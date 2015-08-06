@@ -87,6 +87,9 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
  * sfxmp_release_frame(). */
 struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
 
+/* Enable or disable the droping of non reference frames */
+int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop);
+
 /* Release a frame obtained with sfxmp_get_frame() */
 void sfxmp_release_frame(struct sfxmp_frame *frame);
 

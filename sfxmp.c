@@ -61,6 +61,7 @@ struct sfxmp_ctx {
     int nb_frames;                          // total number of frames in the queue
     double request_seek;                    // field used by the main thread to request a seek to the decoding thread
     int can_seek_again;                     // field used to avoid seeking again until the requested time is reached
+    int request_drop;                       // field used by the main thread to request a change in the frame dropping mechanism
 
     /* fields specific to main thread */
     struct Frame non_visible;               // frame to display for the "non visible" time zone
@@ -742,6 +743,12 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             goto end;
         }
 
+        /* check frame dropping changed */
+        if (s->request_drop != -1) {
+            s->dec_ctx->skip_frame = s->request_drop ? AVDISCARD_NONREF : 0;
+            s->request_drop = -1;
+        }
+
         /* a seek was requested by the main thread */
         if (s->request_seek != -1 && s->can_seek_again) {
             int i;
@@ -1083,6 +1090,18 @@ void sfxmp_release_frame(struct sfxmp_frame *frame)
     }
 }
 
+int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop)
+{
+    if (!s)
+        return -1;
+
+    pthread_mutex_lock(&s->queue_lock);
+    DBG("main", "toggle drop frame from %d to %d\n", s->request_drop, drop);
+    s->request_drop = drop;
+    pthread_mutex_unlock(&s->queue_lock);
+    return 0;
+}
+
 struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 {
     DBG("main", " >>> get frame for t=%f\n", t);
@@ -1105,6 +1124,7 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
             s->queue_terminated = 0;
             s->request_seek     = -1;
             s->can_seek_again   = 1;
+            s->request_drop     = -1;
 
             if (pthread_create(&s->dec_thread, NULL, decoder_thread, s)) {
                 fprintf(stderr, "Unable to spawn decoding thread\n");
