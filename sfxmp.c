@@ -38,8 +38,6 @@ struct sfxmp_ctx {
     /* configurable options */
     char *filename;                         // input filename
     int avselect;                           // select audio or video
-    double visible_time;                    // see public header
-    double start_time;                      // see public header
     double skip;                            // see public header
     double trim_duration;                   // see public header
     int max_nb_frames;                      // maximum number of frames in the queue
@@ -193,8 +191,6 @@ static void free_context(struct sfxmp_ctx *s)
 
 struct sfxmp_ctx *sfxmp_create(const char *filename,
                                int avselect,
-                               double visible_time,
-                               double start_time,
                                double skip,
                                double trim_duration,
                                double dist_time_seek_trigger,
@@ -237,8 +233,6 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
 
     s->filename               = av_strdup(filename);
     s->avselect               = avselect;
-    s->visible_time           = visible_time;
-    s->start_time             = start_time;
     s->skip                   = skip;
     s->trim_duration          = trim_duration;
     s->dist_time_seek_trigger = dist_time_seek_trigger < 0 ? 3 : dist_time_seek_trigger;
@@ -291,8 +285,8 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     pthread_cond_init(&s->queue_reduce, NULL);
     pthread_cond_init(&s->queue_grow, NULL);
 
-    DBG("init", "filename:%s avselect:%d visible_time:%f start_time:%f skip:%f trim_duration:%f (%p)\n",
-        filename, avselect, visible_time, start_time, skip, trim_duration, s);
+    DBG("init", "filename:%s avselect:%d skip:%f trim_duration:%f (%p)\n",
+        filename, avselect, s->skip, s->trim_duration, s);
 
     return s;
 
@@ -323,6 +317,7 @@ void sfxmp_free(struct sfxmp_ctx **ss)
     pthread_cond_destroy(&s->queue_grow);
     pthread_mutex_destroy(&s->queue_lock);
     free_context(s);
+    *ss = NULL;
 }
 
 /**
@@ -542,7 +537,7 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
                 duration = AV_NOPTS_VALUE;
         }
         if (duration == AV_NOPTS_VALUE) {
-            fprintf(stderr, "trim_duration is not set and can't estimate the duration, aborting\n");
+            fprintf(stderr, "trim_duration is not set and can't estimate the duration, aborting %s\n", s->filename);
             return AVERROR_INVALIDDATA;
         }
         s->trim_duration = duration * scale;
@@ -557,7 +552,7 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
  */
 static double get_media_time(const struct sfxmp_ctx *s, double t)
 {
-    return s->skip + av_clipd(t - s->start_time, 0, s->trim_duration);
+    return s->skip + av_clipd(t, 0, s->trim_duration);
 }
 
 /**
@@ -569,9 +564,7 @@ static int seek_to(struct sfxmp_ctx *s, double t)
     const int64_t ts = vt * AV_TIME_BASE;
 
     if (ENABLE_DBG)
-        DBG("decoder", "Seek in media at %f (t=%f)\n", vt, t);
-    else
-        printf("Seek in media at %f (t=%f)\n", vt, t);
+        DBG("Seek in media (%s) at %f (t=%f)\n", s->filename, vt, t);
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, ts, ts, 0);
 }
 
@@ -699,7 +692,6 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
         struct Frame *f;
         int64_t ts;
         double rescaled_ts;
-
         /* try to get a frame from the filergraph */
         if (s->filter_graph) {
             ret = av_buffersink_get_frame(s->buffersink_ctx, s->filtered_frame);
@@ -810,6 +802,20 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             rescaled_ts = ts * av_q2d(s->stream->time_base);
         }
 
+        if (s->request_seek != -1) {
+            if (rescaled_ts < get_media_time(s, s->request_seek)) {
+                DBG("decoder", "Request seek (%f) not reached yet (prefetching): %f<%f, skip frame\n",
+                    s->request_seek, rescaled_ts, get_media_time(s, s->request_seek));
+                pthread_mutex_unlock(&s->queue_lock);
+                av_frame_unref(s->filtered_frame);
+                continue;
+            } else {
+                DBG("decoder", "Request seek reached %f >= %f\n", rescaled_ts, get_media_time(s, s->request_seek));
+            }
+        } else {
+            DBG("decoder", "Request seek invalid\n");
+        }
+
         /* finally queue the frame */
         f = &s->frames[s->nb_frames++];
         if (s->media_type == AVMEDIA_TYPE_VIDEO) {
@@ -896,7 +902,11 @@ static void *decoder_thread(void *arg)
         if (!s->rdft_data[0] || !s->rdft_data[1])
             goto end;
     }
-
+    if (s->skip > 0.0 ) {
+        seek_to(s, 0.0);
+        s->request_seek = 0.0;
+        s->can_seek_again = 0;
+    }
     av_init_packet(&pkt);
 
     /* read frames from the file */
@@ -1104,12 +1114,7 @@ int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop)
 
 struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 {
-    DBG("main", " >>> get frame for t=%f\n", t);
-
-    if (t < 0) {
-        fprintf(stderr, "ERR: attempt to get a frame at a negative time\n");
-        return ret_frame(s, NULL);
-    }
+    DBG("main", " >>> get frame %s for t=%f\n", s->filename, t);
 
     for (;;) {
         double diff;
@@ -1134,10 +1139,10 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
             }
         }
 
-        if (t < s->visible_time) {
+        if (t < 0) {
             DBG("main", "time requested before visible time, return nothing\n");
             pthread_mutex_unlock(&s->queue_lock);
-            return ret_frame(s, &s->non_visible);
+            return NULL; //ret_frame(s, &s->non_visible);
         }
 
         while (!s->nb_frames && !s->queue_terminated) {
@@ -1169,12 +1174,14 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
             // frame requested)
             for (i = 1; i < s->nb_frames; i++) {
                 const double new_diff = get_frame_dist(s, i, t);
+                // TEMPORARY : How new_diff can be more than diff ???
                 if (new_diff > diff || new_diff < 0)
                     break;
                 diff = new_diff;
                 best_id = i;
             }
             need_more_frames = i == s->nb_frames && !s->queue_terminated && diff;
+
             DBG("main", "best frame: %d/%d | need more: %d (terminated:%d)\n",
                 best_id+1, s->nb_frames, need_more_frames, s->queue_terminated);
 
