@@ -16,6 +16,15 @@ static int test_frame(struct sfxmp_ctx *s,
 {
     struct sfxmp_frame *frame = sfxmp_get_frame(s, time);
 
+    if (time < 0) {
+        if (frame) {
+            fprintf(stderr, "Time requested < 0 but got frame\n");
+            sfxmp_release_frame(frame);
+            return -1;
+        }
+        return 0;
+    }
+
     if (avselect == SFXMP_SELECT_AUDIO) {
         // TODO
         if (frame) {
@@ -85,7 +94,7 @@ static int test_instant_gets(const char *filename, int avselect)
     const double skip          = 27.2;
     const double trim_duration = 67.1;
 
-    const double instant_gets[] = {0.5, 17.2, 26.2, 38.4, 89.7, 97.6};
+    const double instant_gets[] = {-1, 0.5, 17.2, 26.2, 38.4, 89.7, 97.6, 102.4};
 
     printf("Test: %s\n", __FUNCTION__);
 
