@@ -1142,7 +1142,7 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
         if (t < 0) {
             DBG("main", "time requested before visible time, return nothing\n");
             pthread_mutex_unlock(&s->queue_lock);
-            return NULL; //ret_frame(s, &s->non_visible);
+            return NULL;
         }
 
         while (!s->nb_frames && !s->queue_terminated) {
