@@ -127,20 +127,19 @@ static AVFrame *get_audio_frame(void)
 
     frame->format = AV_PIX_FMT_RGB32;
 
-    // TODO: reindent
-        frame->width  = AUDIO_NBSAMPLES/2;      // samples are float (32 bits), pix fmt is rgb32 (32 bits as well)
-        /* height:
-         *   AUDIO_NBCHANNELS (waves lines)
-         * + AUDIO_NBCHANNELS (fft lines of width AUDIO_NBCHANNELS/2, or 1<<(AUDIO_NBITS-1))
-         * + AUDIO_NBITS-1 AUDIO_NBCHANNELS (fft lines downscaled) */
-        frame->height = (1 + AUDIO_NBITS) * AUDIO_NBCHANNELS;
+    frame->width  = AUDIO_NBSAMPLES/2;      // samples are float (32 bits), pix fmt is rgb32 (32 bits as well)
+    /* height:
+     *   AUDIO_NBCHANNELS (waves lines)
+     * + AUDIO_NBCHANNELS (fft lines of width AUDIO_NBCHANNELS/2, or 1<<(AUDIO_NBITS-1))
+     * + AUDIO_NBITS-1 AUDIO_NBCHANNELS (fft lines downscaled) */
+    frame->height = (1 + AUDIO_NBITS) * AUDIO_NBCHANNELS;
 
     if (av_frame_get_buffer(frame, 16) < 0) {
         av_frame_free(&frame);
         return NULL;
     }
 
-        memset(frame->data[0], 0, frame->height * frame->linesize[0]);
+    memset(frame->data[0], 0, frame->height * frame->linesize[0]);
 
     return frame;
 }
