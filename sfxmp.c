@@ -537,7 +537,7 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
                 duration = AV_NOPTS_VALUE;
         }
         if (duration == AV_NOPTS_VALUE) {
-            fprintf(stderr, "trim_duration is not set and can't estimate the duration, aborting %s\n", s->filename);
+            fprintf(stderr, "trim_duration is not set for %s and can't estimate the duration, aborting\n", s->filename);
             return AVERROR_INVALIDDATA;
         }
         s->trim_duration = duration * scale;
