@@ -770,18 +770,32 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             rescaled_ts = ts * av_q2d(s->stream->time_base);
         }
 
+        /* if we haven't reach the time requested yet, skip the frame */
         if (s->request_seek != -1) {
-            if (rescaled_ts < get_media_time(s, s->request_seek)) {
-                DBG("decoder", "Request seek (%f) not reached yet (prefetching): %f<%f, skip frame\n",
-                    s->request_seek, rescaled_ts, get_media_time(s, s->request_seek));
+            const double requested_media_time = get_media_time(s, s->request_seek);
+
+            if (rescaled_ts < requested_media_time) {
+                DBG("decoder", "Request seek (%f) not reached yet: %f<%f, skip frame\n",
+                    s->request_seek, rescaled_ts, requested_media_time);
                 pthread_mutex_unlock(&s->queue_lock);
                 av_frame_unref(s->filtered_frame);
                 continue;
             } else {
-                DBG("decoder", "Request seek reached %f >= %f\n", rescaled_ts, get_media_time(s, s->request_seek));
+                DBG("decoder", "Request seek reached %f >= %f\n", rescaled_ts, requested_media_time);
+
+                s->can_seek_again = 1;
+                s->request_seek   = -1;
+
+                /* Sometimes, because of inaccuracies with floats (or
+                 * eventually a bug in FFmpeg), the first frame picked after a
+                 * seek will be slightly off, creating a negative diff in
+                 * the main loop, which will as a result cause the main thread
+                 * to request a backseek, ended up in an infinite and
+                 * undesirable seek loop.
+                 * In order to avoid this, we lie about the timestamp and make
+                 * it exactly what the user requested. */
+                rescaled_ts = requested_media_time;
             }
-        } else {
-            DBG("decoder", "Request seek invalid\n");
         }
 
         /* finally queue the frame */
@@ -793,30 +807,9 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             av_frame_unref(s->filtered_frame);
         }
         f->ts = rescaled_ts;
-        DBG("decoder", "queuing frame %2d/%d @ ts=%f\n", s->nb_frames, s->max_nb_frames, f->ts);
-
-        /* we haven't reach the time requested yet, skipping frame */
-        if (s->request_seek != -1) {
-            if (rescaled_ts < get_media_time(s, s->request_seek)) {
-                DBG("decoder", "Request seek (%f) not reached yet: %f<%f, skip frame\n",
-                    s->request_seek, rescaled_ts, get_media_time(s, s->request_seek));
-            } else {
-                /* Sometimes, because of inaccuracies with floats (or
-                 * eventually a bug in FFmpeg), the first frame picked after a
-                 * seek will be slightly off, creating a negative diff in
-                 * the main loop, which will as a result cause the main thread
-                 * to request a backseek, ended up in an infinite and
-                 * undesirable seek loop.
-                 * In order to avoid this, we lie about the timestamp and make
-                 * it exactly what the user requested. */
-                f->ts = get_media_time(s, s->request_seek);
-                s->can_seek_again = 1;
-                s->request_seek   = -1;
-            }
-        }
+        DBG("decoder", "queuing frame %2d/%d @ ts=%f and unlock mutex\n", s->nb_frames, s->max_nb_frames, f->ts);
 
         /* frame is completely queued, release lock */
-        DBG("decoder", "unlock\n");
         pthread_mutex_unlock(&s->queue_lock);
 
         /* signal the main thread that the queue got a new frame */
