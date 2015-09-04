@@ -7,16 +7,30 @@
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
+ *                                            trim_duration
+ *                                  <------------------------------>
+ *
+ *                                 t=0                            t=END
+ *                                  v                              v
+ *                       -----------+------------------------------+---------
+ *      timeline           PREFECH  |##############################| LAST
+ *                       -----------+------------------------------+---------
+ *                                 .                              .
+ *                                .                              .
+ *                               .                              .
+ *                              .                              .
  *                      +------+------------------------------+---------+
  *  Video timeline      |     #|##############################|         |
  *                      +------+------------------------------+---------+
  *                      ^     ^^                              ^
  *                    Vt=0   Vt=skip               Vt=skip+trim_duration
- *                          Vt=first_pts
- *                             <----------------------------->
+ *                             <------------------------------>
  *                                      trim_duration
  *
+ *  t:  timeline timestamp
  *  Vt: video timestamp
+ *  PREFETCH: starts thread if necessary and returns NULL
+ *  LAST: repeat last frame (or like any other frame NULL if it was already raised)
  *      ...
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
