@@ -691,6 +691,7 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
         struct Frame *f;
         int64_t ts;
         double rescaled_ts;
+
         /* try to get a frame from the filergraph */
         if (s->filter_graph) {
             ret = av_buffersink_get_frame(s->buffersink_ctx, s->filtered_frame);
@@ -901,11 +902,15 @@ static void *decoder_thread(void *arg)
         if (!s->rdft_data[0] || !s->rdft_data[1])
             goto end;
     }
+
+    /* request initial seek to help getting a better first frame in the queue
+     * after a prefetch */
     if (s->skip > 0.0 ) {
         seek_to(s, 0.0);
         s->request_seek = 0.0;
         s->can_seek_again = 0;
     }
+
     av_init_packet(&pkt);
 
     /* read frames from the file */
@@ -1139,7 +1144,7 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
         }
 
         if (t < 0) {
-            DBG("main", "time requested before visible time, return nothing\n");
+            DBG("main", "prefetch requested, returns NULL\n");
             pthread_mutex_unlock(&s->queue_lock);
             return NULL;
         }
