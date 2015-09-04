@@ -195,17 +195,17 @@ end:
 static int run_tests(const char *filename, int avselect)
 {
     if (test_seeks(filename, avselect) < 0)
-        return 1;
+        return -1;
 
     if (test_full_run("dummy", 0, 0, 0, avselect) < 0 ||
         test_full_run(filename, 30, 0, -1, avselect) < 0 ||
         test_full_run(filename, 10, 1.1, 18.6, avselect) < 0 ||
         test_full_run(filename, 10, 1.1, 18.6, avselect) < 0 ||
         test_full_run(filename, 60, 3.7, 12.2, avselect) < 0)
-        return 1;
+        return -1;
 
     if (test_instant_gets(filename, avselect) < 0)
-        return 1;
+        return -1;
 
     return 0;
 }
@@ -214,12 +214,12 @@ int main(int ac, char **av)
 {
     if (ac != 2) {
         fprintf(stderr, "Usage: %s <file>\n", av[0]);
-        return 1;
+        return -1;
     }
 
     if (run_tests(av[1], SFXMP_SELECT_VIDEO) < 0 ||
         run_tests(av[1], SFXMP_SELECT_AUDIO) < 0)
-        return 1;
+        return -1;
 
     printf("All tests OK\n");
 
