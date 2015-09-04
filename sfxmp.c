@@ -62,7 +62,6 @@ struct sfxmp_ctx {
     int request_drop;                       // field used by the main thread to request a change in the frame dropping mechanism
 
     /* fields specific to main thread */
-    struct Frame non_visible;               // frame to display for the "non visible" time zone
     double last_pushed_frame_ts;            // ts value of the latest pushed frame (it acts as a UID)
 
     /* fields specific to decoding thread */
@@ -120,10 +119,7 @@ static enum AVPixelFormat hwaccel_get_format(AVCodecContext *avctx, const enum A
     return *p;
 }
 
-/**
- * Allocate a small frame to be displayed before visible_time
- */
-static AVFrame *get_invisible_frame(enum AVMediaType media_type)
+static AVFrame *get_audio_frame(void)
 {
     AVFrame *frame = av_frame_alloc();
     if (!frame)
@@ -131,42 +127,21 @@ static AVFrame *get_invisible_frame(enum AVMediaType media_type)
 
     frame->format = AV_PIX_FMT_RGB32;
 
-    if (media_type == AVMEDIA_TYPE_VIDEO) {
-        frame->width  = 2;
-        frame->height = 2;
-    } else {
+    // TODO: reindent
         frame->width  = AUDIO_NBSAMPLES/2;      // samples are float (32 bits), pix fmt is rgb32 (32 bits as well)
         /* height:
          *   AUDIO_NBCHANNELS (waves lines)
          * + AUDIO_NBCHANNELS (fft lines of width AUDIO_NBCHANNELS/2, or 1<<(AUDIO_NBITS-1))
          * + AUDIO_NBITS-1 AUDIO_NBCHANNELS (fft lines downscaled) */
         frame->height = (1 + AUDIO_NBITS) * AUDIO_NBCHANNELS;
-    }
 
     if (av_frame_get_buffer(frame, 16) < 0) {
         av_frame_free(&frame);
         return NULL;
     }
 
-#define SET_COLOR(x, y, color) *(uint32_t *)&frame->data[0][y*frame->linesize[0] + x*4] = color
-
-    if (media_type == AVMEDIA_TYPE_VIDEO) {
-#if ENABLE_DBG
-        /* In debug more, we make them colored for visual debug */
-        SET_COLOR(0, 0, 0xff0000ff);
-        SET_COLOR(1, 1, 0x00ff00ff);
-        SET_COLOR(0, 1, 0x0000ffff);
-        SET_COLOR(1, 0, 0xffffffff);
-#else
-        /* ...but in production we want it to be black */
-        SET_COLOR(0, 0, 0x00000000);
-        SET_COLOR(1, 1, 0x00000000);
-        SET_COLOR(0, 1, 0x00000000);
-        SET_COLOR(1, 0, 0x00000000);
-#endif
-    } else {
         memset(frame->data[0], 0, frame->height * frame->linesize[0]);
-    }
+
     return frame;
 }
 
@@ -183,7 +158,6 @@ static void free_context(struct sfxmp_ctx *s)
         av_freep(&s->frames);
     }
 
-    av_frame_free(&s->non_visible.frame);
     av_freep(&s->filename);
     av_freep(&s->filters);
     av_freep(&s);
@@ -273,11 +247,6 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     }
 
     s->last_pushed_frame_ts = DBL_MIN;
-
-    s->non_visible.ts    = -1;
-    s->non_visible.frame = get_invisible_frame(s->media_type);
-    if (!s->non_visible.frame)
-        goto fail;
 
     s->queue_terminated = 1;
 
@@ -875,7 +844,7 @@ static void *decoder_thread(void *arg)
         goto end;
 
     if (s->media_type == AVMEDIA_TYPE_AUDIO) {
-        s->audio_texture_frame = get_invisible_frame(AVMEDIA_TYPE_AUDIO);
+        s->audio_texture_frame = get_audio_frame();
         if (!s->audio_texture_frame)
             goto end;
     }
