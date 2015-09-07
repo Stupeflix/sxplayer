@@ -219,12 +219,40 @@ static int run_tests(const char *filename, int avselect)
     return 0;
 }
 
+static int simple_pass_through(const char *filename)
+{
+    int i, ret = 0;
+    struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
+                                       0, -1, -1, -1, NULL);
+
+    for (i = 0; i < 10; i++) {
+        const double t = i / 30.;
+        struct sfxmp_frame *frame = sfxmp_get_frame(s, t);
+
+        if (frame) {
+            printf("frame @ %f / data:%p ts:%f %dx%d lz:%d sfxpixfmt:%d\n",
+                   t, frame->data, frame->ts, frame->width, frame->height,
+                   frame->linesize, frame->pix_fmt);
+        } else {
+            printf("frame @ %f / null\n", t);
+        }
+
+        sfxmp_release_frame(frame);
+    }
+
+    sfxmp_free(&s);
+    return ret;
+}
+
 int main(int ac, char **av)
 {
-    if (ac != 2) {
-        fprintf(stderr, "Usage: %s <file>\n", av[0]);
+    if (ac != 2 && ac != 3) {
+        fprintf(stderr, "Usage: %s [-notest] <file>\n", av[0]);
         return -1;
     }
+
+    if (ac == 3 && !strcmp(av[1], "-notest"))
+        return simple_pass_through(av[2]);
 
     if (run_tests(av[1], SFXMP_SELECT_VIDEO) < 0 ||
         run_tests(av[1], SFXMP_SELECT_AUDIO) < 0)
