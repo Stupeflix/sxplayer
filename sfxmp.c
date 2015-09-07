@@ -1139,7 +1139,6 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
             // frame requested)
             for (i = 1; i < s->nb_frames; i++) {
                 const double new_diff = get_frame_dist(s, i, t);
-                // TEMPORARY : How new_diff can be more than diff ???
                 if (new_diff > diff || new_diff < 0)
                     break;
                 diff = new_diff;
