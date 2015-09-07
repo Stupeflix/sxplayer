@@ -505,8 +505,8 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
                 duration = AV_NOPTS_VALUE;
         }
         if (duration != AV_NOPTS_VALUE) {
-        s->trim_duration = duration * scale;
-        DBG("decoder", "set trim duration to %f\n", s->trim_duration);
+            s->trim_duration = duration * scale;
+            DBG("decoder", "set trim duration to %f\n", s->trim_duration);
         }
     }
 
