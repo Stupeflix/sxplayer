@@ -504,12 +504,10 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
             else
                 duration = AV_NOPTS_VALUE;
         }
-        if (duration == AV_NOPTS_VALUE) {
-            fprintf(stderr, "trim_duration is not set for %s and can't estimate the duration, aborting\n", s->filename);
-            return AVERROR_INVALIDDATA;
-        }
+        if (duration != AV_NOPTS_VALUE) {
         s->trim_duration = duration * scale;
         DBG("decoder", "set trim duration to %f\n", s->trim_duration);
+        }
     }
 
     return 0;
@@ -520,6 +518,8 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
  */
 static double get_media_time(const struct sfxmp_ctx *s, double t)
 {
+    if (s->trim_duration < 0)
+        return 0;
     return s->skip + av_clipd(t, 0, s->trim_duration);
 }
 
@@ -745,7 +745,7 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
 
         /* request the end of any further queuing if the last frame added was
          * already a potential last frame */
-        if (s->nb_frames > 0 && s->frames[0].ts >= s->skip + s->trim_duration) {
+        if (s->nb_frames > 0 && (s->frames[0].ts >= s->skip + s->trim_duration || s->trim_duration < 0)) {
             DBG("decoder", "Reached trim duration in the decoding thread, request end\n");
             ret = AVERROR_EXIT;
             pthread_mutex_unlock(&s->queue_lock);
