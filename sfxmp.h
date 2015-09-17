@@ -62,9 +62,9 @@ struct sfxmp_frame {
  *
  * @param avselect               select audio or video stream (see SFXMP_SELECT_*)
  * @param skip                   time to skip in the specified input
- * @param trim_duration          duration of the video (starting at skip)
- * @param dist_time_seek_trigger how much time forward will trigger a seek, can be negative for default
- * @param max_nb_frames          maximum number of frames in the queue, can be negative for default
+ * @param trim_duration          duration of the video (starting at skip), -1 for automatic probing
+ * @param dist_time_seek_trigger how much time forward will trigger a seek, can be negative for default, -1 for default
+ * @param max_nb_frames          maximum number of frames in the queue, can be negative for default, -1 for default
  * @param filters                custom user filters, can be NULL
  */
 struct sfxmp_ctx *sfxmp_create(const char *filename,
