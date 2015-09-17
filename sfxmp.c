@@ -42,6 +42,7 @@ struct sfxmp_ctx {
     double trim_duration;                   // see public header
     int max_nb_frames;                      // maximum number of frames in the queue
     double dist_time_seek_trigger;          // distance time triggering a seek
+    enum AVPixelFormat sw_pix_fmt;          // ff pixel format to use for software decoding
 
     /* misc general fields */
     enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
@@ -82,6 +83,33 @@ struct sfxmp_ctx {
     struct hwaccel_ctx hwaccel;             // hw accel context which will be accessible through AVCodecContext.opaque
     enum AVPixelFormat last_frame_format;   // format of the last frame decoded
 };
+
+static const struct {
+    enum AVPixelFormat ff;
+    enum sfxmp_pixel_format sx;
+} pix_fmts_mapping[] = {
+    {AV_PIX_FMT_VIDEOTOOLBOX, SFXMP_PIXFMT_VT},
+    {AV_PIX_FMT_BGRA,         SFXMP_PIXFMT_BGRA},
+    {AV_PIX_FMT_RGBA,         SFXMP_PIXFMT_RGBA},
+};
+
+static enum AVPixelFormat pix_fmts_sx2ff(enum sfxmp_pixel_format pix_fmt)
+{
+    int i;
+    for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
+        if (pix_fmts_mapping[i].sx == pix_fmt)
+            return pix_fmts_mapping[i].ff;
+    return AV_PIX_FMT_NONE;
+}
+
+static enum sfxmp_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
+{
+    int i;
+    for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
+        if (pix_fmts_mapping[i].ff == pix_fmt)
+            return pix_fmts_mapping[i].sx;
+    return -1;
+}
 
 static enum AVPixelFormat hwaccel_get_format(AVCodecContext *avctx, const enum AVPixelFormat *pix_fmts)
 {
@@ -168,7 +196,8 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
                                double trim_duration,
                                double dist_time_seek_trigger,
                                double max_nb_frames,
-                               const char *filters)
+                               const char *filters,
+                               int sw_pix_fmt)
 {
     int i;
     struct sfxmp_ctx *s;
@@ -210,6 +239,12 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     s->trim_duration          = trim_duration;
     s->dist_time_seek_trigger = dist_time_seek_trigger < 0 ? 3 : dist_time_seek_trigger;
     s->max_nb_frames          = max_nb_frames < 0 ? 5 : max_nb_frames;
+    s->sw_pix_fmt             = pix_fmts_sx2ff(sw_pix_fmt);
+
+    if (s->sw_pix_fmt == AV_PIX_FMT_NONE) {
+        fprintf(stderr, "Invalid software decoding pixel format specified\n");
+        goto fail;
+    }
 
     if (filters) {
         s->filters = av_strdup(filters);
@@ -367,8 +402,8 @@ static int setup_filtergraph(struct sfxmp_ctx *s)
     snprintf(args, sizeof(args), "%s", s->filters ? s->filters : "");
     if (s->media_type == AVMEDIA_TYPE_VIDEO) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
-        const char *pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? "rgb32" : av_get_pix_fmt_name(s->last_frame_format);
-        av_strlcatf(args, sizeof(args), "%sformat=%s", *args ? "," : "", pix_fmt);
+        const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? s->sw_pix_fmt : s->last_frame_format;
+        av_strlcatf(args, sizeof(args), "%sformat=%s", *args ? "," : "", av_get_pix_fmt_name(pix_fmt));
     } else {
         av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
     }
@@ -945,15 +980,6 @@ end:
     return NULL;
 }
 
-static enum sfxmp_pixel_format remap_pix_fmt(enum AVPixelFormat pix_fmt)
-{
-    switch (pix_fmt) {
-    case AV_PIX_FMT_VIDEOTOOLBOX:   return SFXMP_PIXFMT_VT;
-    case AV_PIX_FMT_BGRA:           return SFXMP_PIXFMT_BGRA;
-    default: av_assert0(0);
-    }
-}
-
 /* Return the frame only if different from previous one. We do not make a
  * simple pointer check because of the frame reference counting (and thus
  * pointer reuse, depending on many parameters)  */
@@ -998,7 +1024,7 @@ static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *fr
     ret->width    = cloned_frame->width;
     ret->height   = cloned_frame->height;
     ret->ts       = frame->ts;
-    ret->pix_fmt  = remap_pix_fmt(cloned_frame->format);
+    ret->pix_fmt  = pix_fmts_ff2sx(cloned_frame->format);
 
     DBG("main", " <<< return frame @ ts=%f\n", ret->ts);
     return ret;

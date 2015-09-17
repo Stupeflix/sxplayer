@@ -43,6 +43,7 @@ enum sfxmp_media_selection {
 };
 
 enum sfxmp_pixel_format {
+    SFXMP_PIXFMT_RGBA,
     SFXMP_PIXFMT_BGRA,
     SFXMP_PIXFMT_VT,
 };
@@ -66,6 +67,7 @@ struct sfxmp_frame {
  * @param dist_time_seek_trigger how much time forward will trigger a seek, can be negative for default, -1 for default
  * @param max_nb_frames          maximum number of frames in the queue, can be negative for default, -1 for default
  * @param filters                custom user filters, can be NULL
+ * @param sw_pix_fmt             pixel format format to use when using software decoding (video only)
  */
 struct sfxmp_ctx *sfxmp_create(const char *filename,
                                int avselect,
@@ -73,7 +75,8 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
                                double trim_duration,
                                double dist_time_seek_trigger,
                                double max_nb_frames,
-                               const char *filters);
+                               const char *filters,
+                               int sw_pix_fmt);
 
 /* Get the frame at an absolute time. The returned frame can be NULL if
  * unchanged from last call. The returned frame needs to be released using

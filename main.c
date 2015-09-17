@@ -104,7 +104,7 @@ static int test_instant_gets(const char *filename, int avselect)
 
         struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
                                            skip, trim_duration,
-                                           -1, -1, NULL);
+                                           -1, -1, NULL, SFXMP_PIXFMT_BGRA);
 
         printf("Test instant get @ t=%f\n", instant_gets[i]);
 
@@ -132,7 +132,7 @@ static int test_seeks(const char *filename, int avselect)
 
     struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
                                        skip, trim_duration,
-                                       -1, -1, NULL);
+                                       -1, -1, NULL, SFXMP_PIXFMT_BGRA);
 
     printf("Test: %s\n", __FUNCTION__);
 
@@ -166,7 +166,7 @@ static int test_full_run(const char *filename, int refresh_rate,
 
     struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
                                        skip, trim_duration,
-                                       -1, -1, NULL);
+                                       -1, -1, NULL, SFXMP_PIXFMT_BGRA);
 
     printf("Test: %s\n", __FUNCTION__);
 
@@ -223,7 +223,7 @@ static int simple_pass_through(const char *filename)
 {
     int i, ret = 0;
     struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
-                                       0, -1, -1, -1, NULL);
+                                       0, -1, -1, -1, NULL, SFXMP_PIXFMT_BGRA);
 
     for (i = 0; i < 10; i++) {
         const double t = i / 30.;
