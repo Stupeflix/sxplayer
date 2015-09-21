@@ -9,6 +9,8 @@
 #include <libavfilter/buffersrc.h>
 #include <libavutil/avassert.h>
 #include <libavutil/avstring.h>
+#include <libavutil/display.h>
+#include <libavutil/eval.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/timestamp.h>
@@ -48,6 +50,7 @@ struct sfxmp_ctx {
     double dist_time_seek_trigger;          // distance time triggering a seek
     char *filters;                          // user filter graph string
     int sw_pix_fmt;                         // sx pixel format to use for software decoding
+    int autorotate;                         // switch for automatically rotate in software decoding
 
     /* misc general fields */
     enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
@@ -106,6 +109,7 @@ static const AVOption sfxmp_options[] = {
     { "max_nb_frames",          NULL, OFFSET(max_nb_frames),          AV_OPT_TYPE_INT,       {.i64=5},       2, INT_MAX },
     { "filters",                NULL, OFFSET(filters),                AV_OPT_TYPE_STRING,    {.str=NULL},    0,       0 },
     { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SFXMP_PIXFMT_BGRA},  0, 1 },
+    { "autorotate",             NULL, OFFSET(autorotate),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { NULL }
 };
 
@@ -541,6 +545,38 @@ static int decode_packet(struct sfxmp_ctx *s, AVPacket *pkt,
     return decoded;
 }
 
+static double get_rotation(AVStream *st)
+{
+    AVDictionaryEntry *rotate_tag = av_dict_get(st->metadata, "rotate", NULL, 0);
+    uint8_t* displaymatrix = av_stream_get_side_data(st, AV_PKT_DATA_DISPLAYMATRIX, NULL);
+    double theta = 0;
+
+    if (rotate_tag && *rotate_tag->value && strcmp(rotate_tag->value, "0")) {
+        char *tail;
+        theta = av_strtod(rotate_tag->value, &tail);
+        if (*tail)
+            theta = 0;
+    }
+    if (displaymatrix && !theta)
+        theta = -av_display_rotation_get((int32_t *)displaymatrix);
+    theta -= 360*floor(theta/360 + 0.9/360);
+    return theta;
+}
+
+static char *update_filters_str(char *filters, const char *append)
+{
+    char *str;
+
+    if (filters) {
+        str = av_asprintf("%s,%s", filters, append);
+        av_free(filters);
+    } else {
+        str = av_strdup(append);
+    }
+    DBG("decoder", "update filtergraph to: %s\n", str);
+    return str;
+}
+
 static int open_ifile(struct sfxmp_ctx *s, const char *infile)
 {
     int ret = 0;
@@ -606,6 +642,17 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
             s->trim_duration = duration * scale;
             DBG("decoder", "set trim duration to %f\n", s->trim_duration);
         }
+    }
+
+    if (s->autorotate) {
+        const double theta = get_rotation(s->stream);
+
+        if (fabs(theta - 90) < 1.0)
+            s->filters = update_filters_str(s->filters, "transpose=clock");
+        else if (fabs(theta - 180) < 1.0)
+            s->filters = update_filters_str(s->filters, "vflip,hflip");
+        else if (fabs(theta - 270) < 1.0)
+            s->filters = update_filters_str(s->filters, "transpose=cclock");
     }
 
     return 0;

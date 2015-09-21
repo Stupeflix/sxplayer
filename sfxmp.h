@@ -80,6 +80,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
  *   max_nb_frames            integer   maximum number of frames in the queue, can be negative for default
  *   filters                  string    custom user filters (software decoding only)
  *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only)
+ *   autorotate               integer   automatically insert rotation filters (video software decoding only)
  */
 int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
 
