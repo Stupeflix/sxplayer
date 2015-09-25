@@ -35,14 +35,19 @@ static const struct hwaccel *hwaccel_def = NULL;
 #define AUDIO_NBCHANNELS 2
 
 struct sfxmp_ctx {
-    /* configurable options */
+    const AVClass *class;                   // necessary for the AVOption mechanism
     char *filename;                         // input filename
+
+    int context_configured;
+
+    /* configurable options */
     int avselect;                           // select audio or video
     double skip;                            // see public header
     double trim_duration;                   // see public header
     int max_nb_frames;                      // maximum number of frames in the queue
     double dist_time_seek_trigger;          // distance time triggering a seek
-    enum AVPixelFormat sw_pix_fmt;          // ff pixel format to use for software decoding
+    char *filters;                          // user filter graph string
+    int sw_pix_fmt;                         // sx pixel format to use for software decoding
 
     /* misc general fields */
     enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
@@ -74,7 +79,6 @@ struct sfxmp_ctx {
     AVStream *stream;                       // selected stream
     int stream_idx;                         // selected stream index
     AVFilterGraph *filter_graph;            // libavfilter graph
-    char *filters;                          // user filter graph string
     AVFilterContext *buffersink_ctx;        // sink of the graph (from where we pull)
     AVFilterContext *buffersrc_ctx;         // source of the graph (where we push)
     float *window_func_lut;                 // audio window function lookup table
@@ -92,6 +96,62 @@ static const struct {
     {AV_PIX_FMT_BGRA,         SFXMP_PIXFMT_BGRA},
     {AV_PIX_FMT_RGBA,         SFXMP_PIXFMT_RGBA},
 };
+
+#define OFFSET(x) offsetof(struct sfxmp_ctx, x)
+static const AVOption sfxmp_options[] = {
+    { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SFXMP_SELECT_VIDEO}, 0, NB_SFXMP_MEDIA_SELECTION-1 },
+    { "skip",                   NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
+    { "trim_duration",          NULL, OFFSET(trim_duration),          AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
+    { "dist_time_seek_trigger", NULL, OFFSET(dist_time_seek_trigger), AV_OPT_TYPE_DOUBLE,    {.dbl=3.0},    -1, DBL_MAX },
+    { "max_nb_frames",          NULL, OFFSET(max_nb_frames),          AV_OPT_TYPE_INT,       {.i64=5},       2, INT_MAX },
+    { "filters",                NULL, OFFSET(filters),                AV_OPT_TYPE_STRING,    {.str=NULL},    0,       0 },
+    { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SFXMP_PIXFMT_BGRA},  0, 1 },
+    { NULL }
+};
+
+static const AVClass sfxmp_class = {
+    .class_name = "sfxmp",
+    .item_name  = av_default_item_name,
+    .option     = sfxmp_options,
+};
+
+int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...)
+{
+    va_list ap;
+    int n, ret = 0;
+    double d;
+    char *str;
+    const AVOption *o = av_opt_find(s, key, NULL, 0, 0);
+
+    va_start(ap, key);
+
+    if (!o) {
+        fprintf(stderr, "Option '%s' not found\n", key);
+        ret = AVERROR(EINVAL);
+        goto end;
+    }
+
+    switch (o->type) {
+    case AV_OPT_TYPE_INT:
+        n = va_arg(ap, int);
+        ret = av_opt_set_int(s, key, n, 0);
+        break;
+    case AV_OPT_TYPE_DOUBLE:
+        d = va_arg(ap, double);
+        ret = av_opt_set_double(s, key, d, 0);
+        break;
+    case AV_OPT_TYPE_STRING:
+        str = va_arg(ap, char *);
+        ret = av_opt_set(s, key, str, 0);
+        break;
+    default:
+        av_assert0(0);
+    }
+
+end:
+    va_end(ap);
+    return ret;
+}
 
 static enum AVPixelFormat pix_fmts_sx2ff(enum sfxmp_pixel_format pix_fmt)
 {
@@ -186,18 +246,57 @@ static void free_context(struct sfxmp_ctx *s)
     }
 
     av_freep(&s->filename);
-    av_freep(&s->filters);
     av_freep(&s);
 }
 
-struct sfxmp_ctx *sfxmp_create(const char *filename,
-                               int avselect,
-                               double skip,
-                               double trim_duration,
-                               double dist_time_seek_trigger,
-                               double max_nb_frames,
-                               const char *filters,
-                               int sw_pix_fmt)
+static int configure_context(struct sfxmp_ctx *s)
+{
+    int i;
+
+    if (pix_fmts_sx2ff(s->sw_pix_fmt) == AV_PIX_FMT_NONE) {
+        fprintf(stderr, "Invalid software decoding pixel format specified\n");
+        return AVERROR(EINVAL);
+    }
+
+    switch (s->avselect) {
+    case SFXMP_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
+    case SFXMP_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
+    default:
+        av_assert0(0);
+    }
+
+    s->media_type_string = av_get_media_type_string(s->media_type);
+    av_assert0(s->media_type_string);
+
+    s->frames = av_malloc_array(s->max_nb_frames, sizeof(*s->frames));
+    if (!s->frames)
+        return AVERROR(ENOMEM);
+    for (i = 0; i < s->max_nb_frames; i++) {
+        s->frames[i].frame = av_frame_alloc();
+        if (!s->frames[i].frame)
+            return AVERROR(ENOMEM);
+    }
+
+    s->last_pushed_frame_ts = DBL_MIN;
+
+    s->queue_terminated = 1;
+
+    pthread_mutex_init(&s->queue_lock, NULL);
+    pthread_cond_init(&s->queue_reduce, NULL);
+    pthread_cond_init(&s->queue_grow, NULL);
+
+    DBG("main", "filename:%s avselect:%s skip:%f trim_duration:%f "
+        "dist_time_seek_trigger:%f max_nb_frames:%d filters:'%s' (%p)\n",
+        s->filename, s->media_type_string, s->skip, s->trim_duration,
+        s->dist_time_seek_trigger, s->max_nb_frames, s->filters ? s->filters : "",
+        s);
+
+    s->context_configured = 1;
+
+    return 0;
+}
+
+struct sfxmp_ctx *sfxmp_create(const char *filename)
 {
     int i;
     struct sfxmp_ctx *s;
@@ -233,63 +332,21 @@ struct sfxmp_ctx *sfxmp_create(const char *filename,
     if (!s)
         return NULL;
 
-    s->filename               = av_strdup(filename);
-    s->avselect               = avselect;
-    s->skip                   = skip;
-    s->trim_duration          = trim_duration;
-    s->dist_time_seek_trigger = dist_time_seek_trigger < 0 ? 3 : dist_time_seek_trigger;
-    s->max_nb_frames          = max_nb_frames < 0 ? 5 : max_nb_frames;
-    s->sw_pix_fmt             = pix_fmts_sx2ff(sw_pix_fmt);
+    s->class = &sfxmp_class;
+    av_opt_set_defaults(s);
 
-    if (s->sw_pix_fmt == AV_PIX_FMT_NONE) {
-        fprintf(stderr, "Invalid software decoding pixel format specified\n");
-        goto fail;
-    }
-
-    if (filters) {
-        s->filters = av_strdup(filters);
-        if (!s->filters)
-            goto fail;
-    }
-
-    switch (s->avselect) {
-    case SFXMP_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
-    case SFXMP_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
-    default:
-         fprintf(stderr, "unknown avselect value %d\n", s->avselect);
-         goto fail;
-    }
-
-    s->media_type_string = av_get_media_type_string(s->media_type);
-    av_assert0(s->media_type_string);
-
-    if (s->max_nb_frames < 2) {
-        fprintf(stderr, "max_nb_frames < 2 is not supported\n");
-        goto fail;
-    }
-
+    s->filename = av_strdup(filename);
     if (!s->filename)
         goto fail;
 
-    s->frames = av_malloc_array(s->max_nb_frames, sizeof(*s->frames));
-    if (!s->frames)
-        goto fail;
-    for (i = 0; i < s->max_nb_frames; i++) {
-        s->frames[i].frame = av_frame_alloc();
-        if (!s->frames[i].frame)
-            goto fail;
-    }
-
     s->last_pushed_frame_ts = DBL_MIN;
-
     s->queue_terminated = 1;
 
     pthread_mutex_init(&s->queue_lock, NULL);
     pthread_cond_init(&s->queue_reduce, NULL);
     pthread_cond_init(&s->queue_grow, NULL);
 
-    DBG("init", "filename:%s avselect:%d skip:%f trim_duration:%f (%p)\n",
-        filename, avselect, s->skip, s->trim_duration, s);
+    DBG("create", "filename:%s (%p)\n", filename, s);
 
     return s;
 
@@ -307,6 +364,7 @@ void sfxmp_free(struct sfxmp_ctx **ss)
     if (!s)
         return;
 
+    if (s->context_configured) {
     if (!s->queue_terminated) {
         DBG("free", "queue is not terminated yet\n");
         pthread_mutex_lock(&s->queue_lock);
@@ -319,6 +377,8 @@ void sfxmp_free(struct sfxmp_ctx **ss)
     pthread_cond_destroy(&s->queue_reduce);
     pthread_cond_destroy(&s->queue_grow);
     pthread_mutex_destroy(&s->queue_lock);
+    }
+
     free_context(s);
     *ss = NULL;
 }
@@ -402,11 +462,14 @@ static int setup_filtergraph(struct sfxmp_ctx *s)
     snprintf(args, sizeof(args), "%s", s->filters ? s->filters : "");
     if (s->media_type == AVMEDIA_TYPE_VIDEO) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
-        const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? s->sw_pix_fmt : s->last_frame_format;
+        const enum AVPixelFormat sw_pix_fmt = pix_fmts_sx2ff(s->sw_pix_fmt);
+        const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? sw_pix_fmt : s->last_frame_format;
         av_strlcatf(args, sizeof(args), "%sformat=%s", *args ? "," : "", av_get_pix_fmt_name(pix_fmt));
     } else {
         av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
     }
+
+    DBG("decoder", "graph buffer sink args: %s\n", args);
 
     /* create our filter graph */
     inputs->filter_ctx  = s->buffersink_ctx;
@@ -1084,6 +1147,7 @@ static void request_seek(struct sfxmp_ctx *s, double t)
 
 void sfxmp_release_frame(struct sfxmp_frame *frame)
 {
+    DBG("main", "release frame %p\n", frame);
     if (frame) {
         AVFrame *avframe = frame->internal;
         av_frame_free(&avframe);
@@ -1106,6 +1170,9 @@ int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop)
 struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 {
     DBG("main", " >>> get frame %s for t=%f\n", s->filename, t);
+
+    if (!s->context_configured)
+        configure_context(s);
 
     for (;;) {
         double diff;

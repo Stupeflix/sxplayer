@@ -102,11 +102,13 @@ static int test_instant_gets(const char *filename, int avselect)
         int prev_frame_id = -1;
         double prev_time = DBL_MIN;
 
-        struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
-                                           skip, trim_duration,
-                                           -1, -1, NULL, SFXMP_PIXFMT_BGRA);
+        struct sfxmp_ctx *s = sfxmp_create(filename);
 
         printf("Test instant get @ t=%f\n", instant_gets[i]);
+
+        sfxmp_set_option(s, "avselect", avselect);
+        sfxmp_set_option(s, "skip", skip);
+        sfxmp_set_option(s, "trim_duration", trim_duration);
 
         if (!s)
             return -1;
@@ -130,11 +132,13 @@ static int test_seeks(const char *filename, int avselect)
 
     const double instant_gets[] = {32., 31., 31.2, 60.};
 
-    struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
-                                       skip, trim_duration,
-                                       -1, -1, NULL, SFXMP_PIXFMT_BGRA);
+    struct sfxmp_ctx *s = sfxmp_create(filename);
 
     printf("Test: %s\n", __FUNCTION__);
+
+    sfxmp_set_option(s, "avselect", avselect);
+    sfxmp_set_option(s, "skip", skip);
+    sfxmp_set_option(s, "trim_duration", trim_duration);
 
     if (!s)
         return -1;
@@ -164,11 +168,13 @@ static int test_full_run(const char *filename, int refresh_rate,
     const double request_duration   = request_end_time;
     const int nb_calls = request_duration * refresh_rate;
 
-    struct sfxmp_ctx *s = sfxmp_create(filename, avselect,
-                                       skip, trim_duration,
-                                       -1, -1, NULL, SFXMP_PIXFMT_BGRA);
+    struct sfxmp_ctx *s = sfxmp_create(filename);
 
     printf("Test: %s\n", __FUNCTION__);
+
+    sfxmp_set_option(s, "avselect", avselect);
+    sfxmp_set_option(s, "skip", skip);
+    sfxmp_set_option(s, "trim_duration", trim_duration);
 
     if (!s)
         return -1;
@@ -222,8 +228,7 @@ static int run_tests(const char *filename, int avselect)
 static int simple_pass_through(const char *filename)
 {
     int i, ret = 0;
-    struct sfxmp_ctx *s = sfxmp_create(filename, SFXMP_SELECT_VIDEO,
-                                       0, -1, -1, -1, NULL, SFXMP_PIXFMT_BGRA);
+    struct sfxmp_ctx *s = sfxmp_create(filename);
 
     for (i = 0; i < 10; i++) {
         const double t = i / 30.;
