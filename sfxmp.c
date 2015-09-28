@@ -566,7 +566,7 @@ static int seek_to(struct sfxmp_ctx *s, double t)
     const double vt = get_media_time(s, t);
     const int64_t ts = vt * AV_TIME_BASE;
 
-    DBG("Seek in media (%s) at %f (t=%f)\n", s->filename, vt, t);
+    DBG("decoder", "Seek in media (%s) at %f (t=%f)\n", s->filename, vt, t);
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, ts, ts, 0);
 }
 
