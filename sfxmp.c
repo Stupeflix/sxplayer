@@ -288,8 +288,9 @@ static int configure_context(struct sfxmp_ctx *s)
     s->queue_terminated = 1;
 
     if (s->auto_hwaccel && (s->filters || s->autorotate)) {
-        fprintf(stderr, "Filters or autorotate settings are set but hwaccel "
-                "is enabled, disabling auto_hwaccel so these options are honored\n");
+        fprintf(stderr, "Filters ('%s') or autorotate (%d) settings are set but hwaccel "
+                "is enabled, disabling auto_hwaccel so these options are honored\n",
+                s->filters, s->autorotate);
         s->auto_hwaccel = 0;
     }
 
