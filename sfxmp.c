@@ -51,6 +51,7 @@ struct sfxmp_ctx {
     char *filters;                          // user filter graph string
     int sw_pix_fmt;                         // sx pixel format to use for software decoding
     int autorotate;                         // switch for automatically rotate in software decoding
+    int auto_hwaccel;                       // attempt to enable hardware acceleration
 
     /* misc general fields */
     enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
@@ -110,6 +111,7 @@ static const AVOption sfxmp_options[] = {
     { "filters",                NULL, OFFSET(filters),                AV_OPT_TYPE_STRING,    {.str=NULL},    0,       0 },
     { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SFXMP_PIXFMT_BGRA},  0, 1 },
     { "autorotate",             NULL, OFFSET(autorotate),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
+    { "auto_hwaccel",           NULL, OFFSET(auto_hwaccel),           AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { NULL }
 };
 
@@ -523,7 +525,7 @@ static int decode_packet(struct sfxmp_ctx *s, AVPacket *pkt,
 
             /* if there is an acceleration, try to "convert" it from the hw
              * accelerated pixel format to the normal/exploitable one. */
-            if (hwaccel_def && frame->format == hwaccel_def->pix_fmt) {
+            if (s->auto_hwaccel && hwaccel_def && frame->format == hwaccel_def->pix_fmt) {
                 ret = hwaccel_def->get_frame(s->dec_ctx, frame);
                 if (ret < 0) {
                     fprintf(stderr, "Unable to retrieve hw accelerated data\n");
@@ -613,7 +615,7 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
 
     s->hwaccel.out_pix_fmt = AV_PIX_FMT_NONE;
     s->last_frame_format   = AV_PIX_FMT_NONE;
-    if (hwaccel_def) {
+    if (s->auto_hwaccel && hwaccel_def) {
         s->dec_ctx->opaque = &s->hwaccel;
         s->dec_ctx->get_format = hwaccel_get_format;
         s->dec_ctx->thread_count = 1;
@@ -1062,7 +1064,7 @@ static void *decoder_thread(void *arg)
 
 end:
     if (s->fmt_ctx) {
-        if (hwaccel_def)
+        if (s->auto_hwaccel && hwaccel_def)
             hwaccel_def->uninit(s->dec_ctx);
         avcodec_free_context(&s->dec_ctx);
         avformat_close_input(&s->fmt_ctx);

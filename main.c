@@ -109,6 +109,7 @@ static int test_instant_gets(const char *filename, int avselect)
         sfxmp_set_option(s, "avselect", avselect);
         sfxmp_set_option(s, "skip", skip);
         sfxmp_set_option(s, "trim_duration", trim_duration);
+        sfxmp_set_option(s, "auto_hwaccel", 0);
 
         if (!s)
             return -1;
@@ -139,6 +140,7 @@ static int test_seeks(const char *filename, int avselect)
     sfxmp_set_option(s, "avselect", avselect);
     sfxmp_set_option(s, "skip", skip);
     sfxmp_set_option(s, "trim_duration", trim_duration);
+    sfxmp_set_option(s, "auto_hwaccel", 0);
 
     if (!s)
         return -1;
@@ -175,6 +177,7 @@ static int test_full_run(const char *filename, int refresh_rate,
     sfxmp_set_option(s, "avselect", avselect);
     sfxmp_set_option(s, "skip", skip);
     sfxmp_set_option(s, "trim_duration", trim_duration);
+    sfxmp_set_option(s, "auto_hwaccel", 0);
 
     if (!s)
         return -1;
@@ -229,6 +232,8 @@ static int simple_pass_through(const char *filename)
 {
     int i, ret = 0;
     struct sfxmp_ctx *s = sfxmp_create(filename);
+
+    sfxmp_set_option(s, "auto_hwaccel", 0);
 
     for (i = 0; i < 10; i++) {
         const double t = i / 30.;

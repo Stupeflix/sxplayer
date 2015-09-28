@@ -81,6 +81,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
  *   filters                  string    custom user filters (software decoding only)
  *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only)
  *   autorotate               integer   automatically insert rotation filters (video software decoding only)
+ *   auto_hwaccel             integer   attempt to enable hardware acceleration
  */
 int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
 
