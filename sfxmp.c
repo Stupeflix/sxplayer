@@ -46,8 +46,8 @@ struct sfxmp_ctx {
     int avselect;                           // select audio or video
     double skip;                            // see public header
     double trim_duration;                   // see public header
-    int max_nb_frames;                      // maximum number of frames in the queue
     double dist_time_seek_trigger;          // distance time triggering a seek
+    int max_nb_frames;                      // maximum number of frames in the queue
     char *filters;                          // user filter graph string
     int sw_pix_fmt;                         // sx pixel format to use for software decoding
     int autorotate;                         // switch for automatically rotate in software decoding
