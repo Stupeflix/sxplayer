@@ -85,13 +85,24 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
  */
 int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
 
-/* Get the frame at an absolute time. The returned frame can be NULL if
- * unchanged from last call. The returned frame needs to be released using
- * sfxmp_release_frame(). */
+/**
+ * Get the frame at an absolute time.
+ *
+ * The returned frame can be NULL if unchanged from last call.
+ *
+ * The returned frame needs to be released using sfxmp_release_frame().
+ *
+ * A negative t value means prefetching: it starts the decoding thread and
+ * returns. Note that the function always returns immediately (it doesn't wait
+ * for a frame to be decoded) with a NULL.
+ */
 struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
 
-/* Get the next frame. The returned frame needs to be released using
- * sfxmp_release_frame(). */
+/**
+ * Get the next frame.
+ *
+ * The returned frame needs to be released using sfxmp_release_frame().
+ */
 struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s);
 
 /* Enable or disable the droping of non reference frames */
