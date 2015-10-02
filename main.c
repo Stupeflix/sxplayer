@@ -1,4 +1,5 @@
 #include <libavutil/common.h>
+#include <libavutil/time.h>
 #include <float.h> // for DBL_MIN
 
 #include "sfxmp.h"
