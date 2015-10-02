@@ -3,3 +3,4 @@ libsfxmp.a
 libsfxmp.pc
 libsfxmp.so
 sfxmp
+sfxmp.hpp
