@@ -50,7 +50,7 @@ enum sfxmp_pixel_format {
 };
 
 struct sfxmp_frame {
-    uint8_t *data;      // native RGBA/ABGR plane
+    uint8_t *data;      // frame data in RGBA, BGRA, ... according to pix_fmt
     double ts;          // video timestamp
     int linesize;       // linesize in bytes (includes padding)
     int width;          // frame width in pixel
