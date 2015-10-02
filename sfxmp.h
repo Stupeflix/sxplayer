@@ -90,6 +90,10 @@ int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
  * sfxmp_release_frame(). */
 struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
 
+/* Get the next frame. The returned frame needs to be released using
+ * sfxmp_release_frame(). */
+struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s);
+
 /* Enable or disable the droping of non reference frames */
 int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop);
 

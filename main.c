@@ -230,22 +230,21 @@ static int run_tests(const char *filename, int avselect)
 
 static int simple_pass_through(const char *filename)
 {
-    int i, ret = 0;
+    int i = 0, ret = 0;
     struct sfxmp_ctx *s = sfxmp_create(filename);
 
     sfxmp_set_option(s, "auto_hwaccel", 0);
 
-    for (i = 0; i < 10; i++) {
-        const double t = i / 30.;
-        struct sfxmp_frame *frame = sfxmp_get_frame(s, t);
+    for (;;) {
+        const double t = av_gettime();
+        struct sfxmp_frame *frame = sfxmp_get_next_frame(s);
+        const double diff = (av_gettime() - t) / 1000000.;
 
-        if (frame) {
-            printf("frame @ %f / data:%p ts:%f %dx%d lz:%d sfxpixfmt:%d\n",
-                   t, frame->data, frame->ts, frame->width, frame->height,
-                   frame->linesize, frame->pix_fmt);
-        } else {
-            printf("frame @ %f / null\n", t);
-        }
+        if (!frame)
+            break;
+        printf("[%f] frame #%d / data:%p ts:%f %dx%d lz:%d sfxpixfmt:%d\n",
+               diff, i++, frame->data, frame->ts, frame->width, frame->height,
+               frame->linesize, frame->pix_fmt);
 
         sfxmp_release_frame(frame);
     }

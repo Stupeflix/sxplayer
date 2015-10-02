@@ -1223,9 +1223,12 @@ int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop)
     return 0;
 }
 
-struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
+static inline struct sfxmp_frame *get_frame(struct sfxmp_ctx *s, double t, int force_next_frame)
 {
-    DBG("main", " >>> get frame %s for t=%f\n", s->filename, t);
+    if (force_next_frame)
+        DBG("main", " >>> get next frame from %s\n", s->filename);
+    else
+        DBG("main", " >>> get frame from %s for t=%f\n", s->filename, t);
 
     if (!s->context_configured)
         configure_context(s);
@@ -1269,6 +1272,14 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
             // anything
             pthread_mutex_unlock(&s->queue_lock);
             return ret_frame(s, NULL);
+        }
+
+        if (force_next_frame) {
+            struct sfxmp_frame *ret = ret_frame(s, &s->frames[0]);
+            consume_queue(s, 1);
+            pthread_mutex_unlock(&s->queue_lock);
+            pthread_cond_signal(&s->queue_reduce);
+            return ret;
         }
 
         diff = get_frame_dist(s, 0, t);
@@ -1320,4 +1331,14 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
             }
         }
     }
+}
+
+struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
+{
+    return get_frame(s, t, 0);
+}
+
+struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s)
+{
+    return get_frame(s, 0, 1);
 }
