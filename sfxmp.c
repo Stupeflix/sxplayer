@@ -64,7 +64,7 @@ struct sfxmp_ctx {
     pthread_cond_t queue_grow;              // notify a growing queue (MUST be ONLY signaled from decoding thread)
 
     /* fields that MUST be protected by queue_lock */
-    int queue_terminated;                   // 0 if queue is not going to be filled anymore (because thread is dead), 1 otherwise
+    int queue_terminated;                   // >=1 if thread decoding thread is dead, 2 if a decode has terminated, 0 if decoding thread is not started
     struct Frame *frames;                   // queue of the decoded (and filtered) frames
     int nb_frames;                          // total number of frames in the queue
     double request_seek;                    // field used by the main thread to request a seek to the decoding thread
@@ -1092,7 +1092,7 @@ end:
     }
 
     pthread_mutex_lock(&s->queue_lock);
-    s->queue_terminated = 1;
+    s->queue_terminated = 2;
     pthread_mutex_unlock(&s->queue_lock);
     pthread_cond_signal(&s->queue_grow);
     DBG("decoder", "decoding thread ends\n");
@@ -1241,6 +1241,8 @@ static inline struct sfxmp_frame *get_frame(struct sfxmp_ctx *s, double t, int f
         DBG("main", "mutex acquired\n");
 
         if (s->queue_terminated && !s->nb_frames) {
+            const int ended = s->queue_terminated == 2;
+
             DBG("main", "spawn decoding thread\n");
 
             s->queue_terminated = 0;
@@ -1251,6 +1253,11 @@ static inline struct sfxmp_frame *get_frame(struct sfxmp_ctx *s, double t, int f
             if (pthread_create(&s->dec_thread, NULL, decoder_thread, s)) {
                 fprintf(stderr, "Unable to spawn decoding thread\n");
                 s->queue_terminated = 1;
+                pthread_mutex_unlock(&s->queue_lock);
+                return ret_frame(s, NULL);
+            }
+
+            if (force_next_frame && ended) {
                 pthread_mutex_unlock(&s->queue_lock);
                 return ret_frame(s, NULL);
             }
