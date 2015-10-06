@@ -1,3 +1,4 @@
+#include <libavutil/avassert.h>
 #include <libavutil/common.h>
 #include <libavutil/time.h>
 #include <float.h> // for DBL_MIN
@@ -248,6 +249,15 @@ static int simple_pass_through(const char *filename)
                frame->linesize, frame->pix_fmt);
 
         sfxmp_release_frame(frame);
+
+        /* test code to make sure a NULL is returned even when a decoding
+         * thread is restarted */
+#if 0
+        if (i % 4096 == 0) {
+            usleep(1000000);
+            av_assert0(!sfxmp_get_next_frame(s));
+        }
+#endif
     }
 
     sfxmp_free(&s);
