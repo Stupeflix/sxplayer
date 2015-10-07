@@ -5,13 +5,10 @@
 
 #if 1
 #define REQUESTED_PIX_FMT kCVPixelFormatType_32BGRA
-#define FFMPEG_PIX_FMT    AV_PIX_FMT_BGRA
 #elif 0
 #define REQUESTED_PIX_FMT kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-#define FFMPEG_PIX_FMT    AV_PIX_FMT_NV12
 #else
 #define REQUESTED_PIX_FMT kCVPixelFormatType_32RGBA
-#define FFMPEG_PIX_FMT    AV_PIX_FMT_RGBA
 #endif
 
 static void vt_uninit(AVCodecContext *avctx)
