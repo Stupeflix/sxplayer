@@ -95,6 +95,10 @@ int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
  * A negative t value means prefetching: it starts the decoding thread and
  * returns. Note that the function always returns immediately (it doesn't wait
  * for a frame to be decoded) with a NULL.
+ *
+ * If you are working on a player (which typically needs seeking and has a
+ * refresh rate architecture), this is the function you are probably interested
+ * in.
  */
 struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
 
@@ -102,6 +106,11 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
  * Get the next frame.
  *
  * The returned frame needs to be released using sfxmp_release_frame().
+ *
+ * If you want to process every single frame of the media regardless of a
+ * "refresh rate" or seeking needs, this is the function you are probably
+ * interested in. You can still use this function in combination with
+ * sfxmp_get_frame() in case you need seeking.
  */
 struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s);
 
