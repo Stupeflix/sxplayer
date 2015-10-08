@@ -46,7 +46,7 @@ enum sfxmp_media_selection {
 enum sfxmp_pixel_format {
     SFXMP_PIXFMT_RGBA,
     SFXMP_PIXFMT_BGRA,
-    SFXMP_PIXFMT_VT,
+    SFXMP_PIXFMT_VT,        // VideoToolBox pixel format (HW accelerated, frame->data is a CVPixelBufferRef)
 };
 
 struct sfxmp_frame {
