@@ -107,6 +107,9 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
  *
  * The returned frame needs to be released using sfxmp_release_frame().
  *
+ * At EOF sfxmp_get_next_frame() will return NULL. You can call
+ * sfxmp_get_next_frame() to restart the decoding from the beginning.
+ *
  * If you want to process every single frame of the media regardless of a
  * "refresh rate" or seeking needs, this is the function you are probably
  * interested in. You can still use this function in combination with
