@@ -835,10 +835,6 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
             av_get_pix_fmt_name(s->filtered_frame->format),
             av_ts2str(get_best_effort_ts(s->filtered_frame)), s->filtered_frame->pts);
 
-        /* if audio, get the audio texture from the filtered audio frame */
-        if (s->media_type == AVMEDIA_TYPE_AUDIO)
-            audio_frame_to_sound_texture(s, s->audio_texture_frame, s->filtered_frame);
-
         /* we have a frame, wait for the queue to be ready for queuing it */
         DBG("decoder", "locking\n");
         pthread_mutex_lock(&s->queue_lock);
@@ -959,6 +955,7 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
         if (s->media_type == AVMEDIA_TYPE_VIDEO) {
             av_frame_move_ref(f->frame, s->filtered_frame);
         } else {
+            audio_frame_to_sound_texture(s, s->audio_texture_frame, s->filtered_frame);
             av_frame_ref(f->frame, s->audio_texture_frame);
             av_frame_unref(s->filtered_frame);
         }
