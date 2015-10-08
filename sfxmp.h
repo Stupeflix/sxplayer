@@ -76,8 +76,8 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
  *   avselect                 int       select audio or video stream (see SFXMP_SELECT_*)
  *   skip                     double    time to skip in the specified input
  *   trim_duration            double    duration of the video (starting at skip)
- *   dist_time_seek_trigger   double    how much time forward will trigger a seek, can be negative for default
- *   max_nb_frames            integer   maximum number of frames in the queue, can be negative for default
+ *   dist_time_seek_trigger   double    how much time forward will trigger a seek
+ *   max_nb_frames            integer   maximum number of frames in the queue
  *   filters                  string    custom user filters (software decoding only)
  *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only)
  *   autorotate               integer   automatically insert rotation filters (video software decoding only)
