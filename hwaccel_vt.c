@@ -33,12 +33,11 @@ static int vt_decoder_init(AVCodecContext *avctx)
     int ret;
     struct hwaccel_ctx *s = avctx->opaque;
 
-    s->internal_ctx = NULL;
-
     av_videotoolbox_default_free(avctx);
 
     AVVideotoolboxContext *vtctx = av_videotoolbox_alloc_context();
     vtctx->cv_pix_fmt_type = REQUESTED_PIX_FMT;
+    s->internal_ctx = vtctx;
     ret = av_videotoolbox_default_init2(avctx, vtctx);
     if (ret < 0)
         goto err;
