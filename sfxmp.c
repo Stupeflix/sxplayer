@@ -664,6 +664,8 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
             s->filters = update_filters_str(s->filters, "transpose=cclock");
     }
 
+    av_dump_format(s->fmt_ctx, 0, infile, 0);
+
     return 0;
 }
 
