@@ -79,7 +79,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
  *   dist_time_seek_trigger   double    how much time forward will trigger a seek
  *   max_nb_frames            integer   maximum number of frames in the queue
  *   filters                  string    custom user filters (software decoding only)
- *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only)
+ *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only), can be any SFXMP_PIXFMT_* not HW accelerated
  *   autorotate               integer   automatically insert rotation filters (video software decoding only)
  *   auto_hwaccel             integer   attempt to enable hardware acceleration
  */
