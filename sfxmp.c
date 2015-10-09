@@ -378,14 +378,15 @@ void sfxmp_free(struct sfxmp_ctx **ss)
         return;
 
     if (s->context_configured) {
+        pthread_mutex_lock(&s->queue_lock);
         if (!s->queue_terminated) {
             DBG("free", "queue is not terminated yet\n");
-            pthread_mutex_lock(&s->queue_lock);
             s->queue_terminated = 1; // notify decoding thread must die
             pthread_mutex_unlock(&s->queue_lock);
             pthread_cond_signal(&s->queue_reduce); // wake up decoding thread
-
             pthread_join(s->dec_thread, NULL);
+        } else {
+            pthread_mutex_unlock(&s->queue_lock);
         }
         pthread_cond_destroy(&s->queue_reduce);
         pthread_cond_destroy(&s->queue_grow);
