@@ -77,6 +77,7 @@ struct sfxmp_ctx {
     /* fields specific to decoding thread */
     AVFrame *decoded_frame;                 // decoded frame
     AVFrame *filtered_frame;                // filtered version of decoded_frame
+    struct Frame backup_frame;              // backup of the last frame decoded in case the decoding thread is skipping frames
     AVFrame *audio_texture_frame;           // wave/fft texture in case of audio
     AVFormatContext *fmt_ctx;               // demuxing context
     AVCodecContext  *dec_ctx;               // decoder context
@@ -379,7 +380,7 @@ void sfxmp_free(struct sfxmp_ctx **ss)
 
     if (s->context_configured) {
         pthread_mutex_lock(&s->queue_lock);
-        if (!s->queue_terminated) {
+        if (s->queue_terminated != 1) {
             DBG("free", "queue is not terminated yet\n");
             s->queue_terminated = 1; // notify decoding thread must die
             pthread_mutex_unlock(&s->queue_lock);
@@ -787,6 +788,23 @@ static int64_t get_best_effort_ts(const AVFrame *f)
     return t != AV_NOPTS_VALUE ? t : f->pts;
 }
 
+static int add_frame(struct sfxmp_ctx *s, AVFrame *frame, double rescaled_ts)
+{
+    struct Frame *f;
+
+    f = &s->frames[s->nb_frames++];
+    DBG("decoder", "queuing frame %2d/%d @ ts=%f\n", s->nb_frames, s->max_nb_frames, rescaled_ts);
+    if (s->media_type == AVMEDIA_TYPE_VIDEO) {
+        av_frame_move_ref(f->frame, frame);
+    } else {
+        audio_frame_to_sound_texture(s, s->audio_texture_frame, frame);
+        av_frame_ref(f->frame, s->audio_texture_frame);
+        av_frame_unref(frame);
+    }
+    f->ts = rescaled_ts;
+    return 0;
+}
+
 /**
  * Filter and queue frame(s)
  */
@@ -813,7 +831,6 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
     }
 
     while (!done) {
-        struct Frame *f;
         int64_t ts;
         double rescaled_ts;
 
@@ -931,10 +948,14 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
                 DBG("decoder", "Request seek (%f) not reached yet: %f<%f, skip frame\n",
                     s->request_seek, rescaled_ts, requested_media_time);
                 pthread_mutex_unlock(&s->queue_lock);
-                av_frame_unref(s->filtered_frame);
+                s->backup_frame.ts = rescaled_ts;
+                av_frame_unref(s->backup_frame.frame);
+                av_frame_move_ref(s->backup_frame.frame, s->filtered_frame);
                 continue;
             } else {
                 DBG("decoder", "Request seek reached %f >= %f\n", rescaled_ts, requested_media_time);
+
+                av_frame_unref(s->backup_frame.frame);
 
                 s->can_seek_again = 1;
                 s->request_seek   = -1;
@@ -952,16 +973,7 @@ static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
         }
 
         /* finally queue the frame */
-        f = &s->frames[s->nb_frames++];
-        if (s->media_type == AVMEDIA_TYPE_VIDEO) {
-            av_frame_move_ref(f->frame, s->filtered_frame);
-        } else {
-            audio_frame_to_sound_texture(s, s->audio_texture_frame, s->filtered_frame);
-            av_frame_ref(f->frame, s->audio_texture_frame);
-            av_frame_unref(s->filtered_frame);
-        }
-        f->ts = rescaled_ts;
-        DBG("decoder", "queuing frame %2d/%d @ ts=%f and unlock mutex\n", s->nb_frames, s->max_nb_frames, f->ts);
+        add_frame(s, s->filtered_frame, rescaled_ts);
 
         /* frame is completely queued, release lock */
         pthread_mutex_unlock(&s->queue_lock);
@@ -986,7 +998,8 @@ static void *decoder_thread(void *arg)
 
     s->filtered_frame = av_frame_alloc();
     s->decoded_frame  = av_frame_alloc();
-    if (!s->decoded_frame || !s->filtered_frame)
+    s->backup_frame.frame = av_frame_alloc();
+    if (!s->decoded_frame || !s->filtered_frame || !s->backup_frame.frame)
         goto end;
 
     if (s->media_type == AVMEDIA_TYPE_AUDIO) {
@@ -1070,6 +1083,19 @@ static void *decoder_thread(void *arg)
     }
 
 end:
+
+    if (s->request_seek != -1 && s->backup_frame.frame->buf[0]) {
+        pthread_mutex_lock(&s->queue_lock);
+        while (s->nb_frames == s->max_nb_frames && !s->queue_terminated) {
+            DBG("decoder", "waiting reduce before queuing the last backuped frame\n");
+            pthread_cond_wait(&s->queue_reduce, &s->queue_lock);
+        }
+        add_frame(s, s->backup_frame.frame, s->backup_frame.ts);
+        av_frame_unref(s->backup_frame.frame);
+        pthread_mutex_unlock(&s->queue_lock);
+        pthread_cond_signal(&s->queue_grow);
+    }
+
     if (s->fmt_ctx) {
         if (s->auto_hwaccel && hwaccel_def)
             hwaccel_def->uninit(s->dec_ctx);
@@ -1078,6 +1104,7 @@ end:
     }
     av_frame_free(&s->decoded_frame);
     av_frame_free(&s->filtered_frame);
+    av_frame_free(&s->backup_frame.frame);
     avfilter_graph_free(&s->filter_graph);
 
     if (s->media_type == AVMEDIA_TYPE_AUDIO) {
@@ -1250,6 +1277,8 @@ static inline struct sfxmp_frame *get_frame(struct sfxmp_ctx *s, double t, int f
             s->can_seek_again   = 1;
             s->request_drop     = -1;
 
+            if (ended)
+                pthread_join(s->dec_thread, NULL);
             if (pthread_create(&s->dec_thread, NULL, decoder_thread, s)) {
                 fprintf(stderr, "Unable to spawn decoding thread\n");
                 s->queue_terminated = 1;
