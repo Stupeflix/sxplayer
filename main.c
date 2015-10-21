@@ -242,8 +242,10 @@ static int simple_pass_through(const char *filename)
         struct sfxmp_frame *frame = sfxmp_get_next_frame(s);
         const double diff = (av_gettime() - t) / 1000000.;
 
-        if (!frame)
+        if (!frame) {
+            printf("null frame\n");
             break;
+        }
         printf("[%f] frame #%d / data:%p ts:%f %dx%d lz:%d sfxpixfmt:%d\n",
                diff, i++, frame->data, frame->ts, frame->width, frame->height,
                frame->linesize, frame->pix_fmt);
