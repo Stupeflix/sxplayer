@@ -14,6 +14,7 @@
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/timestamp.h>
+#include <libavutil/motion_vector.h>
 //#include <libswresample/swresample.h>
 //#include <libswscale/swscale.h>
 
@@ -52,6 +53,7 @@ struct sfxmp_ctx {
     int sw_pix_fmt;                         // sx pixel format to use for software decoding
     int autorotate;                         // switch for automatically rotate in software decoding
     int auto_hwaccel;                       // attempt to enable hardware acceleration
+    int export_mvs;                         // export motion vectors into frame->mvs
 
     /* misc general fields */
     enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
@@ -113,6 +115,7 @@ static const AVOption sfxmp_options[] = {
     { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SFXMP_PIXFMT_BGRA},  0, 1 },
     { "autorotate",             NULL, OFFSET(autorotate),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { "auto_hwaccel",           NULL, OFFSET(auto_hwaccel),           AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
+    { "export_mvs",             NULL, OFFSET(export_mvs),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { NULL }
 };
 
@@ -288,10 +291,10 @@ static int configure_context(struct sfxmp_ctx *s)
 
     s->queue_terminated = 1;
 
-    if (s->auto_hwaccel && (s->filters || s->autorotate)) {
-        fprintf(stderr, "Filters ('%s') or autorotate (%d) settings are set but hwaccel "
-                "is enabled, disabling auto_hwaccel so these options are honored\n",
-                s->filters, s->autorotate);
+    if (s->auto_hwaccel && (s->filters || s->autorotate || s->export_mvs)) {
+        fprintf(stderr, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
+                "are set but hwaccel is enabled, disabling auto_hwaccel so these "
+                "options are honored\n", s->filters, s->autorotate, s->export_mvs);
         s->auto_hwaccel = 0;
     }
 
@@ -620,6 +623,10 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
         return AVERROR(ENOMEM);
     avcodec_copy_context(s->dec_ctx, s->stream->codec);
     av_opt_set_int(s->dec_ctx, "refcounted_frames", 1, 0);
+
+    if (s->export_mvs)
+        av_opt_set(s->dec_ctx, "flags2", "+export_mvs", 0);
+
     //av_opt_set(s->dec_ctx, "skip_frame", "noref", 0);
 
     s->hwaccel.out_pix_fmt = AV_PIX_FMT_NONE;
@@ -1133,6 +1140,7 @@ static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *fr
 {
     struct sfxmp_frame *ret;
     AVFrame *cloned_frame;
+    AVFrameSideData *sd;
 
     if (!frame) {
         DBG("main", " <<< return nothing\n");
@@ -1163,6 +1171,18 @@ static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *fr
     }
 
     s->last_pushed_frame_ts = frame->ts;
+
+    sd = av_frame_get_side_data(frame->frame, AV_FRAME_DATA_MOTION_VECTORS);
+    if (sd) {
+        ret->mvs = av_memdup(sd->data, sd->size);
+        if (!ret->mvs) {
+            fprintf(stderr, "Unable to memdup motion vectors side data\n");
+            av_free(ret);
+            return NULL;
+        }
+        ret->nb_mvs = sd->size / sizeof(AVMotionVector);
+        DBG("main", "export %d motion vectors\n", ret->nb_mvs);
+    }
 
     ret->internal = cloned_frame;
     ret->data     = cloned_frame->data[cloned_frame->format == AV_PIX_FMT_VIDEOTOOLBOX ? 3 : 0];
@@ -1234,6 +1254,7 @@ void sfxmp_release_frame(struct sfxmp_frame *frame)
     if (frame) {
         AVFrame *avframe = frame->internal;
         av_frame_free(&avframe);
+        av_freep(&frame->mvs);
         av_free(frame);
     }
 }

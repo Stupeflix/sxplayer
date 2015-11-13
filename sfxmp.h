@@ -56,6 +56,8 @@ struct sfxmp_frame {
     int width;          // frame width in pixel
     int height;         // frame height in pixel
     int pix_fmt;        // sfxmp_pixel_format
+    void *mvs;          // motions vectors (AVMotionVector*)
+    int nb_mvs;         // number of motions vectors
     void *internal;     // sfxmp internal frame context frame, do not alter
 };
 
@@ -82,6 +84,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
  *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only), can be any SFXMP_PIXFMT_* not HW accelerated
  *   autorotate               integer   automatically insert rotation filters (video software decoding only)
  *   auto_hwaccel             integer   attempt to enable hardware acceleration
+ *   export_mvs               integer   export motion vectors into frame->mvs
  */
 int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
 
