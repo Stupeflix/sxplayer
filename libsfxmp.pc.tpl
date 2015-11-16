@@ -5,7 +5,7 @@ libdir=${exec_prefix}/lib
 
 Name: sfxmp
 Description: Stupeflix Media Player library
-Version: 5.6.0
+Version: 5.6.1
 Cflags: -I${includedir}
 Libs: -L${libdir} -lsfxmp DEP_LIBS
 Libs.private: DEP_PRIVATE_LIBS

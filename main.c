@@ -1,3 +1,23 @@
+/*
+ * This file is part of sfxmp.
+ *
+ * Copyright (c) 2015 Stupeflix
+ *
+ * sfxmp is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * sfxmp is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with sfxmp; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
 #include <libavutil/avassert.h>
 #include <libavutil/common.h>
 #include <libavutil/time.h>
@@ -198,7 +218,7 @@ static int test_full_run(const char *filename, int refresh_rate,
     for (i = 0; i < nb_calls; i++) {
         const double time = i / (double)refresh_rate;
 
-        printf("TEST %d/%d\n", i + 1, nb_calls);
+        printf("TEST %d/%d with time=%f\n", i + 1, nb_calls, time);
 
         ret = test_frame(s, time, &prev_frame_id, &prev_time,
                          skip, trim_duration,
@@ -281,6 +301,19 @@ static int test_duration(const char *filename)
     return 0;
 }
 
+static int run_notavail_file_test(void)
+{
+    struct sfxmp_ctx *s = sfxmp_create("/i/do/not/exist");
+
+    if (!s)
+        return -1;
+    sfxmp_release_frame(sfxmp_get_frame(s, -1));
+    sfxmp_release_frame(sfxmp_get_frame(s, 1.0));
+    sfxmp_release_frame(sfxmp_get_frame(s, 3.0));
+    sfxmp_free(&s);
+    return 0;
+}
+
 int main(int ac, char **av)
 {
     if (ac != 2 && ac != 3) {
@@ -293,6 +326,9 @@ int main(int ac, char **av)
 
     if (ac == 3 && !strcmp(av[1], "-notest"))
         return simple_pass_through(av[2]);
+
+    if (run_notavail_file_test() < 0)
+        return -1;
 
     if (run_tests(av[1], SFXMP_SELECT_VIDEO) < 0 ||
         run_tests(av[1], SFXMP_SELECT_AUDIO) < 0)

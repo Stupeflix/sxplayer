@@ -1,7 +1,7 @@
 NAME = sfxmp
 
-PROJECT_OBJS = log.o
-DARWIN_OBJS  = hwaccel_vt.o
+PROJECT_OBJS = log.o async.o decoders.o decoder_ffmpeg.o
+DARWIN_OBJS  = decoder_vt.o
 ANDROID_OBJS =
 
 PROJECT_PKG_CONFIG_LIBS = libavformat libavfilter libavcodec libavutil

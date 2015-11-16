@@ -1,0 +1,20 @@
+-> better behaviour when VT init succeed but decode fails
+-> rename to sxplayer
+  `-> upstream on github
+-> restore drop ref feature
+  `-> new API?
+-> logging cleanup
+  `-> use av_log instead of printf/fprintf
+  `-> allow user callback settings
+-> add VT options:
+  `-> widht/height rescaler
+  `-> force vs enable hw accel so it's using VT even for sw decoding or not
+-> VT
+  `-> check if the queue limit is still necessary
+  `-> QuickdrawPicture weird thing needed?
+  `-> kCFAllocatorDefault == NULL?
+  `-> play with advanced flags?
+-> make a wrapper pthread function to abort in case of error
+-> add dist_seek_trigger option similar to dist_time_seek_trigger but with
+   approximate number of frames
+-> review doxy, comments, doc...

@@ -1,3 +1,23 @@
+/*
+ * This file is part of sfxmp.
+ *
+ * Copyright (c) 2015 Stupeflix
+ *
+ * sfxmp is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * sfxmp is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with sfxmp; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
 #include <stdint.h>
 #include <pthread.h>
 #include <float.h> /* for DBL_MAX */
@@ -19,83 +39,18 @@
 //#include <libswscale/swscale.h>
 
 #include "sfxmp.h"
+#include "async.h"
 #include "internal.h"
 
-struct Frame {
-    AVFrame *frame;         // a frame the user might want
-    double ts;              // rescaled timestamp
-};
+extern const struct decoder decoder_ffmpeg;
+static const struct decoder *decoder_def_software = &decoder_ffmpeg;
 
 #if __APPLE__
-extern const struct hwaccel hwaccel_vt;
-static const struct hwaccel *hwaccel_def = &hwaccel_vt;
+extern const struct decoder decoder_vt;
+static const struct decoder *decoder_def_hwaccel = &decoder_vt;
 #else
-static const struct hwaccel *hwaccel_def = NULL;
+static const struct decoder *decoder_def_hwaccel = NULL;
 #endif
-
-#define AUDIO_NBITS      10
-#define AUDIO_NBSAMPLES  (1<<(AUDIO_NBITS))
-#define AUDIO_NBCHANNELS 2
-
-struct sfxmp_ctx {
-    const AVClass *class;                   // necessary for the AVOption mechanism
-    char *filename;                         // input filename
-
-    int context_configured;
-
-    /* configurable options */
-    int avselect;                           // select audio or video
-    double skip;                            // see public header
-    double trim_duration;                   // see public header
-    double dist_time_seek_trigger;          // distance time triggering a seek
-    int max_nb_frames;                      // maximum number of frames in the queue
-    char *filters;                          // user filter graph string
-    int sw_pix_fmt;                         // sx pixel format to use for software decoding
-    int autorotate;                         // switch for automatically rotate in software decoding
-    int auto_hwaccel;                       // attempt to enable hardware acceleration
-    int export_mvs;                         // export motion vectors into frame->mvs
-    int pkt_skip_mod;                       // skip packet if module pkt_skip_mod (and not a key pkt)
-
-    /* misc general fields */
-    enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
-    const char *media_type_string;          // "audio" or "video" according to avselect
-
-    /* main vs demuxer/decoder thread negotiation */
-    pthread_t dec_thread;                   // decoding thread
-    pthread_mutex_t queue_lock;             // for any op related to the queue
-    pthread_cond_t queue_reduce;            // notify a reducing queue (MUST be ONLY signaled from main thread)
-    pthread_cond_t queue_grow;              // notify a growing queue (MUST be ONLY signaled from decoding thread)
-
-    /* fields that MUST be protected by queue_lock */
-    int queue_terminated;                   // >=1 if thread decoding thread is dead, 2 if a decode has terminated, 0 if decoding thread is not started
-    struct Frame *frames;                   // queue of the decoded (and filtered) frames
-    int nb_frames;                          // total number of frames in the queue
-    double request_seek;                    // field used by the main thread to request a seek to the decoding thread
-    int can_seek_again;                     // field used to avoid seeking again until the requested time is reached
-    int request_drop;                       // field used by the main thread to request a change in the frame dropping mechanism
-    int file_opened;                        // is input file already opened?
-
-    /* fields specific to main thread */
-    double last_pushed_frame_ts;            // ts value of the latest pushed frame (it acts as a UID)
-
-    /* fields specific to decoding thread */
-    AVFrame *decoded_frame;                 // decoded frame
-    AVFrame *filtered_frame;                // filtered version of decoded_frame
-    struct Frame backup_frame;              // backup of the last frame decoded in case the decoding thread is skipping frames
-    AVFrame *audio_texture_frame;           // wave/fft texture in case of audio
-    AVFormatContext *fmt_ctx;               // demuxing context
-    AVCodecContext  *dec_ctx;               // decoder context
-    AVStream *stream;                       // selected stream
-    int stream_idx;                         // selected stream index
-    AVFilterGraph *filter_graph;            // libavfilter graph
-    AVFilterContext *buffersink_ctx;        // sink of the graph (from where we pull)
-    AVFilterContext *buffersrc_ctx;         // source of the graph (where we push)
-    float *window_func_lut;                 // audio window function lookup table
-    RDFTContext *rdft;                      // real discrete fourier transform context
-    FFTSample *rdft_data[AUDIO_NBCHANNELS]; // real discrete fourier transform data for each channel
-    struct hwaccel_ctx hwaccel;             // hw accel context which will be accessible through AVCodecContext.opaque
-    enum AVPixelFormat last_frame_format;   // format of the last frame decoded
-};
 
 static const struct {
     enum AVPixelFormat ff;
@@ -111,8 +66,9 @@ static const AVOption sfxmp_options[] = {
     { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SFXMP_SELECT_VIDEO}, 0, NB_SFXMP_MEDIA_SELECTION-1 },
     { "skip",                   NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
     { "trim_duration",          NULL, OFFSET(trim_duration),          AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
-    { "dist_time_seek_trigger", NULL, OFFSET(dist_time_seek_trigger), AV_OPT_TYPE_DOUBLE,    {.dbl=3.0},    -1, DBL_MAX },
-    { "max_nb_frames",          NULL, OFFSET(max_nb_frames),          AV_OPT_TYPE_INT,       {.i64=5},       2, INT_MAX },
+    { "dist_time_seek_trigger", NULL, OFFSET(dist_time_seek_trigger), AV_OPT_TYPE_DOUBLE,    {.dbl=1.5},    -1, DBL_MAX },
+    { "max_nb_packets",         NULL, OFFSET(max_nb_packets),         AV_OPT_TYPE_INT,       {.i64=5},       1, 100 },
+    { "max_nb_frames",          NULL, OFFSET(max_nb_frames),          AV_OPT_TYPE_INT,       {.i64=3},       1, 100 },
     { "filters",                NULL, OFFSET(filters),                AV_OPT_TYPE_STRING,    {.str=NULL},    0,       0 },
     { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SFXMP_PIXFMT_BGRA},  0, 1 },
     { "autorotate",             NULL, OFFSET(autorotate),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
@@ -184,42 +140,6 @@ static enum sfxmp_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
     return -1;
 }
 
-static enum AVPixelFormat hwaccel_get_format(AVCodecContext *avctx, const enum AVPixelFormat *pix_fmts)
-{
-    int ret;
-    struct hwaccel_ctx *hwaccel = avctx->opaque;
-    const enum AVPixelFormat *p;
-
-    DBG("hwaccel", "available pixel formats:\n");
-    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++)
-        DBG("hwaccel", "  %s\n", av_get_pix_fmt_name(*p));
-
-    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
-        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(*p);
-
-        if (!(desc->flags & AV_PIX_FMT_FLAG_HWACCEL))
-            break;
-
-        if (*p != hwaccel_def->pix_fmt)
-            continue;
-
-        if (hwaccel->out_pix_fmt != *p) {
-            DBG("hwaccel", "active pixel format changed (%s -> %s), re-init hwaccel\n",
-                av_get_pix_fmt_name(hwaccel->out_pix_fmt), av_get_pix_fmt_name(*p));
-
-            ret = hwaccel_def->decoder_init(avctx);
-            if (ret < 0) {
-                fprintf(stderr, "Failed to initialize hwaccel\n");
-                continue;
-            }
-            hwaccel->out_pix_fmt = *p;
-        }
-        break;
-    }
-
-    return *p;
-}
-
 static AVFrame *get_audio_frame(void)
 {
     AVFrame *frame = av_frame_alloc();
@@ -247,73 +167,39 @@ static AVFrame *get_audio_frame(void)
 
 static void free_context(struct sfxmp_ctx *s)
 {
-    int i;
-
     if (!s)
         return;
-
-    if (s->frames) {
-        for (i = 0; i < s->max_nb_frames; i++)
-            av_frame_free(&s->frames[i].frame);
-        av_freep(&s->frames);
-    }
-
     av_freep(&s->filename);
     av_freep(&s);
 }
 
-static int configure_context(struct sfxmp_ctx *s)
+/* Destroy data allocated by configure_context() */
+static void free_temp_context_data(struct sfxmp_ctx *s)
 {
-    int i;
+    av_frame_free(&s->filtered_frame);
+    avfilter_graph_free(&s->filter_graph);
+    av_frame_free(&s->queued_frame);
+    av_frame_free(&s->cached_frame);
 
-    if (pix_fmts_sx2ff(s->sw_pix_fmt) == AV_PIX_FMT_NONE) {
-        fprintf(stderr, "Invalid software decoding pixel format specified\n");
-        return AVERROR(EINVAL);
+    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
+        av_frame_free(&s->audio_texture_frame);
+        av_frame_free(&s->tmp_audio_frame);
+        av_freep(&s->window_func_lut);
+        av_freep(&s->rdft_data[0]);
+        av_freep(&s->rdft_data[1]);
+        if (s->rdft) {
+            av_rdft_end(s->rdft);
+            s->rdft = NULL;
+        }
     }
 
-    switch (s->avselect) {
-    case SFXMP_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
-    case SFXMP_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
-    default:
-        av_assert0(0);
+    if (s->fmt_ctx) {
+        decoder_free(&s->dec_ctx);
+        avformat_close_input(&s->fmt_ctx);
     }
+    async_free(&s->actx);
 
-    s->media_type_string = av_get_media_type_string(s->media_type);
-    av_assert0(s->media_type_string);
-
-    s->frames = av_malloc_array(s->max_nb_frames, sizeof(*s->frames));
-    if (!s->frames)
-        return AVERROR(ENOMEM);
-    for (i = 0; i < s->max_nb_frames; i++) {
-        s->frames[i].frame = av_frame_alloc();
-        if (!s->frames[i].frame)
-            return AVERROR(ENOMEM);
-    }
-
-    s->last_pushed_frame_ts = DBL_MIN;
-
-    s->queue_terminated = 1;
-
-    if (s->auto_hwaccel && (s->filters || s->autorotate || s->export_mvs)) {
-        fprintf(stderr, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
-                "are set but hwaccel is enabled, disabling auto_hwaccel so these "
-                "options are honored\n", s->filters, s->autorotate, s->export_mvs);
-        s->auto_hwaccel = 0;
-    }
-
-    pthread_mutex_init(&s->queue_lock, NULL);
-    pthread_cond_init(&s->queue_reduce, NULL);
-    pthread_cond_init(&s->queue_grow, NULL);
-
-    DBG("main", "filename:%s avselect:%s skip:%f trim_duration:%f "
-        "dist_time_seek_trigger:%f max_nb_frames:%d filters:'%s' (%p)\n",
-        s->filename, s->media_type_string, s->skip, s->trim_duration,
-        s->dist_time_seek_trigger, s->max_nb_frames, s->filters ? s->filters : "",
-        s);
-
-    s->context_configured = 1;
-
-    return 0;
+    s->context_configured = 0;
 }
 
 struct sfxmp_ctx *sfxmp_create(const char *filename)
@@ -345,8 +231,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename)
 
     av_register_all();
     avfilter_register_all();
-    av_log_set_level(AV_LOG_ERROR);
-    //av_log_set_level(AV_LOG_VERBOSE);
+    av_log_set_level(ENABLE_DBG ? AV_LOG_TRACE : AV_LOG_ERROR);
 
     s = av_mallocz(sizeof(*s));
     if (!s)
@@ -359,20 +244,58 @@ struct sfxmp_ctx *sfxmp_create(const char *filename)
     if (!s->filename)
         goto fail;
 
-    s->last_pushed_frame_ts = DBL_MIN;
-    s->queue_terminated = 1;
+    pthread_mutex_init(&s->lock, NULL);
+    pthread_cond_init(&s->cond, NULL);
 
-    pthread_mutex_init(&s->queue_lock, NULL);
-    pthread_cond_init(&s->queue_reduce, NULL);
-    pthread_cond_init(&s->queue_grow, NULL);
+    /* At least first_ts and last_pushed_frame_ts must be kept between full
+     * runs so we can not set this initialization in configure_context() */
+    s->first_ts = AV_NOPTS_VALUE;
+    s->last_pushed_frame_ts = AV_NOPTS_VALUE;
+    s->trim_duration64 = AV_NOPTS_VALUE;
 
     DBG("create", "filename:%s (%p)\n", filename, s);
 
+    av_assert0(!s->context_configured);
     return s;
 
 fail:
     free_context(s);
     return NULL;
+}
+
+/* If decoding thread is dying (EOF reached for example), wait for it to end
+ * and confirm dead state */
+static int join_dec_thread_if_dying(struct sfxmp_ctx *s)
+{
+    int ret;
+
+    pthread_mutex_lock(&s->lock);
+    if (s->thread_state == THREAD_STATE_DYING) {
+        DBG("main", "thread is dying: join\n");
+        pthread_mutex_unlock(&s->lock);
+
+        pthread_join(s->dec_thread, NULL);
+
+        pthread_mutex_lock(&s->lock);
+        s->thread_state = THREAD_STATE_NOTRUNNING;
+        free_temp_context_data(s);
+        ret = 2;
+    } else {
+        ret = s->thread_state == THREAD_STATE_NOTRUNNING;
+    }
+    pthread_mutex_unlock(&s->lock);
+    return ret;
+}
+
+static void shoot_running_decoding_thread(struct sfxmp_ctx *s)
+{
+    pthread_mutex_lock(&s->lock);
+    if (s->thread_state == THREAD_STATE_RUNNING) {
+        DBG("free", "decoding thread is running, *BANG*\n");
+        s->thread_state = THREAD_STATE_DYING;
+        pthread_cond_signal(&s->cond);
+    }
+    pthread_mutex_unlock(&s->lock);
 }
 
 void sfxmp_free(struct sfxmp_ctx **ss)
@@ -384,21 +307,11 @@ void sfxmp_free(struct sfxmp_ctx **ss)
     if (!s)
         return;
 
-    if (s->context_configured) {
-        pthread_mutex_lock(&s->queue_lock);
-        if (s->queue_terminated != 1) {
-            DBG("free", "queue is not terminated yet\n");
-            s->queue_terminated = 1; // notify decoding thread must die
-            pthread_mutex_unlock(&s->queue_lock);
-            pthread_cond_signal(&s->queue_reduce); // wake up decoding thread
-            pthread_join(s->dec_thread, NULL);
-        } else {
-            pthread_mutex_unlock(&s->queue_lock);
-        }
-        pthread_cond_destroy(&s->queue_reduce);
-        pthread_cond_destroy(&s->queue_grow);
-        pthread_mutex_destroy(&s->queue_lock);
-    }
+    shoot_running_decoding_thread(s);
+    join_dec_thread_if_dying(s);
+
+    pthread_cond_destroy(&s->cond);
+    pthread_mutex_destroy(&s->lock);
 
     free_context(s);
     *ss = NULL;
@@ -413,20 +326,22 @@ static int setup_filtergraph(struct sfxmp_ctx *s)
 {
     int ret = 0;
     char args[512];
-    const AVRational time_base = s->stream->time_base;
-    const AVRational framerate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
-    AVFilter *buffersrc  = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffer" : "abuffer");
-    AVFilter *buffersink = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
-    AVFilterInOut *outputs = avfilter_inout_alloc();
-    AVFilterInOut *inputs  = avfilter_inout_alloc();
+    AVRational framerate;
+    AVFilter *buffersrc, *buffersink;
+    AVFilterInOut *outputs, *inputs;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->last_frame_format);
+    const AVCodecContext *avctx = s->dec_ctx->avctx;
+
+    if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
+        return 0;
 
     avfilter_graph_free(&s->filter_graph);
 
-    if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL) {
-        ret = 0;
-        goto end;
-    }
+    outputs = avfilter_inout_alloc();
+    inputs  = avfilter_inout_alloc();
+
+    buffersrc  = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffer" : "abuffer");
+    buffersink = avfilter_get_by_name(s->media_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
 
     s->filter_graph = avfilter_graph_alloc();
 
@@ -444,21 +359,23 @@ static int setup_filtergraph(struct sfxmp_ctx *s)
 
     /* create buffer filter source (where we push the frame) */
     if (s->media_type == AVMEDIA_TYPE_VIDEO) {
+        const AVRational time_base = AV_TIME_BASE_Q;
         snprintf(args, sizeof(args),
                  "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
-                 s->dec_ctx->width, s->dec_ctx->height, av_get_pix_fmt_name(s->last_frame_format),
+                 avctx->width, avctx->height, av_get_pix_fmt_name(s->last_frame_format),
                  time_base.num, time_base.den,
-                 s->dec_ctx->sample_aspect_ratio.num, s->dec_ctx->sample_aspect_ratio.den);
+                 avctx->sample_aspect_ratio.num, avctx->sample_aspect_ratio.den);
     } else {
         snprintf(args, sizeof(args), "time_base=%d/%d:sample_rate=%d:sample_fmt=%s",
-                 1, s->dec_ctx->sample_rate, s->dec_ctx->sample_rate,
-                 av_get_sample_fmt_name(s->dec_ctx->sample_fmt));
-        if (s->dec_ctx->channel_layout)
-            av_strlcatf(args, sizeof(args), ":channel_layout=0x%"PRIx64, s->dec_ctx->channel_layout);
+                 1, avctx->sample_rate, avctx->sample_rate,
+                 av_get_sample_fmt_name(avctx->sample_fmt));
+        if (avctx->channel_layout)
+            av_strlcatf(args, sizeof(args), ":channel_layout=0x%"PRIx64, avctx->channel_layout);
         else
-            av_strlcatf(args, sizeof(args), ":channels=%d", s->dec_ctx->channels);
+            av_strlcatf(args, sizeof(args), ":channels=%d", avctx->channels);
     }
 
+    framerate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
     if (framerate.num && framerate.den)
         av_strlcatf(args, sizeof(args), ":frame_rate=%d/%d", framerate.num, framerate.den);
 
@@ -510,58 +427,6 @@ end:
     return ret;
 }
 
-
-static int decode_packet(struct sfxmp_ctx *s, AVPacket *pkt,
-                         AVFrame *frame, int *got_frame)
-{
-    int decoded = pkt->size;
-
-    *got_frame = 0;
-    if (pkt->stream_index == s->stream_idx) {
-        int ret;
-
-        if (s->media_type == AVMEDIA_TYPE_VIDEO)
-            ret = avcodec_decode_video2(s->dec_ctx, frame, got_frame, pkt);
-        else
-            ret = avcodec_decode_audio4(s->dec_ctx, frame, got_frame, pkt);
-
-        if (ret < 0) {
-            fprintf(stderr, "Error decoding %s frame\n", s->media_type_string);
-            return ret;
-        }
-        decoded = FFMIN(ret, pkt->size);
-
-        DBG("decoder", "decoded pkt->size=%d decoded=%d\n", pkt->size, decoded);
-
-        if (*got_frame) {
-
-            DBG("decoder", "got frame (in %s) [avctx->pixfmt:%s]\n",
-                av_get_pix_fmt_name(frame->format), av_get_pix_fmt_name(s->dec_ctx->pix_fmt));
-
-            /* if there is an acceleration, try to "convert" it from the hw
-             * accelerated pixel format to the normal/exploitable one. */
-            if (s->auto_hwaccel && hwaccel_def && frame->format == hwaccel_def->pix_fmt) {
-                ret = hwaccel_def->get_frame(s->dec_ctx, frame);
-                if (ret < 0) {
-                    fprintf(stderr, "Unable to retrieve hw accelerated data\n");
-                    return ret;
-                }
-            }
-
-            /* lazy filtergraph configuration: we need to wait for the first
-             * frame to see what pixel format is getting decoded (no other way
-             * with hardware acceleration apparently) */
-            if (s->media_type != AVMEDIA_TYPE_VIDEO || s->last_frame_format != frame->format) {
-                s->last_frame_format = frame->format;
-                ret = setup_filtergraph(s);
-                if (ret < 0)
-                    return ret;
-            }
-        }
-    }
-    return decoded;
-}
-
 static double get_rotation(AVStream *st)
 {
     AVDictionaryEntry *rotate_tag = av_dict_get(st->metadata, "rotate", NULL, 0);
@@ -594,125 +459,58 @@ static char *update_filters_str(char *filters, const char *append)
     return str;
 }
 
-static int open_ifile(struct sfxmp_ctx *s, const char *infile)
+static int pull_packet_cb(void *priv, AVPacket *pkt)
 {
-    int ret = 0;
-    AVCodec *dec;
-    AVDictionary *opts = NULL;
-    AVInputFormat *ifmt = NULL;
+    int ret;
+    struct sfxmp_ctx *s = priv;
+    AVFormatContext *fmt_ctx = s->fmt_ctx;
+    const int target_stream_idx = s->stream->index;
 
-    if (s->file_opened)
-        return 0;
+    for (;;) {
+        ret = av_read_frame(fmt_ctx, pkt);
+        if (ret < 0)
+            break;
 
-    ret = avformat_open_input(&s->fmt_ctx, infile, ifmt, &opts);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to open input file '%s'\n", infile);
-        return ret;
-    }
-
-    ret = avformat_find_stream_info(s->fmt_ctx, NULL);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to find input stream information\n");
-        return ret;
-    }
-
-    ret = av_find_best_stream(s->fmt_ctx, s->media_type, -1, -1, &dec, 0);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to find a %s stream in the input file\n", s->media_type_string);
-        return ret;
-    }
-    s->stream_idx = ret;
-    s->stream = s->fmt_ctx->streams[s->stream_idx];
-
-    s->dec_ctx = avcodec_alloc_context3(NULL);
-    if (!s->dec_ctx)
-        return AVERROR(ENOMEM);
-    avcodec_copy_context(s->dec_ctx, s->stream->codec);
-    av_opt_set_int(s->dec_ctx, "refcounted_frames", 1, 0);
-
-    if (s->export_mvs)
-        av_opt_set(s->dec_ctx, "flags2", "+export_mvs", 0);
-
-    //av_opt_set(s->dec_ctx, "skip_frame", "noref", 0);
-
-    s->hwaccel.out_pix_fmt = AV_PIX_FMT_NONE;
-    s->last_frame_format   = AV_PIX_FMT_NONE;
-    if (s->auto_hwaccel && hwaccel_def) {
-        s->dec_ctx->opaque = &s->hwaccel;
-        s->dec_ctx->get_format = hwaccel_get_format;
-        s->dec_ctx->thread_count = 1;
-    }
-
-    if (s->dec_ctx->codec_id == AV_CODEC_ID_H264) {
-        AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
-        if (codec) {
-            dec = codec;
+        if (pkt->stream_index != target_stream_idx) {
+            DBG("pull_packet_cb", "pkt->idx=%d vs %d\n",
+                pkt->stream_index, target_stream_idx);
+            continue;
         }
-    }
 
-    ret = avcodec_open2(s->dec_ctx, dec, NULL);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to open input %s decoder\n", s->media_type_string);
-        return ret;
-    }
-
-    /* If trim_duration is not specified, we try to probe from the stream or
-     * format (presentation) duration */
-    if (s->trim_duration < 0) {
-        int64_t duration = s->fmt_ctx->duration;
-        double scale = av_q2d(AV_TIME_BASE_Q);
-
-        if (duration == AV_NOPTS_VALUE) {
-            duration = s->stream->duration;
-            if (s->stream->time_base.den)
-                scale = av_q2d(s->stream->time_base);
-            else
-                duration = AV_NOPTS_VALUE;
+        if (s->pkt_skip_mod) {
+            s->pkt_count++;
+            if (s->pkt_count % s->pkt_skip_mod && !(pkt->flags & AV_PKT_FLAG_KEY)) {
+                av_packet_unref(pkt);
+                continue;
+            }
         }
-        if (duration != AV_NOPTS_VALUE) {
-            s->trim_duration = duration * scale;
-            DBG("decoder", "set trim duration to %f\n", s->trim_duration);
-        }
+
+        break;
     }
 
-    if (s->autorotate) {
-        const double theta = get_rotation(s->stream);
-
-        if (fabs(theta - 90) < 1.0)
-            s->filters = update_filters_str(s->filters, "transpose=clock");
-        else if (fabs(theta - 180) < 1.0)
-            s->filters = update_filters_str(s->filters, "vflip,hflip");
-        else if (fabs(theta - 270) < 1.0)
-            s->filters = update_filters_str(s->filters, "transpose=cclock");
-    }
-
-    av_dump_format(s->fmt_ctx, 0, infile, 0);
-
-    s->file_opened = 1;
-
-    return 0;
+    DBG("pull_packet_cb", "packet ret %s\n", av_err2str(ret));
+    return ret;
 }
 
 /**
  * Map the timeline time to the media time
  */
-static double get_media_time(const struct sfxmp_ctx *s, double t)
+static int64_t get_media_time(const struct sfxmp_ctx *s, int64_t t)
 {
-    if (s->trim_duration < 0)
+    if (s->trim_duration64 < 0)
         return 0;
-    return s->skip + av_clipd(t, 0, s->trim_duration);
+    return s->skip64 + FFMIN(t, s->trim_duration64);
 }
 
 /**
  * Request a seek to the demuxer
  */
-static int seek_to(struct sfxmp_ctx *s, double t)
+static int seek_cb(void *arg, int64_t t)
 {
-    const double vt = get_media_time(s, t);
-    const int64_t ts = vt * AV_TIME_BASE;
+    struct sfxmp_ctx *s = arg;
 
-    DBG("decoder", "Seek in media (%s) at %f (t=%f)\n", s->filename, vt, t);
-    return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, ts, ts, 0);
+    DBG("decoder", "Seek in media (%s) at %s\n", s->filename, PTS2TIMESTR(t));
+    return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, t, t, 0);
 }
 
 /**
@@ -804,231 +602,327 @@ static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video
     }
 }
 
-static int64_t get_best_effort_ts(const AVFrame *f)
+static int filter_frame(struct sfxmp_ctx *s, AVFrame *outframe, AVFrame *inframe)
 {
-    const int64_t t = av_frame_get_best_effort_timestamp(f);
-    return t != AV_NOPTS_VALUE ? t : f->pts;
-}
+    int ret = 0; //, done = 0;
 
-static int add_frame(struct sfxmp_ctx *s, AVFrame *frame, double rescaled_ts)
-{
-    struct Frame *f;
-
-    f = &s->frames[s->nb_frames++];
-    DBG("decoder", "queuing frame %2d/%d @ ts=%f\n", s->nb_frames, s->max_nb_frames, rescaled_ts);
-    if (s->media_type == AVMEDIA_TYPE_VIDEO) {
-        av_frame_move_ref(f->frame, frame);
-    } else {
-        audio_frame_to_sound_texture(s, s->audio_texture_frame, frame);
-        av_frame_ref(f->frame, s->audio_texture_frame);
-        av_frame_unref(frame);
+    /* lazy filtergraph configuration: we need to wait for the first
+     * frame to see what pixel format is getting decoded (no other way
+     * with hardware acceleration apparently) */
+    if (inframe) {
+        // XXX: check width/height changes?
+        if (s->last_frame_format != inframe->format) {
+            s->last_frame_format = inframe->format;
+            ret = setup_filtergraph(s);
+            if (ret < 0)
+                return ret;
+        }
     }
-    f->ts = rescaled_ts;
-    return 0;
-}
-
-/**
- * Filter and queue frame(s)
- */
-static int queue_frame(struct sfxmp_ctx *s, AVFrame *inframe, AVPacket *pkt)
-{
-    int ret = 0, done = 0;
 
     if (inframe) {
-        inframe->pts = get_best_effort_ts(inframe);
+        DBG("filter", "received %s frame @ ts=%s\n",
+            s->media_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(inframe->format)
+                                                : av_get_sample_fmt_name(inframe->format),
+            PTS2TIMESTR(inframe->pts));
 
         if (s->filter_graph) {
-            DBG("decoder", "push frame with ts=%s into filtergraph\n", av_ts2str(inframe->pts));
+            DBG("filter", "push frame with ts=%s into filtergraph\n", PTS2TIMESTR(inframe->pts));
 
             /* push the decoded frame into the filtergraph */
             ret = av_buffersrc_write_frame(s->buffersrc_ctx, inframe);
             if (ret < 0) {
                 fprintf(stderr, "Error while feeding the filtergraph\n");
-                goto end;
+                return ret;
             }
 
             /* the frame is sent into the filtergraph, we don't need it anymore */
             av_frame_unref(inframe);
         }
-    }
-
-    while (!done) {
-        int64_t ts;
-        double rescaled_ts;
-
-        /* try to get a frame from the filergraph */
+    } else {
         if (s->filter_graph) {
-            ret = av_buffersink_get_frame(s->buffersink_ctx, s->filtered_frame);
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                break;
+            ret = av_buffersrc_write_frame(s->buffersrc_ctx, NULL);
             if (ret < 0) {
-                fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
-                goto end;
-            }
-        } else {
-            av_assert0(inframe);
-            av_frame_move_ref(s->filtered_frame, inframe);
-            done = 1;
-        }
-
-        DBG("decoder", "decoded %s frame @ ts=%s %"PRId64"\n",
-            av_get_pix_fmt_name(s->filtered_frame->format),
-            av_ts2str(get_best_effort_ts(s->filtered_frame)), s->filtered_frame->pts);
-
-        /* we have a frame, wait for the queue to be ready for queuing it */
-        DBG("decoder", "locking\n");
-        pthread_mutex_lock(&s->queue_lock);
-        DBG("decoder", "mutex acquired\n");
-        while (s->nb_frames == s->max_nb_frames && !s->queue_terminated) {
-            DBG("decoder", "waiting reduce\n");
-            pthread_cond_wait(&s->queue_reduce, &s->queue_lock);
-        }
-
-        DBG("decoder", "let's decode\n");
-
-        /* kill requested */
-        if (s->queue_terminated) {
-            DBG("decoder", "Kill requested in decoding thread\n");
-            ret = AVERROR_EXIT;
-            pthread_mutex_unlock(&s->queue_lock);
-            av_frame_unref(s->filtered_frame);
-            goto end;
-        }
-
-        /* check frame dropping changed */
-        if (s->request_drop != -1) {
-            s->dec_ctx->skip_frame = s->request_drop ? AVDISCARD_NONREF : 0;
-            s->request_drop = -1;
-        }
-
-        /* a seek was requested by the main thread */
-        if (s->request_seek != -1 && s->can_seek_again) {
-            int i;
-            for (i = 0; i < s->nb_frames; i++)
-                av_frame_unref(s->frames[i].frame);
-            s->nb_frames = 0;
-            pthread_mutex_unlock(&s->queue_lock);
-
-            s->can_seek_again = 0;
-
-            ret = seek_to(s, s->request_seek);
-            if (ret < 0) {
-                fprintf(stderr, "unable to seek at %.3f, abort decoding thread\n", s->request_seek);
-                ret = AVERROR_EXIT;
-                av_frame_unref(s->filtered_frame);
-                goto end;
-            }
-            DBG("decoder", "seek OK (ret=%d)\n", ret);
-
-            /* flush decoder and filters; we can do this after the unlock since
-             * only this thread is decoding and pushing frames in the
-             * filtergraph anyway */
-            if (pkt)
-                pkt->size = 0;
-            avcodec_flush_buffers(s->dec_ctx);
-            av_frame_unref(s->filtered_frame);
-
-            ret = setup_filtergraph(s);
-            if (ret < 0)
-                goto end;
-
-            return 0;
-        }
-
-        /* request the end of any further queuing if the last frame added was
-         * already a potential last frame */
-        if (s->nb_frames > 0 && (s->frames[0].ts >= s->skip + s->trim_duration || s->trim_duration < 0)) {
-            DBG("decoder", "Reached trim duration in the decoding thread, request end\n");
-            ret = AVERROR_EXIT;
-            pthread_mutex_unlock(&s->queue_lock);
-            av_frame_unref(s->filtered_frame);
-            goto end;
-        }
-
-        /* interpolate (if needed) and rescale timestamp */
-        ts = get_best_effort_ts(s->filtered_frame);
-        if (ts == AV_NOPTS_VALUE) {
-            DBG("decoder", "need TS interpolation\n");
-            if (s->nb_frames) {
-                AVRational frame_rate = av_guess_frame_rate(s->fmt_ctx, s->stream, s->filtered_frame);
-                rescaled_ts = s->frames[s->nb_frames - 1].ts + 1./av_q2d(frame_rate);
-            } else {
-                DBG("decoder", "Can not interpolate timing, skip frame :(\n");
-                pthread_mutex_unlock(&s->queue_lock);
-                av_frame_unref(s->filtered_frame);
-                continue;
-            }
-        } else {
-            rescaled_ts = ts * av_q2d(s->stream->time_base);
-        }
-
-        /* if we haven't reach the time requested yet, skip the frame */
-        if (s->request_seek != -1) {
-            const double requested_media_time = get_media_time(s, s->request_seek);
-
-            if (rescaled_ts < requested_media_time) {
-                DBG("decoder", "Request seek (%f) not reached yet: %f<%f, skip frame\n",
-                    s->request_seek, rescaled_ts, requested_media_time);
-                pthread_mutex_unlock(&s->queue_lock);
-                s->backup_frame.ts = rescaled_ts;
-                av_frame_unref(s->backup_frame.frame);
-                av_frame_move_ref(s->backup_frame.frame, s->filtered_frame);
-                continue;
-            } else {
-                DBG("decoder", "Request seek reached %f >= %f\n", rescaled_ts, requested_media_time);
-
-                av_frame_unref(s->backup_frame.frame);
-
-                s->can_seek_again = 1;
-                s->request_seek   = -1;
-
-                /* Sometimes, because of inaccuracies with floats (or
-                 * eventually a bug in FFmpeg), the first frame picked after a
-                 * seek will be slightly off, creating a negative diff in
-                 * the main loop, which will as a result cause the main thread
-                 * to request a backseek, ended up in an infinite and
-                 * undesirable seek loop.
-                 * In order to avoid this, we lie about the timestamp and make
-                 * it exactly what the user requested. */
-                rescaled_ts = requested_media_time;
+                fprintf(stderr, "Error while feeding null frame in the filtergraph\n");
+                return ret;
             }
         }
-
-        /* finally queue the frame */
-        add_frame(s, s->filtered_frame, rescaled_ts);
-
-        /* frame is completely queued, release lock */
-        pthread_mutex_unlock(&s->queue_lock);
-
-        /* signal the main thread that the queue got a new frame */
-        pthread_cond_signal(&s->queue_grow);
     }
 
-end:
+    /* try to get a frame from the filtergraph */
+    AVFrame *filtered_frame = s->media_type == AVMEDIA_TYPE_AUDIO ? s->tmp_audio_frame : outframe;
+    if (s->filter_graph) {
+        ret = av_buffersink_get_frame(s->buffersink_ctx, filtered_frame);
+        DBG("filter", "got frame from sink ret=[%s]\n", av_err2str(ret));
+        if (ret < 0) {
+            if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
+                fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
+        }
+    } else {
+        if (!inframe) {
+            ret = AVERROR_EOF;
+        } else {
+            av_frame_move_ref(filtered_frame, inframe);
+        }
+    }
+
+    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
+        audio_frame_to_sound_texture(s, s->audio_texture_frame, filtered_frame);
+        av_frame_unref(filtered_frame);
+        av_frame_ref(outframe, s->audio_texture_frame);
+    }
+
+    DBG("filter", "outframe: %s frame @ ts=%s %"PRId64"\n",
+        av_get_pix_fmt_name(outframe->format), PTS2TIMESTR(outframe->pts));
+
     return ret;
 }
 
-static void *decoder_thread(void *arg)
+static int push_frame_cb(void *priv, AVFrame *frame)
 {
-    int ret, got_frame;
-    int64_t pkt_count = 0;
-    AVPacket pkt = {0};
-    struct sfxmp_ctx *s = arg;
+    int ret;
+    struct sfxmp_ctx *s = priv;
+    const int flush = !frame;
 
-    ret = open_ifile(s, s->filename);
+    if (frame) {
+        DBG("push_frame", "got frame (in %s) with t=%s\n",
+            s->media_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(frame->format)
+                                                : av_get_sample_fmt_name(frame->format),
+            PTS2TIMESTR(frame->pts));
+    } else {
+        DBG("push_frame", "got null frame\n");
+    }
+
+    ret = filter_frame(s, s->filtered_frame, frame);
+    av_frame_free(&frame);
+    DBG("push_frame", "filter_frame returned [%s]\n", av_err2str(ret));
+    if (ret < 0) {
+        if (ret == AVERROR(EAGAIN)) {
+            /* frame was pushed in filtegraph but nothing ready yet */
+            return 0;
+        }
+        if (ret == AVERROR_EOF) {
+            /* filtergraph returned EOF so we can call for a terminate */
+            DBG("push_frame", "GOT EOF from filtergraph\n");
+            shoot_running_decoding_thread(s);
+        }
+        return ret;
+    }
+
+    DBG("push_frame", "frame filtered\n");
+
+    if (s->trim_duration64 >= 0) {
+        if (s->filtered_frame->pts > s->skip64 + s->trim_duration64) {
+            DBG("push_frame", "reached trim duration, simulate EOF\n");
+            av_frame_unref(s->filtered_frame);
+            shoot_running_decoding_thread(s);
+            return AVERROR_EOF;
+        }
+    }
+
+    /* wait for the frame to be consumed by the main thread */
+    pthread_mutex_lock(&s->lock);
+    while (s->queued_frame && s->thread_state != THREAD_STATE_DYING) {
+        DBG("push_frame", "frame not poped out yet, wait\n");
+        pthread_cond_wait(&s->cond, &s->lock);
+    }
+    if (s->thread_state == THREAD_STATE_DYING) {
+        DBG("push_frame", "thread is dying\n");
+        av_frame_free(&s->queued_frame);
+        // XXX: no need to signal cond, right?
+        pthread_mutex_unlock(&s->lock);
+        av_frame_unref(s->filtered_frame);
+        return AVERROR_EOF;
+    }
+
+    DBG("push_frame", "queuing frame\n");
+    s->queued_frame = av_frame_clone(s->filtered_frame); // XXX
+    pthread_cond_signal(&s->cond);
+    pthread_mutex_unlock(&s->lock);
+    av_frame_unref(s->filtered_frame);
+
+    if (flush) {
+        DBG("push_frame", "EOF/null frame was signaled but we got a frame out "
+            "of the filtergraph, so request a flush call again\n");
+        return AVERROR(EAGAIN);
+    }
+
+    return 0;
+}
+
+/**
+ * Open the input file.
+ */
+static int open_ifile(struct sfxmp_ctx *s, const char *infile)
+{
+    int ret;
+    const struct decoder *dec_def, *dec_def_fallback;
+
+    if (s->auto_hwaccel && decoder_def_hwaccel) {
+        dec_def          = decoder_def_hwaccel;
+        dec_def_fallback = decoder_def_software;
+    } else {
+        dec_def          = decoder_def_software;
+        dec_def_fallback = NULL;
+    }
+
+    av_assert0(!s->actx);
+    s->actx = async_alloc_context();
+    if (!s->actx)
+        return AVERROR(ENOMEM);
+
+    DBG("open_ifile", "opening %s\n", infile);
+    ret = avformat_open_input(&s->fmt_ctx, infile, NULL, NULL);
+    if (ret < 0) {
+        fprintf(stderr, "Unable to open input file '%s'\n", infile);
+        return ret;
+    }
+
+    /* Evil hack: we make sure avformat_find_stream_info() doesn't decode any
+     * video, because it will use the software decoder, which will be slow and
+     * use an indecent amount of memory (15-20MB). It slows down startup
+     * significantly on embedded platforms and risks a kill from the OOM
+     * because of the large and fast amount of allocated memory.
+     *
+     * The max_analyze_duration is accessible through avoptions, but a negative
+     * value isn't actually in the allowed range, so we directly mess with the
+     * field. We can't unfortunately set it to 0, because at the moment of
+     * writing this code 0 (which is the default value) means "auto", which
+     * will be then set to something like 5 seconds for video. */
+    s->fmt_ctx->max_analyze_duration = -1;
+
+    DBG("open_ifile", "find stream info\n");
+    ret = avformat_find_stream_info(s->fmt_ctx, NULL);
+    if (ret < 0) {
+        fprintf(stderr, "Unable to find input stream information\n");
+        return ret;
+    }
+
+    DBG("open_ifile", "find best stream\n");
+    ret = av_find_best_stream(s->fmt_ctx, s->media_type, -1, -1, &s->dec, 0);
+    if (ret < 0) {
+        fprintf(stderr, "Unable to find a %s stream in the input file\n", s->media_type_string);
+        return ret;
+    }
+    s->stream_idx = ret;
+    s->stream = s->fmt_ctx->streams[s->stream_idx];
+
+    DBG("open_ifile", "create decoder\n");
+    s->dec_ctx = decoder_create(dec_def, dec_def_fallback, s->stream->codec);
+    if (!s->dec_ctx)
+        return AVERROR(ENOMEM);
+
+    DBG("open_ifile", "register reader\n");
+    ret = async_register_reader(s->actx, s,
+                                pull_packet_cb, seek_cb,
+                                &s->reader);
     if (ret < 0)
-        goto end;
+        return ret;
+
+    s->last_frame_format = AV_PIX_FMT_NONE;
+
+    // XXX: check tb.den!=0?
+    ret = async_register_decoder(s->reader, s->dec_ctx, s,
+                                 push_frame_cb, &s->adec,
+                                 s->stream->time_base);
+    if (ret < 0)
+        return ret;
+
+    // XXX
+    s->dec_ctx->adec = s->adec;
+
+    av_opt_set_int(s->adec, "max_frames_queue",  s->max_nb_frames,  0);
+    av_opt_set_int(s->adec, "max_packets_queue", s->max_nb_packets, 0);
+
+    s->trim_duration64 = s->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(s->trim_duration);
+
+    if (!strstr(s->fmt_ctx->iformat->name, "image2") && !strstr(s->fmt_ctx->iformat->name, "_pipe")) {
+        int64_t probe_duration64 = s->fmt_ctx->duration;
+        AVRational scaleq = AV_TIME_BASE_Q;
+        if (probe_duration64 == AV_NOPTS_VALUE && s->stream->time_base.den) {
+            probe_duration64 = s->stream->duration;
+            scaleq = s->stream->time_base;
+        }
+
+        if (probe_duration64 != AV_NOPTS_VALUE) {
+            const double probe_duration = probe_duration64 * av_q2d(scaleq);
+
+            if (s->trim_duration < 0 || probe_duration < s->trim_duration) {
+                DBG("decoder", "fix trim_duration from %f to %f\n", s->trim_duration, probe_duration);
+                s->trim_duration64 = av_rescale_q_rnd(probe_duration64, scaleq, AV_TIME_BASE_Q, 0);
+                s->trim_duration = probe_duration;
+            }
+        }
+    }
+
+    DBG("decoder", "rescaled values: skip=%s dist:%s dur:%s\n",
+        PTS2TIMESTR(s->skip64),
+        PTS2TIMESTR(s->dist_time_seek_trigger64),
+        PTS2TIMESTR(s->trim_duration64));
+
+    if (s->autorotate) {
+        const double theta = get_rotation(s->stream);
+
+        if (fabs(theta - 90) < 1.0)
+            s->filters = update_filters_str(s->filters, "transpose=clock");
+        else if (fabs(theta - 180) < 1.0)
+            s->filters = update_filters_str(s->filters, "vflip,hflip");
+        else if (fabs(theta - 270) < 1.0)
+            s->filters = update_filters_str(s->filters, "transpose=cclock");
+    }
+
+    av_dump_format(s->fmt_ctx, 0, infile, 0);
+
+    s->context_configured = 1;
+
+    return 0;
+}
+
+static int set_context_fields(struct sfxmp_ctx *s)
+{
+    if (pix_fmts_sx2ff(s->sw_pix_fmt) == AV_PIX_FMT_NONE) {
+        fprintf(stderr, "Invalid software decoding pixel format specified\n");
+        return AVERROR(EINVAL);
+    }
+
+    switch (s->avselect) {
+    case SFXMP_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
+    case SFXMP_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
+    default:
+        av_assert0(0);
+    }
+
+    s->media_type_string = av_get_media_type_string(s->media_type);
+    av_assert0(s->media_type_string);
+
+    s->thread_state = THREAD_STATE_NOTRUNNING;
+
+    if (s->auto_hwaccel && (s->filters || s->autorotate || s->export_mvs)) {
+        fprintf(stderr, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
+                "are set but hwaccel is enabled, disabling auto_hwaccel so these "
+                "options are honored\n", s->filters, s->autorotate, s->export_mvs);
+        s->auto_hwaccel = 0;
+    }
+
+    DBG("main", "filename:%s avselect:%s skip:%f trim_duration:%f "
+        "dist_time_seek_trigger:%f max_nb_frames:%d filters:'%s' (%p)\n",
+        s->filename, s->media_type_string, s->skip, s->trim_duration,
+        s->dist_time_seek_trigger, s->max_nb_frames, s->filters ? s->filters : "",
+        s);
+
+    s->skip64 = TIME2INT64(s->skip);
+    s->dist_time_seek_trigger64 = TIME2INT64(s->dist_time_seek_trigger);
 
     s->filtered_frame = av_frame_alloc();
-    s->decoded_frame  = av_frame_alloc();
-    s->backup_frame.frame = av_frame_alloc();
-    if (!s->decoded_frame || !s->filtered_frame || !s->backup_frame.frame)
-        goto end;
+    if (!s->filtered_frame)
+        return AVERROR(ENOMEM);
 
     if (s->media_type == AVMEDIA_TYPE_AUDIO) {
         s->audio_texture_frame = get_audio_frame();
         if (!s->audio_texture_frame)
-            goto end;
+            return AVERROR(ENOMEM);
+        s->tmp_audio_frame = av_frame_alloc();
+        if (!s->tmp_audio_frame)
+            return AVERROR(ENOMEM);
     }
 
     if (s->media_type == AVMEDIA_TYPE_AUDIO) {
@@ -1037,7 +931,7 @@ static void *decoder_thread(void *arg)
         /* Pre-calc windowing function */
         s->window_func_lut = av_malloc_array(AUDIO_NBSAMPLES, sizeof(*s->window_func_lut));
         if (!s->window_func_lut)
-            goto end;
+            return AVERROR(ENOMEM);
         for (i = 0; i < AUDIO_NBSAMPLES; i++)
             s->window_func_lut[i] = .5f * (1 - cos(2*M_PI*i / (AUDIO_NBSAMPLES-1)));
 
@@ -1045,114 +939,61 @@ static void *decoder_thread(void *arg)
         s->rdft = av_rdft_init(AUDIO_NBITS, DFT_R2C);
         if (!s->rdft) {
             fprintf(stderr, "Unable to init RDFT context with N=%d\n", AUDIO_NBITS);
-            goto end;
+            return AVERROR(ENOMEM);
         }
 
         s->rdft_data[0] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*s->rdft_data[0]));
         s->rdft_data[1] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*s->rdft_data[1]));
         if (!s->rdft_data[0] || !s->rdft_data[1])
-            goto end;
+            return AVERROR(ENOMEM);
     }
 
-    /* request initial seek to help getting a better first frame in the queue
-     * after a prefetch */
-    if (s->skip > 0.0 ) {
-        seek_to(s, 0.0);
-        s->request_seek = 0.0;
-        s->can_seek_again = 0;
+    return 0;
+}
+
+/**
+ * This can not be done earlier inside the context allocation function because
+ * it requires user option to be set, which is done between the context
+ * allocation and the first call to sfxmp_get_*frame() or sfxmp_get_duration().
+ */
+static int configure_context(struct sfxmp_ctx *s)
+{
+    int ret;
+
+    if (s->context_configured)
+        return 0;
+
+    DBG("main", "configuring context: set context fields\n");
+    ret = set_context_fields(s);
+    if (ret < 0) {
+        fprintf(stderr, "Unable to set context fields: %s\n", av_err2str(ret));
+        free_temp_context_data(s);
+        return ret;
     }
 
-    av_init_packet(&pkt);
-
-    /* read frames from the file */
-    while (av_read_frame(s->fmt_ctx, &pkt) >= 0) {
-        if (s->pkt_skip_mod) {
-            pkt_count++;
-            if (pkt_count % s->pkt_skip_mod && !(pkt.flags & AV_PKT_FLAG_KEY)) {
-                av_packet_unref(&pkt);
-                continue;
-            }
-        }
-
-        do {
-            ret = decode_packet(s, &pkt, s->decoded_frame, &got_frame);
-            if (ret < 0)
-                break;
-            pkt.data += ret;
-            pkt.size -= ret;
-            if (got_frame) {
-                ret = queue_frame(s, s->decoded_frame, &pkt);
-                if (ret == AVERROR_EXIT) {
-                    av_packet_unref(&pkt);
-                    goto end;
-                }
-            }
-        } while (pkt.size > 0);
-        av_packet_unref(&pkt);
+    DBG("main", "configuring context: open input file\n");
+    ret = open_ifile(s, s->filename);
+    if (ret < 0) {
+        fprintf(stderr, "Unable to open input file: %s\n", av_err2str(ret));
+        free_temp_context_data(s);
+        return ret;
     }
 
-    /* flush cached frames */
-    pkt.data = NULL;
-    pkt.size = 0;
-    do {
-        ret = decode_packet(s, &pkt, s->decoded_frame, &got_frame);
-        if (ret == 0 && got_frame)
-            queue_frame(s, s->decoded_frame, NULL);
-    } while (got_frame);
+    return 0;
+}
 
-    /* flush filtergraph */
-    if (s->filter_graph) {
-        ret = av_buffersrc_write_frame(s->buffersrc_ctx, NULL);
-        if (ret < 0) {
-            fprintf(stderr, "Error sending EOF in filtergraph\n");
-            goto end;
-        }
-        do {
-            ret = queue_frame(s, NULL, NULL);
-        } while (ret >= 0);
-    }
+static void *decoder_thread(void *arg)
+{
+    struct sfxmp_ctx *s = arg;
 
-end:
-
-    if (s->request_seek != -1 && s->backup_frame.frame->buf[0]) {
-        pthread_mutex_lock(&s->queue_lock);
-        while (s->nb_frames == s->max_nb_frames && !s->queue_terminated) {
-            DBG("decoder", "waiting reduce before queuing the last backuped frame\n");
-            pthread_cond_wait(&s->queue_reduce, &s->queue_lock);
-        }
-        add_frame(s, s->backup_frame.frame, s->backup_frame.ts);
-        av_frame_unref(s->backup_frame.frame);
-        pthread_mutex_unlock(&s->queue_lock);
-        pthread_cond_signal(&s->queue_grow);
-    }
-
-    if (s->fmt_ctx) {
-        if (s->auto_hwaccel && hwaccel_def)
-            hwaccel_def->uninit(s->dec_ctx);
-        avcodec_free_context(&s->dec_ctx);
-        avformat_close_input(&s->fmt_ctx);
-        s->file_opened = 0;
-    }
-    av_frame_free(&s->decoded_frame);
-    av_frame_free(&s->filtered_frame);
-    av_frame_free(&s->backup_frame.frame);
-    avfilter_graph_free(&s->filter_graph);
-
-    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
-        av_frame_free(&s->audio_texture_frame);
-        av_freep(&s->window_func_lut);
-        av_freep(&s->rdft_data[0]);
-        av_freep(&s->rdft_data[1]);
-        if (s->rdft) {
-            av_rdft_end(s->rdft);
-            s->rdft = NULL;
-        }
-    }
-
-    pthread_mutex_lock(&s->queue_lock);
-    s->queue_terminated = 2;
-    pthread_mutex_unlock(&s->queue_lock);
-    pthread_cond_signal(&s->queue_grow);
+    av_assert0(s->context_configured);
+    if (s->skip64)
+        async_reader_seek(s->reader, s->skip64);
+    async_start(s->actx);
+    DBG("decoder", "async started\n");
+    async_wait(s->actx);
+    DBG("decoder", "async api done\n");
+    shoot_running_decoding_thread(s);
     DBG("decoder", "decoding thread ends\n");
     return NULL;
 }
@@ -1160,10 +1001,9 @@ end:
 /* Return the frame only if different from previous one. We do not make a
  * simple pointer check because of the frame reference counting (and thus
  * pointer reuse, depending on many parameters)  */
-static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *frame)
+static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, AVFrame *frame, int64_t req_t)
 {
     struct sfxmp_frame *ret;
-    AVFrame *cloned_frame;
     AVFrameSideData *sd;
 
     if (!frame) {
@@ -1171,32 +1011,24 @@ static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *fr
         return NULL;
     }
 
+    const int64_t frame_ts = frame->pts;
+
     /* if same frame as previously, do not raise it again */
-    if (s->last_pushed_frame_ts == frame->ts) {
+    if (s->last_pushed_frame_ts == frame_ts) {
         DBG("main", " <<< same frame as previously, return NULL\n");
         return NULL;
     } else {
-        DBG("main", "last_pushed_frame_ts:%f frame_ts:%f\n",
-            s->last_pushed_frame_ts, frame->ts);
+        DBG("main", "last_pushed_frame_ts:%s frame_ts:%s\n",
+            PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(frame_ts));
     }
 
     ret = av_mallocz(sizeof(*ret));
     if (!ret)
         return NULL;
 
-    DBG("main", "cloning frame->frame %p [%p %p %p %p]\n", frame->frame,
-        frame->frame->data[0], frame->frame->data[1],
-        frame->frame->data[2], frame->frame->data[3]);
-    cloned_frame = av_frame_clone(frame->frame);
-    if (!cloned_frame) {
-        fprintf(stderr, "Unable to clone frame\n");
-        av_free(ret);
-        return NULL;
-    }
+    s->last_pushed_frame_ts = frame_ts;
 
-    s->last_pushed_frame_ts = frame->ts;
-
-    sd = av_frame_get_side_data(frame->frame, AV_FRAME_DATA_MOTION_VECTORS);
+    sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MOTION_VECTORS);
     if (sd) {
         ret->mvs = av_memdup(sd->data, sd->size);
         if (!ret->mvs) {
@@ -1208,67 +1040,33 @@ static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, const struct Frame *fr
         DBG("main", "export %d motion vectors\n", ret->nb_mvs);
     }
 
-    ret->internal = cloned_frame;
-    ret->data     = cloned_frame->data[cloned_frame->format == AV_PIX_FMT_VIDEOTOOLBOX ? 3 : 0];
-    ret->linesize = cloned_frame->linesize[0];
-    ret->width    = cloned_frame->width;
-    ret->height   = cloned_frame->height;
-    ret->ts       = frame->ts;
-    ret->pix_fmt  = pix_fmts_ff2sx(cloned_frame->format);
+    ret->internal = frame;
+    ret->data     = frame->data[frame->format == AV_PIX_FMT_VIDEOTOOLBOX ? 3 : 0];
+    ret->linesize = frame->linesize[0];
+    ret->width    = frame->width;
+    ret->height   = frame->height;
+    ret->ts       = frame_ts;
+    ret->pix_fmt  = pix_fmts_ff2sx(frame->format);
 
-    DBG("main", " <<< return frame @ ts=%f\n", ret->ts);
+    if (ENABLE_DBG && !s->can_seek_again)
+        DBG("main", "allow seeking again\n");
+
+    s->can_seek_again = 1;
+    DBG("main", " <<< return frame @ ts=%s with requested time being %s [max:%s]\n",
+        PTS2TIMESTR(ret->ts), PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
     return ret;
 }
 
-/**
- * return positive value => need to decode further
- * return negative value => need to seek back
- */
-static double get_frame_dist(const struct sfxmp_ctx *s, int i, double t)
-{
-    const double frame_ts = s->frames[i].ts;
-    const double req_frame_ts = get_media_time(s, t);
-    const double dist = req_frame_ts - frame_ts;
-    DBG("main", "frame[%2d/%2d]: %p [%p %p %p %p] t:%f ts:%f req:%f -> dist:%f\n",
-        i+1, s->nb_frames, s->frames[i].frame,
-        s->frames[i].frame->data[0],
-        s->frames[i].frame->data[1],
-        s->frames[i].frame->data[2],
-        s->frames[i].frame->data[3],
-        t, frame_ts, req_frame_ts, dist);
-    return dist;
-}
-
-static int consume_queue(struct sfxmp_ctx *s, int n)
-{
-    int i;
-
-    if (n < 1)
-        return 0;
-
-    DBG("main", "queue: drop %d/%d frame%s\n", n, s->nb_frames, n > 1 ? "s" : "");
-    for (i = 0; i < n; i++)
-        av_frame_unref(s->frames[i].frame);
-    for (i = n; i < s->nb_frames; i++) {
-        struct Frame *dstf = &s->frames[i - n];
-        struct Frame *srcf = &s->frames[i];
-
-        DBG("main", "queue: move queue[%d] %p (data:%p) -> queue[%d] %p\n",
-            i, srcf->frame, srcf->frame->data[0], i - n, dstf->frame);
-        av_frame_move_ref(dstf->frame, srcf->frame);
-        dstf->ts = srcf->ts;
-    }
-    s->nb_frames -= n;
-    return n;
-}
-
-static void request_seek(struct sfxmp_ctx *s, double t)
+static int request_seek(struct sfxmp_ctx *s, int64_t t)
 {
     if (s->can_seek_again) {
-        DBG("main", "request seek at @ %f [cur:%f]\n", t, s->request_seek);
-        s->request_seek = t;
+        DBG("main", "request seek at %s\n", PTS2TIMESTR(t));
+        async_reader_seek(s->reader, get_media_time(s, t));
+        s->can_seek_again = 0;
+        return 0;
     } else {
-        DBG("main", "can not seek again, waiting\n");
+        DBG("main", "can not seek again, reject request\n");
+        return -1;
     }
 }
 
@@ -1288,148 +1086,297 @@ int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop)
     if (!s)
         return -1;
 
+#if 0
     pthread_mutex_lock(&s->queue_lock);
     DBG("main", "toggle drop frame from %d to %d\n", s->request_drop, drop);
     s->request_drop = drop;
     pthread_mutex_unlock(&s->queue_lock);
     return 0;
+#else
+    return -1;
+#endif
 }
 
-static inline struct sfxmp_frame *get_frame(struct sfxmp_ctx *s, double t, int force_next_frame)
+static int spawn_decoding_thread_if_not_running(struct sfxmp_ctx *s)
 {
-    if (force_next_frame)
-        DBG("main", " >>> get next frame from %s\n", s->filename);
-    else
-        DBG("main", " >>> get frame from %s for t=%f\n", s->filename, t);
+    int ret = 0;
 
-    if (!s->context_configured)
-        configure_context(s);
+    if (join_dec_thread_if_dying(s)) {
+        DBG("main", "dec thread is dead, start it\n");
 
-    for (;;) {
-        double diff;
+        ret = configure_context(s);
+        if (ret < 0)
+            return ret;
 
-        DBG("main", "loop check\n");
-        pthread_mutex_lock(&s->queue_lock);
-        DBG("main", "mutex acquired\n");
-
-        if (s->queue_terminated && !s->nb_frames) {
-            const int ended = s->queue_terminated == 2;
-
-            DBG("main", "spawn decoding thread\n");
-
-            s->queue_terminated = 0;
-            s->request_seek     = -1;
-            s->can_seek_again   = 1;
-            s->request_drop     = -1;
-
-            if (ended)
-                pthread_join(s->dec_thread, NULL);
-            if (pthread_create(&s->dec_thread, NULL, decoder_thread, s)) {
-                fprintf(stderr, "Unable to spawn decoding thread\n");
-                s->queue_terminated = 1;
-                pthread_mutex_unlock(&s->queue_lock);
-                return ret_frame(s, NULL);
-            }
-
-            if (force_next_frame && ended) {
-                pthread_mutex_unlock(&s->queue_lock);
-                return ret_frame(s, NULL);
-            }
-        }
-
-        if (t < 0) {
-            DBG("main", "prefetch requested, returns NULL\n");
-            pthread_mutex_unlock(&s->queue_lock);
-            return NULL;
-        }
-
-        while (!s->nb_frames && !s->queue_terminated) {
-            DBG("main", "queue is still empty, wait for it to grow\n");
-            pthread_cond_wait(&s->queue_grow, &s->queue_lock);
-        }
-
-        if (!s->nb_frames && s->queue_terminated) {
-            // this can happen if the decoding thread wasn't able to decode
-            // anything
-            pthread_mutex_unlock(&s->queue_lock);
-            return ret_frame(s, NULL);
-        }
-
-        if (force_next_frame) {
-            struct sfxmp_frame *ret = ret_frame(s, &s->frames[0]);
-            consume_queue(s, 1);
-            pthread_mutex_unlock(&s->queue_lock);
-            pthread_cond_signal(&s->queue_reduce);
+        s->thread_state = THREAD_STATE_RUNNING;
+        ret = AVERROR(pthread_create(&s->dec_thread, NULL, decoder_thread, s));
+        if (ret < 0) {
+            s->thread_state = THREAD_STATE_NOTRUNNING;
+            DBG("main", "Unable to spawn decoding thread: %s\n", av_err2str(ret));
             return ret;
         }
 
-        diff = get_frame_dist(s, 0, t);
+        s->can_seek_again = 1;
+        s->request_drop = -1;
+    }
+
+    return ret;
+}
+
+/* Must be called by main thread only */
+static AVFrame *pop_frame(struct sfxmp_ctx *s)
+{
+    AVFrame *frame = NULL;
+
+    if (s->cached_frame) {
+        DBG("pop_frame", "we have a cached frame, pop this one\n");
+        frame = s->cached_frame;
+        s->cached_frame = NULL;
+    } else {
+        DBG("pop_frame", "requesting a frame\n");
+        pthread_mutex_lock(&s->lock);
+        while (!s->queued_frame && s->thread_state == THREAD_STATE_RUNNING) {
+            DBG("pop_frame", "no frame yet, wait\n");
+            pthread_cond_wait(&s->cond, &s->lock);
+        }
+        if (s->queued_frame) {
+            frame = s->queued_frame;
+            s->queued_frame = NULL;
+        }
+        pthread_cond_signal(&s->cond);
+        pthread_mutex_unlock(&s->lock);
+    }
+
+    if (frame) {
+        const int64_t ts = frame->pts;
+        DBG("pop_frame", "poped queued frame with ts=%s\n", PTS2TIMESTR(ts));
+        if (s->first_ts == AV_NOPTS_VALUE)
+            s->first_ts = ts;
+    } else {
+        DBG("pop_frame", "no frame available\n");
+    }
+
+    return frame;
+}
+
+#define SYNTH_FRAME 0
+
+#if SYNTH_FRAME
+static struct sfxmp_frame *ret_synth_frame(struct sfxmp_ctx *s, double t)
+{
+    AVFrame *frame = av_frame_alloc();
+    const int64_t t64 = TIME2INT64(t);
+    const int frame_id = lrint(t * 60);
+
+    frame->format = AV_PIX_FMT_RGBA;
+    frame->width = frame->height = 1;
+    frame->pts = t64;
+    av_frame_get_buffer(frame, 16);
+    frame->data[0][0] = (frame_id>>8 & 0xf) * 17;
+    frame->data[0][1] = (frame_id>>4 & 0xf) * 17;
+    frame->data[0][2] = (frame_id    & 0xf) * 17;
+    frame->data[0][3] = 0xff;
+    return ret_frame(s, frame, t64);
+}
+#endif
+
+struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
+{
+    int ret;
+    int64_t diff;
+    AVFrame *candidate = NULL;
+    const int64_t t64 = TIME2INT64(t);
+
+    DBG("main", " >>> get frame from %s for t=%s (user exact value:%f)\n",
+        s->filename, PTS2TIMESTR(t64), t);
+
+#if SYNTH_FRAME
+    return ret_synth_frame(s, t);
+#endif
+
+    ret = configure_context(s);
+    if (ret < 0)
+        return NULL;
+
+    const int vt = get_media_time(s, t64);
+    DBG("main", "t=%s -> vt=%s\n", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
+
+    if (t64 < 0) {
+        DBG("main", "prefetch requested, returns NULL\n");
+        spawn_decoding_thread_if_not_running(s);
+        return ret_frame(s, NULL, vt);
+    }
+
+    for (;;) {
+
+        DBG("main", "entering loop\n");
+
+        av_assert0(s->context_configured);
+
+        /* If the trim duration couldn't be evaluated, it's likely an image so
+         * we will assume this is the case. In the case we already pushed a
+         * picture we don't want to restart the decoding thread again so we
+         * return NULL. */
+        if (s->trim_duration64 < 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
+            DBG("main", "no trim duration, likely picture, and frame already returned\n");
+            return ret_frame(s, NULL, vt);
+        }
+
+        if (!candidate && s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
+            DBG("main", "no frame ever pushed yet, fetch a candidate\n");
+            spawn_decoding_thread_if_not_running(s);
+            candidate = pop_frame(s);
+            if (!candidate) {
+                DBG("main", "no frame popable\n");
+                return ret_frame(s, NULL, vt);
+            }
+        }
+
+        /* If we don't have any frame while reaching the EOF, we can only
+         * return a NULL frame. */
+        if (!candidate && join_dec_thread_if_dying(s)) {
+            spawn_decoding_thread_if_not_running(s);
+            return ret_frame(s, NULL, vt);
+        }
+
+        if (s->first_ts != AV_NOPTS_VALUE && vt < s->first_ts) {
+            DBG("main", "first_ts:%s media_time:%s t:%s\n",
+                PTS2TIMESTR(s->first_ts), PTS2TIMESTR(vt), PTS2TIMESTR(t64));
+            DBG("main", "requested a time before the first video timestamp\n");
+
+            av_frame_free(&s->cached_frame); // very unlikely to be useful (impossible?)
+            s->cached_frame = candidate;
+            return ret_frame(s, NULL, vt);
+        }
+
+        if (!candidate) { // means candidate refers to previously returned frame
+            diff = vt - s->last_pushed_frame_ts;
+            DBG("main", "diff with latest frame (t=%s) returned: %s [%"PRId64"]\n",
+                PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(diff), diff);
+        } else {
+            diff = vt - candidate->pts;
+            DBG("main", "diff with candidate (t=%s): %s [%"PRId64"]\n",
+                PTS2TIMESTR(candidate->pts), PTS2TIMESTR(diff), diff);
+        }
+
+        if (!diff)
+            return ret_frame(s, candidate, vt);
+
+        spawn_decoding_thread_if_not_running(s);
 
         if (diff < 0) {
-            /* past seek */
-            request_seek(s, t);
-            consume_queue(s, s->nb_frames);
-            pthread_mutex_unlock(&s->queue_lock);
-            pthread_cond_signal(&s->queue_reduce);
+            DBG("main", "diff %s [%"PRId64"] < 0\n", PTS2TIMESTR(diff), diff);
+
+            /* cached frame is most likely invalid since before fetch, remove
+             * it from the cache */
+            av_frame_free(&s->cached_frame);
+
+            /* attempt seek request (will be ignored if already requested) */
+            int ret = request_seek(s, t64);
+
+            if (ret < 0) {
+                if (s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
+                    // since no frame has been pushed yet, it means it's the
+                    // beginning of the presentation, so we do not consume the
+                    // frame, we wait for it to be valid
+                    s->cached_frame = candidate;
+                    return ret_frame(s, NULL, vt);
+                }
+            }
+            /* candidate was fetched before the seek, drop it */
+            av_frame_free(&candidate);
+
+            /* force the fetching of a new frame to be analyzed */
+            candidate = pop_frame(s);
+        } else if (diff > s->dist_time_seek_trigger64) {
+
+            DBG("main", "diff %s > %s [%"PRId64" > %"PRId64"] request future seek\n",
+                PTS2TIMESTR(diff), PTS2TIMESTR(s->dist_time_seek_trigger64),
+                diff, s->dist_time_seek_trigger64);
+            av_frame_free(&s->cached_frame);
+
+            request_seek(s, t64);
+
+            av_frame_free(&candidate);
+            candidate = pop_frame(s);
+
         } else {
-            int best_id = 0;
-            int i, need_more_frames;
+            DBG("main", "grab second frame\n");
+            AVFrame *tmp_frame_2 = pop_frame(s);
+            if (!tmp_frame_2) {
+                if (s->last_pushed_frame_ts == AV_NOPTS_VALUE)
+                    return ret_frame(s, candidate, vt);
+                s->cached_frame = candidate;
+                return ret_frame(s, NULL, vt);
+            }
+            DBG("main", "got second frame\n");
 
-            // skip N frames: this is useful when the refresh rate is lower
-            // than the video frame rate (N frames to consume at after each
-            // frame requested)
-            for (i = 1; i < s->nb_frames; i++) {
-                const double new_diff = get_frame_dist(s, i, t);
-                if (new_diff > diff || new_diff < 0)
-                    break;
+            const int64_t new_diff = vt - tmp_frame_2->pts;
+            DBG("main", "diff with sec frame %s [%"PRId64"]\n",
+                PTS2TIMESTR(new_diff), new_diff);
+
+            if (new_diff <= diff && new_diff >= 0) {
+                int need_more_frames;
+
+                DBG("main", "new diff is more interesting "
+                    "(new=%s [%"PRId64"] vs old=%s [%"PRId64"]), "
+                    "replace first candidate\n",
+                    PTS2TIMESTR(new_diff), new_diff,
+                    PTS2TIMESTR(diff), diff);
+
                 diff = new_diff;
-                best_id = i;
-            }
-            need_more_frames = i == s->nb_frames && !s->queue_terminated && diff;
 
-            DBG("main", "best frame: %d/%d | need more: %d (terminated:%d)\n",
-                best_id+1, s->nb_frames, need_more_frames, s->queue_terminated);
+                av_frame_free(&candidate);
+                candidate = tmp_frame_2;
 
-            if (diff > s->dist_time_seek_trigger) /* future seek */
-                request_seek(s, t);
+                pthread_mutex_lock(&s->lock);
+                need_more_frames = s->thread_state == THREAD_STATE_RUNNING && diff;
+                pthread_mutex_unlock(&s->lock);
+                DBG("main", "do we still need to peek more frames? %s\n", need_more_frames ? "yes" : "no");
+                if (!need_more_frames)
+                    return ret_frame(s, candidate, vt);
 
-            if (!consume_queue(s, best_id) && need_more_frames) {
-                DBG("decoder", "nothing consumed but needs more frame, wait for grow\n");
-                pthread_cond_wait(&s->queue_grow, &s->queue_lock);
-                pthread_mutex_unlock(&s->queue_lock);
-                continue;
-            }
-
-            pthread_mutex_unlock(&s->queue_lock);
-            pthread_cond_signal(&s->queue_reduce);
-
-            if (!need_more_frames) {
-                DBG("main", "raise frame %p with ts=%f for t=%f\n",
-                    s->frames[0].frame, s->frames[0].ts, t);
-                return ret_frame(s, &s->frames[0]);
             } else {
-                DBG("main", "need more frame for t=%f [%d frames in queue]\n", t, s->nb_frames);
+                DBG("main", "second frame is not more interesting than "
+                    "candidate, caching it for next frame call\n");
+
+                s->cached_frame = tmp_frame_2;
+                return ret_frame(s, candidate, vt);
             }
         }
     }
 }
 
-struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
-{
-    return get_frame(s, t, 0);
-}
-
 struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s)
 {
-    return get_frame(s, 0, 1);
+    int ret;
+
+    DBG("main", " >>> get next frame from %s\n", s->filename);
+
+    ret = configure_context(s);
+    if (ret < 0)
+        return NULL;
+
+    /* If we are joining (and killing) the thread, it means it reached a EOF,
+     * and this is the only reason to return NULL in this function. */
+    if (join_dec_thread_if_dying(s) == 2) {
+        DBG("main", "thread died, return EOF\n");
+        return ret_frame(s, NULL, 0);
+    }
+
+    spawn_decoding_thread_if_not_running(s);
+    return ret_frame(s, pop_frame(s), 0);
 }
 
 int sfxmp_get_duration(struct sfxmp_ctx *s, double *duration)
 {
-    int ret = open_ifile(s, s->filename);
+    int ret;
 
+    DBG("main", "query duration\n");
+    ret = configure_context(s);
     if (ret < 0)
         return ret;
     *duration = s->trim_duration;
+    DBG("main", "get duration -> %f\n", s->trim_duration);
     return 0;
 }
