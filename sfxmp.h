@@ -89,6 +89,16 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
 int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
 
 /**
+ * Get the media duration (clipped to trim_duration if set).
+ *
+ * The duration is expressed in seconds.
+ *
+ * Warning: this function must be called before any call to sfxmp_get_frame()
+ * or sfxmp_get_next_frame().
+ */
+int sfxmp_get_duration(struct sfxmp_ctx *s, double *duration);
+
+/**
  * Get the frame at an absolute time.
  *
  * The returned frame can be NULL if unchanged from last call.

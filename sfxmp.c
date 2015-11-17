@@ -72,6 +72,7 @@ struct sfxmp_ctx {
     double request_seek;                    // field used by the main thread to request a seek to the decoding thread
     int can_seek_again;                     // field used to avoid seeking again until the requested time is reached
     int request_drop;                       // field used by the main thread to request a change in the frame dropping mechanism
+    int file_opened;                        // is input file already opened?
 
     /* fields specific to main thread */
     double last_pushed_frame_ts;            // ts value of the latest pushed frame (it acts as a UID)
@@ -598,6 +599,9 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
     AVDictionary *opts = NULL;
     AVInputFormat *ifmt = NULL;
 
+    if (s->file_opened)
+        return 0;
+
     ret = avformat_open_input(&s->fmt_ctx, infile, ifmt, &opts);
     if (ret < 0) {
         fprintf(stderr, "Unable to open input file '%s'\n", infile);
@@ -674,6 +678,8 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
     }
 
     av_dump_format(s->fmt_ctx, 0, infile, 0);
+
+    s->file_opened = 1;
 
     return 0;
 }
@@ -1108,6 +1114,7 @@ end:
             hwaccel_def->uninit(s->dec_ctx);
         avcodec_free_context(&s->dec_ctx);
         avformat_close_input(&s->fmt_ctx);
+        s->file_opened = 0;
     }
     av_frame_free(&s->decoded_frame);
     av_frame_free(&s->filtered_frame);
@@ -1398,4 +1405,14 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
 struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s)
 {
     return get_frame(s, 0, 1);
+}
+
+int sfxmp_get_duration(struct sfxmp_ctx *s, double *duration)
+{
+    int ret = open_ifile(s, s->filename);
+
+    if (ret < 0)
+        return ret;
+    *duration = s->trim_duration;
+    return 0;
 }

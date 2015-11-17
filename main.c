@@ -266,12 +266,31 @@ static int simple_pass_through(const char *filename)
     return ret;
 }
 
+static int test_duration(const char *filename)
+{
+    int ret;
+    double duration;
+    struct sfxmp_ctx *s = sfxmp_create(filename);
+    struct sfxmp_frame *frame;
+
+    ret = sfxmp_get_duration(s, &duration);
+    if (ret < 0)
+        return ret;
+    printf("%s: duration=%f\n", filename, duration);
+    sfxmp_release_frame(sfxmp_get_next_frame(s));
+    sfxmp_free(&s);
+    return 0;
+}
+
 int main(int ac, char **av)
 {
     if (ac != 2 && ac != 3) {
         fprintf(stderr, "Usage: %s [-notest] <file>\n", av[0]);
         return -1;
     }
+
+    if (test_duration(av[1]) < 0)
+        return -1;
 
     if (ac == 3 && !strcmp(av[1], "-notest"))
         return simple_pass_through(av[2]);
