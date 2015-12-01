@@ -1063,13 +1063,9 @@ static void *decoder_thread(void *arg)
 
         if (s->pkt_skip_mod) {
             pkt_count++;
-            if (pkt_count % s->pkt_skip_mod) {
-                if (!(pkt.flags & AV_PKT_FLAG_KEY)) {
-                    av_free_packet(&pkt);
-                    continue;
-                } else {
-                    pkt_count--;
-                }
+            if (pkt_count % s->pkt_skip_mod && !(pkt.flags & AV_PKT_FLAG_KEY)) {
+                av_free_packet(&pkt);
+                continue;
             }
         }
 
