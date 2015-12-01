@@ -54,6 +54,7 @@ struct sfxmp_ctx {
     int autorotate;                         // switch for automatically rotate in software decoding
     int auto_hwaccel;                       // attempt to enable hardware acceleration
     int export_mvs;                         // export motion vectors into frame->mvs
+    int pkt_skip_mod;                       // skip packet if module pkt_skip_mod (and not a key pkt)
 
     /* misc general fields */
     enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
@@ -117,6 +118,7 @@ static const AVOption sfxmp_options[] = {
     { "autorotate",             NULL, OFFSET(autorotate),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { "auto_hwaccel",           NULL, OFFSET(auto_hwaccel),           AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { "export_mvs",             NULL, OFFSET(export_mvs),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
+    { "pkt_skip_mod",           NULL, OFFSET(pkt_skip_mod),           AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
     { NULL }
 };
 
@@ -1002,6 +1004,7 @@ end:
 static void *decoder_thread(void *arg)
 {
     int ret, got_frame;
+    int64_t pkt_count = 0;
     AVPacket pkt = {0};
     struct sfxmp_ctx *s = arg;
 
@@ -1057,6 +1060,19 @@ static void *decoder_thread(void *arg)
     /* read frames from the file */
     while (av_read_frame(s->fmt_ctx, &pkt) >= 0) {
         AVPacket orig_pkt = pkt;
+
+        if (s->pkt_skip_mod) {
+            pkt_count++;
+            if (pkt_count % s->pkt_skip_mod) {
+                if (!(pkt.flags & AV_PKT_FLAG_KEY)) {
+                    av_free_packet(&pkt);
+                    continue;
+                } else {
+                    pkt_count--;
+                }
+            }
+        }
+
         do {
             ret = decode_packet(s, &pkt, s->decoded_frame, &got_frame);
             if (ret < 0)

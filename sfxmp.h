@@ -85,6 +85,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
  *   autorotate               integer   automatically insert rotation filters (video software decoding only)
  *   auto_hwaccel             integer   attempt to enable hardware acceleration
  *   export_mvs               integer   export motion vectors into frame->mvs
+ *   pkt_skip_mod             integer   skip packet if module pkt_skip_mod (and not a key pkt)
  */
 int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
 
