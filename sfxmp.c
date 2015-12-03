@@ -643,6 +643,13 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
         s->dec_ctx->thread_count = 1;
     }
 
+    if (s->dec_ctx->codec_id == AV_CODEC_ID_H264) {
+        const AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
+        if (codec) {
+            dec = codec;
+        }
+    }
+
     ret = avcodec_open2(s->dec_ctx, dec, NULL);
     if (ret < 0) {
         fprintf(stderr, "Unable to open input %s decoder\n", s->media_type_string);
