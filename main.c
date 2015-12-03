@@ -271,7 +271,6 @@ static int test_duration(const char *filename)
     int ret;
     double duration;
     struct sfxmp_ctx *s = sfxmp_create(filename);
-    struct sfxmp_frame *frame;
 
     ret = sfxmp_get_duration(s, &duration);
     if (ret < 0)
