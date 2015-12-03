@@ -1059,12 +1059,10 @@ static void *decoder_thread(void *arg)
 
     /* read frames from the file */
     while (av_read_frame(s->fmt_ctx, &pkt) >= 0) {
-        AVPacket orig_pkt = pkt;
-
         if (s->pkt_skip_mod) {
             pkt_count++;
             if (pkt_count % s->pkt_skip_mod && !(pkt.flags & AV_PKT_FLAG_KEY)) {
-                av_free_packet(&pkt);
+                av_packet_unref(&pkt);
                 continue;
             }
         }
@@ -1078,12 +1076,12 @@ static void *decoder_thread(void *arg)
             if (got_frame) {
                 ret = queue_frame(s, s->decoded_frame, &pkt);
                 if (ret == AVERROR_EXIT) {
-                    av_free_packet(&orig_pkt);
+                    av_packet_unref(&pkt);
                     goto end;
                 }
             }
         } while (pkt.size > 0);
-        av_free_packet(&orig_pkt);
+        av_packet_unref(&pkt);
     }
 
     /* flush cached frames */
