@@ -644,7 +644,7 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
     }
 
     if (s->dec_ctx->codec_id == AV_CODEC_ID_H264) {
-        const AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
+        AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
         if (codec) {
             dec = codec;
         }
