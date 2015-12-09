@@ -288,7 +288,7 @@ int main(int ac, char **av)
         return -1;
     }
 
-    if (test_duration(av[1]) < 0)
+    if (test_duration(av[1 + (ac == 3)]) < 0)
         return -1;
 
     if (ac == 3 && !strcmp(av[1], "-notest"))
