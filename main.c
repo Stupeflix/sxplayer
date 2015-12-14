@@ -1,7 +1,7 @@
 #include <libavutil/avassert.h>
 #include <libavutil/common.h>
 #include <libavutil/time.h>
-#include <float.h> // for DBL_MIN
+#include <float.h> // for DBL_MAX
 
 #include "sfxmp.h"
 
@@ -102,7 +102,7 @@ static int test_instant_gets(const char *filename, int avselect)
 
     for (i = 0; i < FF_ARRAY_ELEMS(instant_gets); i++) {
         int prev_frame_id = -1;
-        double prev_time = DBL_MIN;
+        double prev_time = -DBL_MAX;
 
         struct sfxmp_ctx *s = sfxmp_create(filename);
 
@@ -149,7 +149,7 @@ static int test_seeks(const char *filename, int avselect)
 
     for (i = 0; i < FF_ARRAY_ELEMS(instant_gets); i++) {
         int prev_frame_id = -1;
-        double prev_time = DBL_MIN;
+        double prev_time = -DBL_MAX;
 
         ret = test_frame(s, instant_gets[i], &prev_frame_id, &prev_time,
                          skip, trim_duration, avselect);
@@ -167,7 +167,7 @@ static int test_full_run(const char *filename, int refresh_rate,
                          int avselect)
 {
     int i, ret = 0, prev_frame_id = -1;
-    double prev_time = DBL_MIN;
+    double prev_time = -DBL_MAX;
     const double request_end_time   = trim_duration + POST_REQUEST_TIME;
     const double request_duration   = request_end_time;
     const int nb_calls = request_duration * refresh_rate;
