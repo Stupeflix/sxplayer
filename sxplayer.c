@@ -1,20 +1,20 @@
 /*
- * This file is part of sfxmp.
+ * This file is part of sxplayer.
  *
  * Copyright (c) 2015 Stupeflix
  *
- * sfxmp is free software; you can redistribute it and/or
+ * sxplayer is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
  *
- * sfxmp is distributed in the hope that it will be useful,
+ * sxplayer is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with sfxmp; if not, write to the Free Software
+ * License along with sxplayer; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -38,7 +38,7 @@
 //#include <libswresample/swresample.h>
 //#include <libswscale/swscale.h>
 
-#include "sfxmp.h"
+#include "sxplayer.h"
 #include "async.h"
 #include "internal.h"
 
@@ -54,23 +54,23 @@ static const struct decoder *decoder_def_hwaccel = NULL;
 
 static const struct {
     enum AVPixelFormat ff;
-    enum sfxmp_pixel_format sx;
+    enum sxplayer_pixel_format sx;
 } pix_fmts_mapping[] = {
-    {AV_PIX_FMT_VIDEOTOOLBOX, SFXMP_PIXFMT_VT},
-    {AV_PIX_FMT_BGRA,         SFXMP_PIXFMT_BGRA},
-    {AV_PIX_FMT_RGBA,         SFXMP_PIXFMT_RGBA},
+    {AV_PIX_FMT_VIDEOTOOLBOX, SXPLAYER_PIXFMT_VT},
+    {AV_PIX_FMT_BGRA,         SXPLAYER_PIXFMT_BGRA},
+    {AV_PIX_FMT_RGBA,         SXPLAYER_PIXFMT_RGBA},
 };
 
-#define OFFSET(x) offsetof(struct sfxmp_ctx, x)
-static const AVOption sfxmp_options[] = {
-    { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SFXMP_SELECT_VIDEO}, 0, NB_SFXMP_MEDIA_SELECTION-1 },
+#define OFFSET(x) offsetof(struct sxplayer_ctx, x)
+static const AVOption sxplayer_options[] = {
+    { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SXPLAYER_SELECT_VIDEO}, 0, NB_SXPLAYER_MEDIA_SELECTION-1 },
     { "skip",                   NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
     { "trim_duration",          NULL, OFFSET(trim_duration),          AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
     { "dist_time_seek_trigger", NULL, OFFSET(dist_time_seek_trigger), AV_OPT_TYPE_DOUBLE,    {.dbl=1.5},    -1, DBL_MAX },
     { "max_nb_packets",         NULL, OFFSET(max_nb_packets),         AV_OPT_TYPE_INT,       {.i64=5},       1, 100 },
     { "max_nb_frames",          NULL, OFFSET(max_nb_frames),          AV_OPT_TYPE_INT,       {.i64=3},       1, 100 },
     { "filters",                NULL, OFFSET(filters),                AV_OPT_TYPE_STRING,    {.str=NULL},    0,       0 },
-    { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SFXMP_PIXFMT_BGRA},  0, 1 },
+    { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SXPLAYER_PIXFMT_BGRA},  0, 1 },
     { "autorotate",             NULL, OFFSET(autorotate),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { "auto_hwaccel",           NULL, OFFSET(auto_hwaccel),           AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { "export_mvs",             NULL, OFFSET(export_mvs),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
@@ -78,13 +78,13 @@ static const AVOption sfxmp_options[] = {
     { NULL }
 };
 
-static const AVClass sfxmp_class = {
-    .class_name = "sfxmp",
+static const AVClass sxplayer_class = {
+    .class_name = "sxplayer",
     .item_name  = av_default_item_name,
-    .option     = sfxmp_options,
+    .option     = sxplayer_options,
 };
 
-int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...)
+int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...)
 {
     va_list ap;
     int n, ret = 0;
@@ -122,7 +122,7 @@ end:
     return ret;
 }
 
-static enum AVPixelFormat pix_fmts_sx2ff(enum sfxmp_pixel_format pix_fmt)
+static enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt)
 {
     int i;
     for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
@@ -131,7 +131,7 @@ static enum AVPixelFormat pix_fmts_sx2ff(enum sfxmp_pixel_format pix_fmt)
     return AV_PIX_FMT_NONE;
 }
 
-static enum sfxmp_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
+static enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
 {
     int i;
     for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
@@ -165,7 +165,7 @@ static AVFrame *get_audio_frame(void)
     return frame;
 }
 
-static void free_context(struct sfxmp_ctx *s)
+static void free_context(struct sxplayer_ctx *s)
 {
     if (!s)
         return;
@@ -174,7 +174,7 @@ static void free_context(struct sfxmp_ctx *s)
 }
 
 /* Destroy data allocated by configure_context() */
-static void free_temp_context_data(struct sfxmp_ctx *s)
+static void free_temp_context_data(struct sxplayer_ctx *s)
 {
     av_frame_free(&s->filtered_frame);
     avfilter_graph_free(&s->filter_graph);
@@ -202,10 +202,10 @@ static void free_temp_context_data(struct sfxmp_ctx *s)
     s->context_configured = 0;
 }
 
-struct sfxmp_ctx *sfxmp_create(const char *filename)
+struct sxplayer_ctx *sxplayer_create(const char *filename)
 {
     int i;
-    struct sfxmp_ctx *s;
+    struct sxplayer_ctx *s;
     const struct {
         const char *libname;
         unsigned build_version;
@@ -237,7 +237,7 @@ struct sfxmp_ctx *sfxmp_create(const char *filename)
     if (!s)
         return NULL;
 
-    s->class = &sfxmp_class;
+    s->class = &sxplayer_class;
     av_opt_set_defaults(s);
 
     s->filename = av_strdup(filename);
@@ -265,7 +265,7 @@ fail:
 
 /* If decoding thread is dying (EOF reached for example), wait for it to end
  * and confirm dead state */
-static int join_dec_thread_if_dying(struct sfxmp_ctx *s)
+static int join_dec_thread_if_dying(struct sxplayer_ctx *s)
 {
     int ret;
 
@@ -287,7 +287,7 @@ static int join_dec_thread_if_dying(struct sfxmp_ctx *s)
     return ret;
 }
 
-static void shoot_running_decoding_thread(struct sfxmp_ctx *s)
+static void shoot_running_decoding_thread(struct sxplayer_ctx *s)
 {
     pthread_mutex_lock(&s->lock);
     if (s->thread_state == THREAD_STATE_RUNNING) {
@@ -298,11 +298,11 @@ static void shoot_running_decoding_thread(struct sfxmp_ctx *s)
     pthread_mutex_unlock(&s->lock);
 }
 
-void sfxmp_free(struct sfxmp_ctx **ss)
+void sxplayer_free(struct sxplayer_ctx **ss)
 {
-    struct sfxmp_ctx *s = *ss;
+    struct sxplayer_ctx *s = *ss;
 
-    DBG("free", "calling sfxmp_free() (%p)\n", s);
+    DBG("free", "calling sxplayer_free() (%p)\n", s);
 
     if (!s)
         return;
@@ -322,7 +322,7 @@ void sfxmp_free(struct sfxmp_ctx **ss)
  * request a pixel format we want, and let libavfilter insert the necessary
  * scaling filter (typically, an automatic conversion from yuv420p to rgb32).
  */
-static int setup_filtergraph(struct sfxmp_ctx *s)
+static int setup_filtergraph(struct sxplayer_ctx *s)
 {
     int ret = 0;
     char args[512];
@@ -462,7 +462,7 @@ static char *update_filters_str(char *filters, const char *append)
 static int pull_packet_cb(void *priv, AVPacket *pkt)
 {
     int ret;
-    struct sfxmp_ctx *s = priv;
+    struct sxplayer_ctx *s = priv;
     AVFormatContext *fmt_ctx = s->fmt_ctx;
     const int target_stream_idx = s->stream->index;
 
@@ -495,7 +495,7 @@ static int pull_packet_cb(void *priv, AVPacket *pkt)
 /**
  * Map the timeline time to the media time
  */
-static int64_t get_media_time(const struct sfxmp_ctx *s, int64_t t)
+static int64_t get_media_time(const struct sxplayer_ctx *s, int64_t t)
 {
     if (s->trim_duration64 < 0)
         return 0;
@@ -507,7 +507,7 @@ static int64_t get_media_time(const struct sfxmp_ctx *s, int64_t t)
  */
 static int seek_cb(void *arg, int64_t t)
 {
-    struct sfxmp_ctx *s = arg;
+    struct sxplayer_ctx *s = arg;
 
     DBG("decoder", "Seek in media (%s) at %s\n", s->filename, PTS2TIMESTR(t));
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, t, t, 0);
@@ -517,7 +517,7 @@ static int seek_cb(void *arg, int64_t t)
  * Convert an audio frame (PCM data) to a textured video frame with waves and
  * FFT lines
  */
-static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video,
+static void audio_frame_to_sound_texture(struct sxplayer_ctx *s, AVFrame *dst_video,
                                          const AVFrame *audio_src)
 {
     int i, j, ch;
@@ -602,7 +602,7 @@ static void audio_frame_to_sound_texture(struct sfxmp_ctx *s, AVFrame *dst_video
     }
 }
 
-static int filter_frame(struct sfxmp_ctx *s, AVFrame *outframe, AVFrame *inframe)
+static int filter_frame(struct sxplayer_ctx *s, AVFrame *outframe, AVFrame *inframe)
 {
     int ret = 0; //, done = 0;
 
@@ -680,7 +680,7 @@ static int filter_frame(struct sfxmp_ctx *s, AVFrame *outframe, AVFrame *inframe
 static int push_frame_cb(void *priv, AVFrame *frame)
 {
     int ret;
-    struct sfxmp_ctx *s = priv;
+    struct sxplayer_ctx *s = priv;
     const int flush = !frame;
 
     if (frame) {
@@ -752,7 +752,7 @@ static int push_frame_cb(void *priv, AVFrame *frame)
 /**
  * Open the input file.
  */
-static int open_ifile(struct sfxmp_ctx *s, const char *infile)
+static int open_ifile(struct sxplayer_ctx *s, const char *infile)
 {
     int ret;
     const struct decoder *dec_def, *dec_def_fallback;
@@ -877,7 +877,7 @@ static int open_ifile(struct sfxmp_ctx *s, const char *infile)
     return 0;
 }
 
-static int set_context_fields(struct sfxmp_ctx *s)
+static int set_context_fields(struct sxplayer_ctx *s)
 {
     if (pix_fmts_sx2ff(s->sw_pix_fmt) == AV_PIX_FMT_NONE) {
         fprintf(stderr, "Invalid software decoding pixel format specified\n");
@@ -885,8 +885,8 @@ static int set_context_fields(struct sfxmp_ctx *s)
     }
 
     switch (s->avselect) {
-    case SFXMP_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
-    case SFXMP_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
+    case SXPLAYER_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
+    case SXPLAYER_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
     default:
         av_assert0(0);
     }
@@ -954,9 +954,9 @@ static int set_context_fields(struct sfxmp_ctx *s)
 /**
  * This can not be done earlier inside the context allocation function because
  * it requires user option to be set, which is done between the context
- * allocation and the first call to sfxmp_get_*frame() or sfxmp_get_duration().
+ * allocation and the first call to sxplayer_get_*frame() or sxplayer_get_duration().
  */
-static int configure_context(struct sfxmp_ctx *s)
+static int configure_context(struct sxplayer_ctx *s)
 {
     int ret;
 
@@ -984,7 +984,7 @@ static int configure_context(struct sfxmp_ctx *s)
 
 static void *decoder_thread(void *arg)
 {
-    struct sfxmp_ctx *s = arg;
+    struct sxplayer_ctx *s = arg;
 
     av_assert0(s->context_configured);
     if (s->skip64)
@@ -1001,9 +1001,9 @@ static void *decoder_thread(void *arg)
 /* Return the frame only if different from previous one. We do not make a
  * simple pointer check because of the frame reference counting (and thus
  * pointer reuse, depending on many parameters)  */
-static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, AVFrame *frame, int64_t req_t)
+static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, int64_t req_t)
 {
-    struct sfxmp_frame *ret;
+    struct sxplayer_frame *ret;
     AVFrameSideData *sd;
 
     if (!frame) {
@@ -1057,7 +1057,7 @@ static struct sfxmp_frame *ret_frame(struct sfxmp_ctx *s, AVFrame *frame, int64_
     return ret;
 }
 
-static int request_seek(struct sfxmp_ctx *s, int64_t t)
+static int request_seek(struct sxplayer_ctx *s, int64_t t)
 {
     if (s->can_seek_again) {
         DBG("main", "request seek at %s\n", PTS2TIMESTR(t));
@@ -1070,7 +1070,7 @@ static int request_seek(struct sfxmp_ctx *s, int64_t t)
     }
 }
 
-void sfxmp_release_frame(struct sfxmp_frame *frame)
+void sxplayer_release_frame(struct sxplayer_frame *frame)
 {
     DBG("main", "release frame %p\n", frame);
     if (frame) {
@@ -1081,7 +1081,7 @@ void sfxmp_release_frame(struct sfxmp_frame *frame)
     }
 }
 
-int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop)
+int sxplayer_set_drop_ref(struct sxplayer_ctx *s, int drop)
 {
     if (!s)
         return -1;
@@ -1097,7 +1097,7 @@ int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop)
 #endif
 }
 
-static int spawn_decoding_thread_if_not_running(struct sfxmp_ctx *s)
+static int spawn_decoding_thread_if_not_running(struct sxplayer_ctx *s)
 {
     int ret = 0;
 
@@ -1124,7 +1124,7 @@ static int spawn_decoding_thread_if_not_running(struct sfxmp_ctx *s)
 }
 
 /* Must be called by main thread only */
-static AVFrame *pop_frame(struct sfxmp_ctx *s)
+static AVFrame *pop_frame(struct sxplayer_ctx *s)
 {
     AVFrame *frame = NULL;
 
@@ -1162,7 +1162,7 @@ static AVFrame *pop_frame(struct sfxmp_ctx *s)
 #define SYNTH_FRAME 0
 
 #if SYNTH_FRAME
-static struct sfxmp_frame *ret_synth_frame(struct sfxmp_ctx *s, double t)
+static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 {
     AVFrame *frame = av_frame_alloc();
     const int64_t t64 = TIME2INT64(t);
@@ -1180,7 +1180,7 @@ static struct sfxmp_frame *ret_synth_frame(struct sfxmp_ctx *s, double t)
 }
 #endif
 
-struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
+struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 {
     int ret;
     int64_t diff;
@@ -1347,7 +1347,7 @@ struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t)
     }
 }
 
-struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s)
+struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 {
     int ret;
 
@@ -1368,7 +1368,7 @@ struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s)
     return ret_frame(s, pop_frame(s), 0);
 }
 
-int sfxmp_get_duration(struct sfxmp_ctx *s, double *duration)
+int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration)
 {
     int ret;
 

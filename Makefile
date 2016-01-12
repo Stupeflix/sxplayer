@@ -1,4 +1,4 @@
-NAME = sfxmp
+NAME = sxplayer
 
 PROJECT_OBJS = log.o async.o decoders.o decoder_ffmpeg.o
 DARWIN_OBJS  = decoder_vt.o

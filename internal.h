@@ -1,25 +1,25 @@
 /*
- * This file is part of sfxmp.
+ * This file is part of sxplayer.
  *
  * Copyright (c) 2015 Stupeflix
  *
- * sfxmp is free software; you can redistribute it and/or
+ * sxplayer is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
  *
- * sfxmp is distributed in the hope that it will be useful,
+ * sxplayer is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with sfxmp; if not, write to the Free Software
+ * License along with sxplayer; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef SFXMP_INTERNAL_H
-#define SFXMP_INTERNAL_H
+#ifndef SXPLAYER_INTERNAL_H
+#define SXPLAYER_INTERNAL_H
 
 #include <stdio.h>
 #include <libavcodec/avcodec.h>
@@ -34,13 +34,13 @@
 
 void do_log(const char *mod, const char *fmt, ...);
 
-#define DBG_SFXMP(mod, ...) do { do_log(mod, __VA_ARGS__); fflush(stdout); } while (0)
+#define DBG_SXPLAYER(mod, ...) do { do_log(mod, __VA_ARGS__); fflush(stdout); } while (0)
 #if ENABLE_DBG
-# define DBG(mod, ...) DBG_SFXMP(mod, __VA_ARGS__)
+# define DBG(mod, ...) DBG_SXPLAYER(mod, __VA_ARGS__)
 #else
 /* Note: this could be replaced by a "while(0)" but it wouldn't test the
  * compilation of the printf format, so we use this more complex form. */
-# define DBG(mod, ...) do { if (0) DBG_SFXMP(mod, __VA_ARGS__); } while (0)
+# define DBG(mod, ...) do { if (0) DBG_SXPLAYER(mod, __VA_ARGS__); } while (0)
 #endif
 
 #define TIME2INT64(d) llrint((d) * av_q2d(av_inv_q(AV_TIME_BASE_Q)))
@@ -50,7 +50,7 @@ void do_log(const char *mod, const char *fmt, ...);
 #define AUDIO_NBSAMPLES  (1<<(AUDIO_NBITS))
 #define AUDIO_NBCHANNELS 2
 
-struct sfxmp_ctx {
+struct sxplayer_ctx {
     const AVClass *class;                   // necessary for the AVOption mechanism
     char *filename;                         // input filename
 

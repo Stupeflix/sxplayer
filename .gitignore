@@ -1,6 +1,6 @@
 *.o
-libsfxmp.a
-libsfxmp.pc
-libsfxmp.so
-sfxmp
-sfxmp.hpp
+libsxplayer.a
+libsxplayer.pc
+libsxplayer.so
+sxplayer
+sxplayer.hpp

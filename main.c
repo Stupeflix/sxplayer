@@ -1,20 +1,20 @@
 /*
- * This file is part of sfxmp.
+ * This file is part of sxplayer.
  *
  * Copyright (c) 2015 Stupeflix
  *
- * sfxmp is free software; you can redistribute it and/or
+ * sxplayer is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
  *
- * sfxmp is distributed in the hope that it will be useful,
+ * sxplayer is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with sfxmp; if not, write to the Free Software
+ * License along with sxplayer; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -23,7 +23,7 @@
 #include <libavutil/time.h>
 #include <float.h> // for DBL_MAX
 
-#include "sfxmp.h"
+#include "sxplayer.h"
 
 #define N 4
 #define NB_FRAMES (1<<(3*N))
@@ -32,29 +32,29 @@
 #define PRE_FILL_TIME 3     /* try to pre fetch starting 3 seconds earlier */
 #define POST_REQUEST_TIME 2 /* attempt to fetch the last frame for 2 more seconds */
 
-static int test_frame(struct sfxmp_ctx *s,
+static int test_frame(struct sxplayer_ctx *s,
                       double time, int *prev_frame_id, double *prev_time,
                       double skip, double trim_duration, int avselect)
 {
-    struct sfxmp_frame *frame = sfxmp_get_frame(s, time);
+    struct sxplayer_frame *frame = sxplayer_get_frame(s, time);
 
     if (time < 0) {
         if (frame) {
             fprintf(stderr, "Time requested < 0 but got frame\n");
-            sfxmp_release_frame(frame);
+            sxplayer_release_frame(frame);
             return -1;
         }
         return 0;
     }
 
-    if (avselect == SFXMP_SELECT_AUDIO) {
+    if (avselect == SXPLAYER_SELECT_AUDIO) {
         // TODO
         if (frame) {
             const double playback_time = av_clipd(time, 0, trim_duration < 0 ? DBL_MAX : trim_duration);
             const double diff = FFABS(playback_time - frame->ts);
             printf("AUDIO TEST FRAME %dx%d pt:%f ft:%f diff:%f\n", frame->width, frame->height, playback_time, frame->ts, diff);
         }
-        sfxmp_release_frame(frame);
+        sxplayer_release_frame(frame);
         return 0;
     }
 
@@ -75,13 +75,13 @@ static int test_frame(struct sfxmp_ctx *s,
 
         if (diff > 2./SOURCE_FPS) {
             fprintf(stderr, "ERROR: frame diff is too big %f>%f\n", diff, 2./SOURCE_FPS);
-            sfxmp_release_frame(frame);
+            sxplayer_release_frame(frame);
             return -1;
         }
 
         if (frame_id == *prev_frame_id) {
             fprintf(stderr, "ERROR: Got a frame, but it has the same content as the previous one\n");
-            sfxmp_release_frame(frame);
+            sxplayer_release_frame(frame);
             return -1;
         }
 
@@ -90,7 +90,7 @@ static int test_frame(struct sfxmp_ctx *s,
 
         if (time < *prev_time) {
             fprintf(stderr, "ERROR: time went backward but got no frame update\n");
-            sfxmp_release_frame(frame);
+            sxplayer_release_frame(frame);
             return -1;
         }
 
@@ -98,7 +98,7 @@ static int test_frame(struct sfxmp_ctx *s,
             if (time > 0 && time < trim_duration) {
                 fprintf(stderr, "ERROR: the difference between current and previous time (%f) "
                         "is large enough to get a new frame, but got none\n", time - *prev_time);
-                sfxmp_release_frame(frame);
+                sxplayer_release_frame(frame);
                 return -1;
             }
         }
@@ -106,7 +106,7 @@ static int test_frame(struct sfxmp_ctx *s,
         printf("frame t=%f: no frame\n", time);
     }
     *prev_time = time;
-    sfxmp_release_frame(frame);
+    sxplayer_release_frame(frame);
     return 0;
 }
 
@@ -124,14 +124,14 @@ static int test_instant_gets(const char *filename, int avselect)
         int prev_frame_id = -1;
         double prev_time = -DBL_MAX;
 
-        struct sfxmp_ctx *s = sfxmp_create(filename);
+        struct sxplayer_ctx *s = sxplayer_create(filename);
 
         printf("Test instant get @ t=%f\n", instant_gets[i]);
 
-        sfxmp_set_option(s, "avselect", avselect);
-        sfxmp_set_option(s, "skip", skip);
-        sfxmp_set_option(s, "trim_duration", trim_duration);
-        sfxmp_set_option(s, "auto_hwaccel", 0);
+        sxplayer_set_option(s, "avselect", avselect);
+        sxplayer_set_option(s, "skip", skip);
+        sxplayer_set_option(s, "trim_duration", trim_duration);
+        sxplayer_set_option(s, "auto_hwaccel", 0);
 
         if (!s)
             return -1;
@@ -139,7 +139,7 @@ static int test_instant_gets(const char *filename, int avselect)
         ret = test_frame(s, instant_gets[i], &prev_frame_id, &prev_time,
                          skip, trim_duration, avselect);
 
-        sfxmp_free(&s);
+        sxplayer_free(&s);
 
         if (ret < 0)
             break;
@@ -155,14 +155,14 @@ static int test_seeks(const char *filename, int avselect)
 
     const double instant_gets[] = {32., 31., 31.2, 60.};
 
-    struct sfxmp_ctx *s = sfxmp_create(filename);
+    struct sxplayer_ctx *s = sxplayer_create(filename);
 
     printf("Test: %s\n", __FUNCTION__);
 
-    sfxmp_set_option(s, "avselect", avselect);
-    sfxmp_set_option(s, "skip", skip);
-    sfxmp_set_option(s, "trim_duration", trim_duration);
-    sfxmp_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "avselect", avselect);
+    sxplayer_set_option(s, "skip", skip);
+    sxplayer_set_option(s, "trim_duration", trim_duration);
+    sxplayer_set_option(s, "auto_hwaccel", 0);
 
     if (!s)
         return -1;
@@ -178,7 +178,7 @@ static int test_seeks(const char *filename, int avselect)
             break;
     }
 
-    sfxmp_free(&s);
+    sxplayer_free(&s);
     return ret;
 }
 
@@ -192,14 +192,14 @@ static int test_full_run(const char *filename, int refresh_rate,
     const double request_duration   = request_end_time;
     const int nb_calls = request_duration * refresh_rate;
 
-    struct sfxmp_ctx *s = sfxmp_create(filename);
+    struct sxplayer_ctx *s = sxplayer_create(filename);
 
     printf("Test: %s\n", __FUNCTION__);
 
-    sfxmp_set_option(s, "avselect", avselect);
-    sfxmp_set_option(s, "skip", skip);
-    sfxmp_set_option(s, "trim_duration", trim_duration);
-    sfxmp_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "avselect", avselect);
+    sxplayer_set_option(s, "skip", skip);
+    sxplayer_set_option(s, "trim_duration", trim_duration);
+    sxplayer_set_option(s, "auto_hwaccel", 0);
 
     if (!s)
         return -1;
@@ -228,7 +228,7 @@ static int test_full_run(const char *filename, int refresh_rate,
     }
 
 end:
-    sfxmp_free(&s);
+    sxplayer_free(&s);
     return ret;
 }
 
@@ -253,13 +253,13 @@ static int run_tests(const char *filename, int avselect)
 static int simple_pass_through(const char *filename)
 {
     int i = 0, ret = 0;
-    struct sfxmp_ctx *s = sfxmp_create(filename);
+    struct sxplayer_ctx *s = sxplayer_create(filename);
 
-    sfxmp_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "auto_hwaccel", 0);
 
     for (;;) {
         const double t = av_gettime();
-        struct sfxmp_frame *frame = sfxmp_get_next_frame(s);
+        struct sxplayer_frame *frame = sxplayer_get_next_frame(s);
         const double diff = (av_gettime() - t) / 1000000.;
 
         if (!frame) {
@@ -270,19 +270,19 @@ static int simple_pass_through(const char *filename)
                diff, i++, frame->data, frame->ts, frame->width, frame->height,
                frame->linesize, frame->pix_fmt);
 
-        sfxmp_release_frame(frame);
+        sxplayer_release_frame(frame);
 
         /* test code to make sure a NULL is returned even when a decoding
          * thread is restarted */
 #if 0
         if (i % 4096 == 0) {
             usleep(1000000);
-            av_assert0(!sfxmp_get_next_frame(s));
+            av_assert0(!sxplayer_get_next_frame(s));
         }
 #endif
     }
 
-    sfxmp_free(&s);
+    sxplayer_free(&s);
     return ret;
 }
 
@@ -290,27 +290,27 @@ static int test_duration(const char *filename)
 {
     int ret;
     double duration;
-    struct sfxmp_ctx *s = sfxmp_create(filename);
+    struct sxplayer_ctx *s = sxplayer_create(filename);
 
-    ret = sfxmp_get_duration(s, &duration);
+    ret = sxplayer_get_duration(s, &duration);
     if (ret < 0)
         return ret;
     printf("%s: duration=%f\n", filename, duration);
-    sfxmp_release_frame(sfxmp_get_next_frame(s));
-    sfxmp_free(&s);
+    sxplayer_release_frame(sxplayer_get_next_frame(s));
+    sxplayer_free(&s);
     return 0;
 }
 
 static int run_notavail_file_test(void)
 {
-    struct sfxmp_ctx *s = sfxmp_create("/i/do/not/exist");
+    struct sxplayer_ctx *s = sxplayer_create("/i/do/not/exist");
 
     if (!s)
         return -1;
-    sfxmp_release_frame(sfxmp_get_frame(s, -1));
-    sfxmp_release_frame(sfxmp_get_frame(s, 1.0));
-    sfxmp_release_frame(sfxmp_get_frame(s, 3.0));
-    sfxmp_free(&s);
+    sxplayer_release_frame(sxplayer_get_frame(s, -1));
+    sxplayer_release_frame(sxplayer_get_frame(s, 1.0));
+    sxplayer_release_frame(sxplayer_get_frame(s, 3.0));
+    sxplayer_free(&s);
     return 0;
 }
 
@@ -330,8 +330,8 @@ int main(int ac, char **av)
     if (run_notavail_file_test() < 0)
         return -1;
 
-    if (run_tests(av[1], SFXMP_SELECT_VIDEO) < 0 ||
-        run_tests(av[1], SFXMP_SELECT_AUDIO) < 0)
+    if (run_tests(av[1], SXPLAYER_SELECT_VIDEO) < 0 ||
+        run_tests(av[1], SXPLAYER_SELECT_AUDIO) < 0)
         return -1;
 
     printf("All tests OK\n");

@@ -1,25 +1,25 @@
 /*
- * This file is part of sfxmp.
+ * This file is part of sxplayer.
  *
  * Copyright (c) 2015 Stupeflix
  *
- * sfxmp is free software; you can redistribute it and/or
+ * sxplayer is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
  *
- * sfxmp is distributed in the hope that it will be useful,
+ * sxplayer is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with sfxmp; if not, write to the Free Software
+ * License along with sxplayer; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef SFXMP_H
-#define SFXMP_H
+#ifndef SXPLAYER_H
+#define SXPLAYER_H
 
 #include <stdint.h>
 
@@ -55,30 +55,30 @@
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-struct sfxmp_ctx;
+struct sxplayer_ctx;
 
-enum sfxmp_media_selection {
-    SFXMP_SELECT_VIDEO,
-    SFXMP_SELECT_AUDIO,
-    NB_SFXMP_MEDIA_SELECTION // *NOT* part of the API/ABI
+enum sxplayer_media_selection {
+    SXPLAYER_SELECT_VIDEO,
+    SXPLAYER_SELECT_AUDIO,
+    NB_SXPLAYER_MEDIA_SELECTION // *NOT* part of the API/ABI
 };
 
-enum sfxmp_pixel_format {
-    SFXMP_PIXFMT_RGBA,
-    SFXMP_PIXFMT_BGRA,
-    SFXMP_PIXFMT_VT,        // VideoToolBox pixel format (HW accelerated, frame->data is a CVPixelBufferRef)
+enum sxplayer_pixel_format {
+    SXPLAYER_PIXFMT_RGBA,
+    SXPLAYER_PIXFMT_BGRA,
+    SXPLAYER_PIXFMT_VT,        // VideoToolBox pixel format (HW accelerated, frame->data is a CVPixelBufferRef)
 };
 
-struct sfxmp_frame {
+struct sxplayer_frame {
     uint8_t *data;      // frame data in RGBA, BGRA, ... according to pix_fmt
     double ts;          // video timestamp
     int linesize;       // linesize in bytes (includes padding)
     int width;          // frame width in pixel
     int height;         // frame height in pixel
-    int pix_fmt;        // sfxmp_pixel_format
+    int pix_fmt;        // sxplayer_pixel_format
     void *mvs;          // motions vectors (AVMotionVector*)
     int nb_mvs;         // number of motions vectors
-    void *internal;     // sfxmp internal frame context frame, do not alter
+    void *internal;     // sxplayer internal frame context frame, do not alter
 };
 
 /**
@@ -86,7 +86,7 @@ struct sfxmp_frame {
  *
  * @param filename media input file name
  */
-struct sfxmp_ctx *sfxmp_create(const char *filename);
+struct sxplayer_ctx *sxplayer_create(const char *filename);
 
 /**
  * Set an option.
@@ -95,36 +95,36 @@ struct sfxmp_ctx *sfxmp_create(const char *filename);
  *
  *   key                      type      description
  *   ----------------------------------------------
- *   avselect                 int       select audio or video stream (see SFXMP_SELECT_*)
+ *   avselect                 int       select audio or video stream (see SXPLAYER_SELECT_*)
  *   skip                     double    time to skip in the specified input
  *   trim_duration            double    duration of the video (starting at skip)
  *   dist_time_seek_trigger   double    how much time forward will trigger a seek
  *   max_nb_frames            integer   maximum number of frames in the queue
  *   filters                  string    custom user filters (software decoding only)
- *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only), can be any SFXMP_PIXFMT_* not HW accelerated
+ *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only), can be any SXPLAYER_PIXFMT_* not HW accelerated
  *   autorotate               integer   automatically insert rotation filters (video software decoding only)
  *   auto_hwaccel             integer   attempt to enable hardware acceleration
  *   export_mvs               integer   export motion vectors into frame->mvs
  *   pkt_skip_mod             integer   skip packet if module pkt_skip_mod (and not a key pkt)
  */
-int sfxmp_set_option(struct sfxmp_ctx *s, const char *key, ...);
+int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
 
 /**
  * Get the media duration (clipped to trim_duration if set).
  *
  * The duration is expressed in seconds.
  *
- * Warning: this function must be called before any call to sfxmp_get_frame()
- * or sfxmp_get_next_frame().
+ * Warning: this function must be called before any call to
+ * sxplayer_get_frame() or sxplayer_get_next_frame().
  */
-int sfxmp_get_duration(struct sfxmp_ctx *s, double *duration);
+int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration);
 
 /**
  * Get the frame at an absolute time.
  *
  * The returned frame can be NULL if unchanged from last call.
  *
- * The returned frame needs to be released using sfxmp_release_frame().
+ * The returned frame needs to be released using sxplayer_release_frame().
  *
  * A negative t value means prefetching: it starts the decoding thread and
  * returns. Note that the function always returns immediately (it doesn't wait
@@ -134,30 +134,30 @@ int sfxmp_get_duration(struct sfxmp_ctx *s, double *duration);
  * refresh rate architecture), this is the function you are probably interested
  * in.
  */
-struct sfxmp_frame *sfxmp_get_frame(struct sfxmp_ctx *s, double t);
+struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
 
 /**
  * Get the next frame.
  *
- * The returned frame needs to be released using sfxmp_release_frame().
+ * The returned frame needs to be released using sxplayer_release_frame().
  *
- * At EOF sfxmp_get_next_frame() will return NULL. You can call
- * sfxmp_get_next_frame() to restart the decoding from the beginning.
+ * At EOF sxplayer_get_next_frame() will return NULL. You can call
+ * sxplayer_get_next_frame() to restart the decoding from the beginning.
  *
  * If you want to process every single frame of the media regardless of a
  * "refresh rate" or seeking needs, this is the function you are probably
  * interested in. You can still use this function in combination with
- * sfxmp_get_frame() in case you need seeking.
+ * sxplayer_get_frame() in case you need seeking.
  */
-struct sfxmp_frame *sfxmp_get_next_frame(struct sfxmp_ctx *s);
+struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s);
 
 /* Enable or disable the droping of non reference frames */
-int sfxmp_set_drop_ref(struct sfxmp_ctx *s, int drop);
+int sxplayer_set_drop_ref(struct sxplayer_ctx *s, int drop);
 
-/* Release a frame obtained with sfxmp_get_frame() */
-void sfxmp_release_frame(struct sfxmp_frame *frame);
+/* Release a frame obtained with sxplayer_get_frame() */
+void sxplayer_release_frame(struct sxplayer_frame *frame);
 
 /* Close and free everything */
-void sfxmp_free(struct sfxmp_ctx **ss);
+void sxplayer_free(struct sxplayer_ctx **ss);
 
 #endif
