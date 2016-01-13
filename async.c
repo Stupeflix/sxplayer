@@ -339,6 +339,8 @@ static void *decoder_thread(void *arg)
     int ret;
     struct async_decoder *d = arg;
 
+    DBG("async_decoder", "start decoder thread\n");
+
     ret = decoder_init(d->codec_ctx, d->priv_data);
     if (ret < 0)
         return NULL;
@@ -446,6 +448,8 @@ static void *reader_thread(void *arg)
     }
     av_thread_message_queue_set_free_func(d->pkt_queue, free_packet_message);
 
+    DBG("reader_thread", "spawn decoder thread\n");
+
     /* Start its working thread */
     if (pthread_create(&d->tid, NULL, decoder_thread, d)) {
         ret = AVERROR(errno);
@@ -489,7 +493,7 @@ static void *reader_thread(void *arg)
         }
 
         ret = r->pull_packet_cb(r->priv_data, &pkt);
-        DBG("reader_thread", "pulled a packet of size %d\n", pkt.size);
+        DBG("reader_thread", "pull_packet_cb -> %s\n", av_err2str(ret));
 
         if (ret == AVERROR(EAGAIN)) {
             av_usleep(10000);
@@ -498,37 +502,40 @@ static void *reader_thread(void *arg)
         if (ret < 0)
             break;
 
+        DBG("reader_thread", "pulled a packet of size %d, sending to decoder\n", pkt.size);
+
         msg.data = av_memdup(&pkt, sizeof(pkt));
         if (!msg.data) {
             av_packet_unref(&pkt);
             break;
         }
 
-
-        DBG("reader_thread", "sending packet...\n");
         ret = av_thread_message_queue_send(d->pkt_queue, &msg, 0);
-        DBG("reader_thread", "send packet ret=%s\n", av_err2str(ret));
+        DBG("reader_thread", "sent packet to decoder, ret=%s\n", av_err2str(ret));
 
         if (ret < 0) {
             free_packet_message(&msg);
             if (ret != AVERROR_EOF)
                 av_log(r, AV_LOG_ERROR, "Unable to send packet to decoder: %s\n", av_err2str(ret));
-            DBG("reader_thread", "set pkt queue err to [%s]\n", av_err2str(ret));
+            DBG("reader_thread", "can't send pkt to decoder: %s\n", av_err2str(ret));
             av_thread_message_queue_set_err_recv(d->pkt_queue, ret);
             break;
         }
-
-        DBG("reader_thread", "packet sent\n");
     }
 
 end:
 
-    DBG("reader_thread", "reader start ending\n");
+    DBG("reader_thread", "notify decoder about %s\n", av_err2str(ret < 0 ? ret : AVERROR_EOF));
 
     /* Notify the decoder about the error/EOF so it dies */
     av_thread_message_queue_set_err_recv(d->pkt_queue, ret < 0 ? ret : AVERROR_EOF);
     if (d->started) {
-        pthread_join(d->tid, NULL);
+        DBG("reader_thread", "join decoding thread\n");
+        ret = pthread_join(d->tid, NULL);
+        if (ret)
+            av_log(r, AV_LOG_ERROR, "Unable to join decoder: %s\n",
+                   av_err2str(AVERROR(ret)));
+        DBG("reader_thread", "decoding thread joined\n");
         d->started = 0;
     }
     av_thread_message_queue_free(&d->pkt_queue);
@@ -563,10 +570,12 @@ int async_wait(struct async_context *actx)
     struct async_reader *r = &actx->reader;
 
     if (r->started) {
+        DBG("async_wait", "join reader thread\n");
         int ret = pthread_join(r->tid, NULL);
         if (ret)
             av_log(actx, AV_LOG_ERROR, "Unable to join reader: %s\n",
                    av_err2str(AVERROR(ret)));
+        DBG("async_wait", "reader thread joined\n");
         reset_reader(r);
     }
     return 0;

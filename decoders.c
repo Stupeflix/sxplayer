@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "internal.h"
 #include "decoders.h"
 
 struct decoder_ctx *decoder_create(const struct decoder *dec_default,
@@ -26,6 +27,8 @@ struct decoder_ctx *decoder_create(const struct decoder *dec_default,
 {
     struct decoder_ctx *ctx = av_mallocz(sizeof(*ctx));
 
+    DBG("decoder_create", "create decoder fallback:%s avctx=%p\n",
+        dec_fallback ? "yes" : "no", avctx);
     if (!ctx)
         return NULL;
     ctx->dec_default  = dec_default;
@@ -44,6 +47,8 @@ static int try_init(struct decoder_ctx *ctx, void *priv)
 {
     int ret;
     const struct decoder *dec = ctx->dec;
+
+    DBG("try_init", "try to initialize private decoder\n");
 
     if (dec->priv_data_size) {
         ctx->priv_data = av_mallocz(dec->priv_data_size);
@@ -77,9 +82,11 @@ int decoder_init(struct decoder_ctx *ctx, void *priv)
 {
     int ret;
 
+    DBG("decoder_init", "init %p with priv=%p\n", priv);
     ctx->dec = ctx->dec_default;
     ret = try_init(ctx, priv);
     if (ret < 0 && ctx->dec_fallback) {
+        DBG("decoder_init", "try_init() failed, fallback\n");
         if (ret != AVERROR_DECODER_NOT_FOUND)
             fprintf(stderr, "Decoder fallback\n");
         ctx->dec = ctx->dec_fallback;
@@ -95,17 +102,20 @@ int decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
 
 void decoder_flush(struct decoder_ctx *ctx)
 {
+    DBG("decoder_flush", "flush %p\n", ctx);
     ctx->dec->flush(ctx);
 }
 
 void decoder_uninit(struct decoder_ctx *ctx)
 {
+    DBG("decoder_uninit", "uninit %p\n", ctx);
     if (ctx->dec && ctx->dec->uninit)
         ctx->dec->uninit(ctx);
 }
 
 void decoder_free(struct decoder_ctx **ctxp)
 {
+    DBG("decoder_free", "free context\n");
     if (*ctxp)
         free_context_data(*ctxp);
     av_freep(ctxp);
