@@ -1023,13 +1023,13 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
 
     const int64_t frame_ts = frame->pts;
 
+    TRACE(s, "last_pushed_frame_ts:%s frame_ts:%s",
+          PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(frame_ts));
+
     /* if same frame as previously, do not raise it again */
     if (s->last_pushed_frame_ts == frame_ts) {
         INFO(s, " <<< same frame as previously, return NULL");
         return NULL;
-    } else {
-        TRACE(s, "last_pushed_frame_ts:%s frame_ts:%s",
-              PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(frame_ts));
     }
 
     ret = av_mallocz(sizeof(*ret));
@@ -1194,7 +1194,6 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 {
     int ret;
     int64_t diff;
-    AVFrame *candidate = NULL;
     const int64_t t64 = TIME2INT64(t);
 
     INFO(s, " >>> get frame for t=%s (user exact value:%f)", PTS2TIMESTR(t64), t);
@@ -1216,144 +1215,102 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         return ret_frame(s, NULL, vt);
     }
 
-    for (;;) {
+    /* If the trim duration couldn't be evaluated, it's likely an image so
+     * we will assume this is the case. In the case we already pushed a
+     * picture we don't want to restart the decoding thread again so we
+     * return NULL. */
+    if (s->trim_duration64 < 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
+        TRACE(s, "no trim duration, likely picture, and frame already returned");
+        return ret_frame(s, NULL, vt);
+    }
 
-        TRACE(s, "entering loop");
+    AVFrame *candidate = NULL;
 
-        av_assert0(s->context_configured);
-
-        /* If the trim duration couldn't be evaluated, it's likely an image so
-         * we will assume this is the case. In the case we already pushed a
-         * picture we don't want to restart the decoding thread again so we
-         * return NULL. */
-        if (s->trim_duration64 < 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
-            TRACE(s, "no trim duration, likely picture, and frame already returned");
-            return ret_frame(s, NULL, vt);
-        }
-
-        if (!candidate && s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
-            TRACE(s, "no frame ever pushed yet, fetch a candidate");
-            spawn_decoding_thread_if_not_running(s);
-            candidate = pop_frame(s);
-            if (!candidate) {
-                TRACE(s, "no frame popable");
-                return ret_frame(s, NULL, vt);
-            }
-        }
-
-        /* If we don't have any frame while reaching the EOF, we can only
-         * return a NULL frame. */
-        if (!candidate && join_dec_thread_if_dying(s)) {
-            spawn_decoding_thread_if_not_running(s);
-            return ret_frame(s, NULL, vt);
-        }
-
-        if (s->first_ts != AV_NOPTS_VALUE && vt < s->first_ts) {
-            TRACE(s, "first_ts:%s media_time:%s t:%s",
-                  PTS2TIMESTR(s->first_ts), PTS2TIMESTR(vt), PTS2TIMESTR(t64));
-            TRACE(s, "requested a time before the first video timestamp");
-
-            av_frame_free(&s->cached_frame); // very unlikely to be useful (impossible?)
-            s->cached_frame = candidate;
-            return ret_frame(s, NULL, vt);
-        }
-
-        if (!candidate) { // means candidate refers to previously returned frame
-            diff = vt - s->last_pushed_frame_ts;
-            TRACE(s, "diff with latest frame (t=%s) returned: %s [%"PRId64"]",
-                  PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(diff), diff);
-        } else {
-            diff = vt - candidate->pts;
-            TRACE(s, "diff with candidate (t=%s): %s [%"PRId64"]",
-                  PTS2TIMESTR(candidate->pts), PTS2TIMESTR(diff), diff);
-        }
-
-        if (!diff)
-            return ret_frame(s, candidate, vt);
-
+    /* If no frame was ever pushed, we need to pop one */
+    if (s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
+        TRACE(s, "no frame ever pushed yet, pop a candidate");
         spawn_decoding_thread_if_not_running(s);
+        candidate = pop_frame(s);
+        if (!candidate) {
+            TRACE(s, "can not get a single frame for this media");
+            return ret_frame(s, NULL, vt);
+        }
 
-        if (diff < 0) {
-            TRACE(s, "diff %s [%"PRId64"] < 0", PTS2TIMESTR(diff), diff);
+        diff = vt - candidate->pts;
+        TRACE(s, "diff with candidate (t=%s): %s [%"PRId64"]",
+              PTS2TIMESTR(candidate->pts), PTS2TIMESTR(diff), diff);
+    } else {
+        diff = vt - s->last_pushed_frame_ts;
+        TRACE(s, "diff with latest frame (t=%s) returned: %s [%"PRId64"]",
+              PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(diff), diff);
+    }
 
-            /* cached frame is most likely invalid since before fetch, remove
-             * it from the cache */
-            av_frame_free(&s->cached_frame);
+    //XXX: why not?? erg audio, first frame nopts
+    //av_assert0(s->first_ts != AV_NOPTS_VALUE);
 
-            /* attempt seek request (will be ignored if already requested) */
-            int ret = request_seek(s, t64);
+    if (!diff)
+        return ret_frame(s, candidate, vt);
 
-            if (ret < 0) {
-                if (s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
-                    // since no frame has been pushed yet, it means it's the
-                    // beginning of the presentation, so we do not consume the
-                    // frame, we wait for it to be valid
-                    s->cached_frame = candidate;
-                    return ret_frame(s, NULL, vt);
-                }
-            }
-            /* candidate was fetched before the seek, drop it */
-            av_frame_free(&candidate);
+    /* The first timestamp as been obtained (either by poping a frame earlier
+     * in this function, or because a frame was already pushed), so we can
+     * check if the timestamp requested is before the first visible frame */
+    if (vt < s->first_ts) {
+        TRACE(s, "requested a time before the first video timestamp");
+        // The frame poped needs to be cached before the requested timestamps
+        // reaches this candidate
 
-            /* force the fetching of a new frame to be analyzed */
-            candidate = pop_frame(s);
-        } else if (diff > s->dist_time_seek_trigger64) {
+        //av_assert0(!s->cached_frame);
+        av_frame_free(&s->cached_frame); // XXX: why? :(
 
+        s->cached_frame = candidate;
+        return ret_frame(s, NULL, vt);
+    }
+
+    /* Check if a seek is needed */
+    if (diff < 0 || diff > s->dist_time_seek_trigger64) {
+
+        if (diff < 0)
+            TRACE(s, "diff %s [%"PRId64"] < 0 request backward seek", PTS2TIMESTR(diff), diff);
+        else
             TRACE(s, "diff %s > %s [%"PRId64" > %"PRId64"] request future seek",
                   PTS2TIMESTR(diff), PTS2TIMESTR(s->dist_time_seek_trigger64),
                   diff, s->dist_time_seek_trigger64);
-            av_frame_free(&s->cached_frame);
 
-            request_seek(s, t64);
+        spawn_decoding_thread_if_not_running(s);
 
-            av_frame_free(&candidate);
-            candidate = pop_frame(s);
+        request_seek(s, t64);
+        av_frame_free(&candidate);
 
-        } else {
-            TRACE(s, "grab second frame");
-            AVFrame *tmp_frame_2 = pop_frame(s);
-            if (!tmp_frame_2) {
-                if (s->last_pushed_frame_ts == AV_NOPTS_VALUE)
-                    return ret_frame(s, candidate, vt);
-                s->cached_frame = candidate;
-                return ret_frame(s, NULL, vt);
-            }
-            TRACE(s, "got second frame");
-
-            const int64_t new_diff = vt - tmp_frame_2->pts;
-            TRACE(s, "diff with sec frame %s [%"PRId64"]",
-                  PTS2TIMESTR(new_diff), new_diff);
-
-            if (new_diff <= diff && new_diff >= 0) {
-                int need_more_frames;
-
-                TRACE(s, "new diff is more interesting "
-                      "(new=%s [%"PRId64"] vs old=%s [%"PRId64"]), "
-                      "replace first candidate",
-                      PTS2TIMESTR(new_diff), new_diff,
-                      PTS2TIMESTR(diff), diff);
-
-                diff = new_diff;
-
+        /* If the seek is backward, wait for it to be effective */
+        TRACE(s, "backward seek requested, wait for it to be effective");
+        if (diff < 0) {
+            do {
+                AVFrame *next = pop_frame(s);
+                if (!next)
+                    break;
                 av_frame_free(&candidate);
-                candidate = tmp_frame_2;
-
-                pthread_mutex_lock(&s->lock);
-                need_more_frames = s->thread_state == THREAD_STATE_RUNNING && diff;
-                pthread_mutex_unlock(&s->lock);
-                TRACE(s, "do we still need to peek more frames? %s", need_more_frames ? "yes" : "no");
-                if (!need_more_frames)
-                    return ret_frame(s, candidate, vt);
-
-            } else {
-                TRACE(s, "second frame is not more interesting than "
-                      "candidate, caching it for next frame call");
-
-                s->cached_frame = tmp_frame_2;
-                return ret_frame(s, candidate, vt);
-            }
+                candidate = next;
+            } while (candidate->pts > vt);
         }
     }
+
+    if (!join_dec_thread_if_dying(s)) {
+
+        /* Consume frames until we get a frame as accurate as possible */
+        for (;;) {
+            TRACE(s, "grab another frame");
+            AVFrame *next = pop_frame(s);
+            if (!next || next->pts > vt) {
+                av_frame_free(&s->cached_frame);
+                s->cached_frame = next;
+                break;
+            }
+            av_frame_free(&candidate);
+            candidate = next;
+        }
+    }
+
+    return ret_frame(s, candidate, vt);
 }
 
 struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
