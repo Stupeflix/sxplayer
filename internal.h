@@ -30,17 +30,22 @@
 #include "decoders.h"
 #include "async.h"
 
+#define ENABLE_INFO 0
 #define ENABLE_DBG 0
+#define ENABLE_TIMINGS 0
 
-void do_log(const char *mod, const char *fmt, ...);
+void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...);
 
-#define DBG_SXPLAYER(mod, ...) do { do_log(mod, __VA_ARGS__); fflush(stdout); } while (0)
+#define DO_LOG(log_ctx, log_level, ...) do_log(log_ctx, log_level, __PRETTY_FUNCTION__, __VA_ARGS__)
+
+#define INFO(log_ctx, ...)  DO_LOG(log_ctx, AV_LOG_INFO, __VA_ARGS__)
+
 #if ENABLE_DBG
-# define DBG(mod, ...) DBG_SXPLAYER(mod, __VA_ARGS__)
+#define TRACE(log_ctx, ...) do { DO_LOG(log_ctx, AV_LOG_INFO, __VA_ARGS__); fflush(stdout); } while (0)
 #else
 /* Note: this could be replaced by a "while(0)" but it wouldn't test the
  * compilation of the printf format, so we use this more complex form. */
-# define DBG(mod, ...) do { if (0) DBG_SXPLAYER(mod, __VA_ARGS__); } while (0)
+#define TRACE(log_ctx, ...) do { if (0) DO_LOG(log_ctx, AV_LOG_INFO, __VA_ARGS__); } while (0)
 #endif
 
 #define TIME2INT64(d) llrint((d) * av_q2d(av_inv_q(AV_TIME_BASE_Q)))
@@ -53,6 +58,7 @@ void do_log(const char *mod, const char *fmt, ...);
 struct sxplayer_ctx {
     const AVClass *class;                   // necessary for the AVOption mechanism
     char *filename;                         // input filename
+    char *logname;
 
     int context_configured;                 // set if options are pre-processed, file is opened, ...
 

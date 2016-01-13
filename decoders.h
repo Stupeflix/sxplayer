@@ -24,6 +24,7 @@
 #include <libavcodec/avcodec.h>
 
 struct decoder_ctx {
+    const AVClass *class;
     AVCodecContext *avctx;
     struct async_decoder *adec;
 

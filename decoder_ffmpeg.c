@@ -30,7 +30,7 @@ static int ffdec_init(struct decoder_ctx *ctx, void *opaque)
     struct sxplayer_ctx *s = opaque;
     AVCodec *dec = s->dec;
 
-    DBG("ffdec", "initialize context\n");
+    TRACE(ctx, "initialize context");
 
     av_opt_set_int(ctx->avctx, "refcounted_frames", 1, 0);
 
@@ -43,7 +43,7 @@ static int ffdec_init(struct decoder_ctx *ctx, void *opaque)
             dec = codec;
     }
 
-    DBG("ffdec", "codec open\n");
+    TRACE(ctx, "codec open");
 
     ret = avcodec_open2(ctx->avctx, dec, NULL);
     if (ret < 0) {
@@ -63,7 +63,7 @@ static int decode_packet(struct decoder_ctx *ctx, const AVPacket *pkt, int *got_
 
     *got_frame = 0;
 
-    DBG("ffdec", "decode packet of size %d\n", pkt->size);
+    TRACE(ctx, "decode packet of size %d", pkt->size);
 
     if (!dec_frame)
         return AVERROR(ENOMEM);
@@ -85,13 +85,13 @@ static int decode_packet(struct decoder_ctx *ctx, const AVPacket *pkt, int *got_
         return ret;
     }
 
-    DBG("ffdec", "decoded %d/%d bytes from packet -> got_frame=%d\n", ret, pkt->size, *got_frame);
+    TRACE(ctx, "decoded %d/%d bytes from packet -> got_frame=%d", ret, pkt->size, *got_frame);
     decoded = FFMIN(ret, pkt->size);
 
     if (*got_frame) {
         ret = async_queue_frame(ctx->adec, dec_frame);
         if (ret < 0) {
-            DBG("ffdec", "could not queue frame: %s\n", av_err2str(ret));
+            TRACE(ctx, "could not queue frame: %s", av_err2str(ret));
             av_frame_free(&dec_frame);
             return ret;
         }
@@ -109,7 +109,7 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
     AVPacket avpkt = *pkt;
     int got_frame;
 
-    DBG("ffdec", "received packet of size %d\n", pkt->size);
+    TRACE(ctx, "received packet of size %d", pkt->size);
     do {
         ret = decode_packet(ctx, &avpkt, &got_frame);
         if (ret < 0)

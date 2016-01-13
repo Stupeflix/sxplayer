@@ -81,7 +81,6 @@ struct message {
 static const AVClass async_context_class = {
     .class_name = "async_context",
     .item_name  = av_default_item_name,
-    .version    = LIBAVUTIL_VERSION_INT,
 };
 
 struct async_context *async_alloc_context(void)
@@ -96,7 +95,6 @@ struct async_context *async_alloc_context(void)
 static const AVClass async_reader_class = {
     .class_name = "async_reader",
     .item_name  = av_default_item_name,
-    .version    = LIBAVUTIL_VERSION_INT,
 };
 
 static void free_packet_message(void *arg)
@@ -177,7 +175,6 @@ static const AVClass async_decoder_class = {
     .class_name = "async_decoder",
     .item_name  = av_default_item_name,
     .option     = async_decoder_options,
-    .version    = LIBAVUTIL_VERSION_INT,
 };
 
 int async_register_decoder(struct async_reader *r,
@@ -212,7 +209,7 @@ static void *watcher_thread(void *arg)
     int ret;
     struct async_decoder *d = arg;
 
-    DBG("watcher", "watching thread starting\n");
+    TRACE(d, "watching thread starting");
 
     for (;;) {
         AVFrame *frame;
@@ -225,7 +222,7 @@ static void *watcher_thread(void *arg)
             break;
         }
 
-        DBG("watcher", "pushing frame ts=%s to user\n", PTS2TIMESTR(frame->pts));
+        TRACE(d, "pushing frame ts=%s to user", PTS2TIMESTR(frame->pts));
 
         ret = d->push_frame_cb(d->priv_data, frame);
         if (ret < 0) {
@@ -238,7 +235,7 @@ static void *watcher_thread(void *arg)
         ret = d->push_frame_cb(d->priv_data, NULL);
     } while (ret == AVERROR(EAGAIN));
 
-    DBG("watcher", "watching thread ending\n");
+    TRACE(d, "watching thread ending");
     return NULL;
 }
 
@@ -246,11 +243,11 @@ static int queue_frame(struct async_decoder *d, AVFrame *frame)
 {
     int ret;
 
-    DBG("queue_frame", "queue frame with ts=%s\n", PTS2TIMESTR(frame->pts));
+    TRACE(d, "queue frame with ts=%s", PTS2TIMESTR(frame->pts));
 
     if (d->seek_request != AV_NOPTS_VALUE && d->seek_request > 0 && frame->pts > d->seek_request) {
-        DBG("queue_frame", "frame is after requested time, fixup its ts from %s to %s\n",
-            PTS2TIMESTR(frame->pts), PTS2TIMESTR(d->seek_request));
+        TRACE(d, "frame is after requested time, fixup its ts from %s to %s",
+              PTS2TIMESTR(frame->pts), PTS2TIMESTR(d->seek_request));
         frame->pts = d->seek_request;
         d->seek_request = AV_NOPTS_VALUE;
     }
@@ -267,7 +264,7 @@ static int queue_frame(struct async_decoder *d, AVFrame *frame)
 static int queue_cached_frame(struct async_decoder *d)
 {
     const int64_t cached_ts = av_rescale_q_rnd(get_best_effort_ts(d->tmp_frame), d->st_timebase, AV_TIME_BASE_Q, 0);
-    DBG("queue_frame", "got a cached frame (t=%s) to push\n", PTS2TIMESTR(cached_ts));
+    TRACE(d, "got a cached frame (t=%s) to push", PTS2TIMESTR(cached_ts));
     AVFrame *prev_frame = d->tmp_frame;
     d->tmp_frame = NULL;
     prev_frame->pts = cached_ts;
@@ -279,7 +276,7 @@ int async_queue_frame(struct async_decoder *d, AVFrame *frame)
     int ret;
 
     if (!frame) {
-        DBG("queue_frame", "async_queue_frame() called for flushing\n");
+        TRACE(d, "async_queue_frame() called for flushing");
         if (d->tmp_frame) {
             ret = queue_cached_frame(d);
             if (ret < 0)
@@ -291,11 +288,11 @@ int async_queue_frame(struct async_decoder *d, AVFrame *frame)
     /* Rescale the timestamp to a global large time base: AV_TIME_BASE_Q */
     const int64_t ts = av_rescale_q_rnd(get_best_effort_ts(frame), d->st_timebase, AV_TIME_BASE_Q, 0);
 
-    DBG("queue_frame", "processing frame with ts=%s\n", PTS2TIMESTR(ts));
+    TRACE(d, "processing frame with ts=%s", PTS2TIMESTR(ts));
 
     if (d->seek_request != AV_NOPTS_VALUE && ts < d->seek_request) {
-        DBG("queue_frame", "frame ts:%s, skipping because before %s\n",
-            PTS2TIMESTR(ts), PTS2TIMESTR(d->seek_request));
+        TRACE(d, "frame ts:%s, skipping because before %s",
+              PTS2TIMESTR(ts), PTS2TIMESTR(d->seek_request));
         av_frame_free(&d->tmp_frame);
         d->tmp_frame = frame;
         return 0;
@@ -339,7 +336,7 @@ static void *decoder_thread(void *arg)
     int ret;
     struct async_decoder *d = arg;
 
-    DBG("async_decoder", "start decoder thread\n");
+    TRACE(d, "start decoder thread");
 
     ret = decoder_init(d->codec_ctx, d->priv_data);
     if (ret < 0)
@@ -352,7 +349,7 @@ static void *decoder_thread(void *arg)
     av_thread_message_queue_set_free_func(d->frames_queue, free_frame_message);
 
     /* Spawn frame queue watcher */
-    DBG("async_decoder", "decoding thread starting\n");
+    TRACE(d, "decoding thread starting");
     if (pthread_create(&d->watcher_tid, NULL, watcher_thread, d)) {
         ret = AVERROR(errno);
         av_log(d, AV_LOG_ERROR, "Unable to start watcher thread: %s\n",
@@ -364,7 +361,7 @@ static void *decoder_thread(void *arg)
     d->seek_request = AV_NOPTS_VALUE;
 
     /* Main packet decoding loop */
-    DBG("async_decoder", "main packet decoding loop\n");
+    TRACE(d, "main packet decoding loop");
     for (;;) {
         struct message msg;
 
@@ -378,8 +375,8 @@ static void *decoder_thread(void *arg)
             const int64_t seek_ts = *(int64_t *)msg.data;
             av_freep(&msg.data);
 
-            DBG("async_decoder", "got a seek message (to %s) in the pkt queue\n",
-                PTS2TIMESTR(seek_ts));
+            TRACE(d, "got a seek message (to %s) in the pkt queue",
+                  PTS2TIMESTR(seek_ts));
 
             /* Make sure the decoder has no packet remaining to consume and
              * pushed (or dropped) all its cached frames. After this flush, we
@@ -406,7 +403,7 @@ static void *decoder_thread(void *arg)
     }
 
     /* flush cached frames */
-    DBG("async_decoder", "flush cached frames\n");
+    TRACE(d, "flush cached frames");
     do {
         AVPacket pkt;
         av_init_packet(&pkt);
@@ -426,7 +423,7 @@ static void *decoder_thread(void *arg)
 
     av_thread_message_queue_set_err_send(d->pkt_queue, ret < 0 ? ret : AVERROR_EOF);
 
-    DBG("async_decoder", "decoding thread ending\n");
+    TRACE(d, "decoding thread ending");
     return NULL;
 }
 
@@ -436,7 +433,7 @@ static void *reader_thread(void *arg)
     struct async_reader *r = arg;
     struct async_decoder *d = &r->decoder;
 
-    DBG("reader_thread", "reader thread starting\n");
+    TRACE(r, "reader thread starting");
 
     /* Spawn decoder */
 
@@ -448,7 +445,7 @@ static void *reader_thread(void *arg)
     }
     av_thread_message_queue_set_free_func(d->pkt_queue, free_packet_message);
 
-    DBG("reader_thread", "spawn decoder thread\n");
+    TRACE(r, "spawn decoder thread");
 
     /* Start its working thread */
     if (pthread_create(&d->tid, NULL, decoder_thread, d)) {
@@ -478,8 +475,8 @@ static void *reader_thread(void *arg)
         if (seek_to >= 0) {
 
             /* notify the decoder about the seek by using its pkt queue */
-            DBG("reader_thread", "forward seek message (to %s) to decoder\n",
-                PTS2TIMESTR(seek_to));
+            TRACE(r, "forward seek message (to %s) to decoder",
+                  PTS2TIMESTR(seek_to));
             ret = push_seek_message(d->pkt_queue, seek_to);
             if (ret < 0)
                 break;
@@ -493,7 +490,7 @@ static void *reader_thread(void *arg)
         }
 
         ret = r->pull_packet_cb(r->priv_data, &pkt);
-        DBG("reader_thread", "pull_packet_cb -> %s\n", av_err2str(ret));
+        TRACE(r, "pull_packet_cb -> %s", av_err2str(ret));
 
         if (ret == AVERROR(EAGAIN)) {
             av_usleep(10000);
@@ -502,7 +499,7 @@ static void *reader_thread(void *arg)
         if (ret < 0)
             break;
 
-        DBG("reader_thread", "pulled a packet of size %d, sending to decoder\n", pkt.size);
+        TRACE(r, "pulled a packet of size %d, sending to decoder", pkt.size);
 
         msg.data = av_memdup(&pkt, sizeof(pkt));
         if (!msg.data) {
@@ -511,13 +508,13 @@ static void *reader_thread(void *arg)
         }
 
         ret = av_thread_message_queue_send(d->pkt_queue, &msg, 0);
-        DBG("reader_thread", "sent packet to decoder, ret=%s\n", av_err2str(ret));
+        TRACE(r, "sent packet to decoder, ret=%s", av_err2str(ret));
 
         if (ret < 0) {
             free_packet_message(&msg);
             if (ret != AVERROR_EOF)
                 av_log(r, AV_LOG_ERROR, "Unable to send packet to decoder: %s\n", av_err2str(ret));
-            DBG("reader_thread", "can't send pkt to decoder: %s\n", av_err2str(ret));
+            TRACE(r, "can't send pkt to decoder: %s", av_err2str(ret));
             av_thread_message_queue_set_err_recv(d->pkt_queue, ret);
             break;
         }
@@ -525,22 +522,22 @@ static void *reader_thread(void *arg)
 
 end:
 
-    DBG("reader_thread", "notify decoder about %s\n", av_err2str(ret < 0 ? ret : AVERROR_EOF));
+    TRACE(r, "notify decoder about %s", av_err2str(ret < 0 ? ret : AVERROR_EOF));
 
     /* Notify the decoder about the error/EOF so it dies */
     av_thread_message_queue_set_err_recv(d->pkt_queue, ret < 0 ? ret : AVERROR_EOF);
     if (d->started) {
-        DBG("reader_thread", "join decoding thread\n");
+        TRACE(r, "join decoding thread");
         ret = pthread_join(d->tid, NULL);
         if (ret)
             av_log(r, AV_LOG_ERROR, "Unable to join decoder: %s\n",
                    av_err2str(AVERROR(ret)));
-        DBG("reader_thread", "decoding thread joined\n");
+        TRACE(r, "decoding thread joined");
         d->started = 0;
     }
     av_thread_message_queue_free(&d->pkt_queue);
 
-    DBG("reader_thread", "reader thread ending\n");
+    TRACE(r, "reader thread ending");
     return NULL;
 }
 
@@ -548,7 +545,7 @@ int async_start(struct async_context *actx)
 {
     int ret;
 
-    DBG("async_start", "Starting Async loop\n");
+    TRACE(actx, "Starting Async loop");
 
     struct async_reader *r = &actx->reader;
 
@@ -566,16 +563,16 @@ int async_start(struct async_context *actx)
 
 int async_wait(struct async_context *actx)
 {
-    DBG("async_wait", "waiting for reader to end\n");
+    TRACE(actx, "waiting for reader to end");
     struct async_reader *r = &actx->reader;
 
     if (r->started) {
-        DBG("async_wait", "join reader thread\n");
+        TRACE(actx, "join reader thread");
         int ret = pthread_join(r->tid, NULL);
         if (ret)
             av_log(actx, AV_LOG_ERROR, "Unable to join reader: %s\n",
                    av_err2str(AVERROR(ret)));
-        DBG("async_wait", "reader thread joined\n");
+        TRACE(actx, "reader thread joined");
         reset_reader(r);
     }
     return 0;

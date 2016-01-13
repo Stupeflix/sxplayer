@@ -175,7 +175,8 @@ static int push_async_frame(const AVCodecContext *avctx,
         av_frame_free(&frame);
         return AVERROR(ENOMEM);
     }
-    DBG("VT", "push frame pts=%"PRId64" to AsyncDecoder %p\n", frame->pts, dec_ctx->adec);
+    TRACE(dec_ctx, "push frame pts=%"PRId64" to AsyncDecoder %p",
+          frame->pts, dec_ctx->adec);
     ret = async_queue_frame(dec_ctx->adec, frame);
     if (ret < 0)
         av_frame_free(&frame);
@@ -196,10 +197,10 @@ static void decode_callback(void *opaque,
     struct async_frame *new_frame;
     struct async_frame *queue_walker;
 
-    DBG("VT", "entering decode callback\n");
+    TRACE(dec_ctx, "entering decode callback");
 
     if (!image_buffer) {
-        DBG("VT", "decode cb received NULL output image buffer");
+        TRACE(dec_ctx, "decode cb received NULL output image buffer");
         return;
     }
 
@@ -219,8 +220,8 @@ static void decode_callback(void *opaque,
         /* we have an empty queue, or this frame earlier than the current queue head */
         new_frame->next_frame = queue_walker;
         vt->queue = new_frame;
-        DBG("VT", "queueing frame pts=%"PRId64" at pos=%d\n",
-            new_frame->pts, vt->nb_frames);
+        TRACE(dec_ctx, "queueing frame pts=%"PRId64" at pos=%d",
+              new_frame->pts, vt->nb_frames);
         vt->nb_frames++;
     } else {
         /* walk the queue and insert this frame where it belongs in display order */
@@ -232,8 +233,8 @@ static void decode_callback(void *opaque,
             if (!next_frame || (new_frame->pts < next_frame->pts)) {
                 new_frame->next_frame = next_frame;
                 queue_walker->next_frame = new_frame;
-                DBG("VT", "queueing frame pts=%"PRId64" at pos=%d\n",
-                    new_frame->pts, vt->nb_frames);
+                TRACE(dec_ctx, "queueing frame pts=%"PRId64" at pos=%d",
+                      new_frame->pts, vt->nb_frames);
                 vt->nb_frames++;
                 break;
             }
@@ -260,7 +261,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, void *opaque)
     CFDictionaryRef decoder_spec;
     CFDictionaryRef buf_attr;
 
-    DBG("VT", "init\n");
+    TRACE(dec_ctx, "init");
 
     dec_ctx->avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
 
@@ -414,15 +415,15 @@ static void vtdec_flush(struct decoder_ctx *dec_ctx)
 {
     struct vtdec_context *vt = dec_ctx->priv_data;
 
-    DBG("VT", "flushing\n");
+    TRACE(dec_ctx, "flushing");
     if (vt->session) {
         VTDecompressionSessionFinishDelayedFrames(vt->session);
         VTDecompressionSessionWaitForAsynchronousFrames(vt->session);
     }
-    DBG("VT", "decompression session finished delaying frames\n");
+    TRACE(dec_ctx, "decompression session finished delaying frames");
     async_queue_frame(dec_ctx->adec, NULL);
     pthread_mutex_lock(&vt->lock);
-    DBG("VT", "dropping %d frames\n", vt->nb_frames);
+    TRACE(dec_ctx, "dropping %d frames", vt->nb_frames);
     while (vt->queue != NULL) {
         struct async_frame *top_frame = vt->queue;
         vt->queue = top_frame->next_frame;
@@ -431,14 +432,14 @@ static void vtdec_flush(struct decoder_ctx *dec_ctx)
     vt->nb_frames = 0;
     pthread_cond_signal(&vt->cond);
     pthread_mutex_unlock(&vt->lock);
-    DBG("VT", "queue cleared, flush ends\n");
+    TRACE(dec_ctx, "queue cleared, flush ends");
 }
 
 static void vtdec_uninit(struct decoder_ctx *dec_ctx)
 {
     struct vtdec_context *vt = dec_ctx->priv_data;
 
-    DBG("VT", "uninit\n");
+    TRACE(dec_ctx, "uninit");
     if (vt->cm_fmt_desc)
         CFRelease(vt->cm_fmt_desc);
 

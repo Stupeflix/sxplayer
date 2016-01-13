@@ -78,9 +78,15 @@ static const AVOption sxplayer_options[] = {
     { NULL }
 };
 
+static const char *sxplayer_item_name(void *arg)
+{
+    const struct sxplayer_ctx *s = arg;
+    return s->logname;
+}
+
 static const AVClass sxplayer_class = {
     .class_name = "sxplayer",
-    .item_name  = av_default_item_name,
+    .item_name  = sxplayer_item_name,
     .option     = sxplayer_options,
 };
 
@@ -170,6 +176,7 @@ static void free_context(struct sxplayer_ctx *s)
     if (!s)
         return;
     av_freep(&s->filename);
+    av_freep(&s->logname);
     av_freep(&s);
 }
 
@@ -219,30 +226,36 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
         //{"swresample", LIBSWRESAMPLE_VERSION_INT, swresample_version()},
     };
 
+    s = av_mallocz(sizeof(*s));
+    if (!s)
+        return NULL;
+
+    s->filename = av_strdup(filename);
+    s->logname  = av_asprintf("sxplayer:%s", av_basename(filename));
+    if (!s->filename || !s->logname)
+        goto fail;
+
+    s->class = &sxplayer_class;
+
+    if (ENABLE_INFO)
+        av_log_set_level(AV_LOG_INFO);
+    else
+        av_log_set_level(ENABLE_DBG ? AV_LOG_TRACE : AV_LOG_ERROR);
+
 #define VFMT(v) (v)>>16, (v)>>8 & 0xff, (v) & 0xff
     for (i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {
         const unsigned bversion = fflibs[i].build_version;
         const unsigned rversion = fflibs[i].runtime_version;
-        DBG("init", "lib%-12s build:%3d.%3d.%3d runtime:%3d.%3d.%3d\n",
-            fflibs[i].libname, VFMT(bversion), VFMT(rversion));
+        INFO(s, "lib%-12s build:%3d.%3d.%3d runtime:%3d.%3d.%3d",
+             fflibs[i].libname, VFMT(bversion), VFMT(rversion));
         if (bversion != rversion)
             fprintf(stderr, "WARNING: build and runtime version of FFmpeg mismatch\n");
     }
 
     av_register_all();
     avfilter_register_all();
-    av_log_set_level(ENABLE_DBG ? AV_LOG_TRACE : AV_LOG_ERROR);
 
-    s = av_mallocz(sizeof(*s));
-    if (!s)
-        return NULL;
-
-    s->class = &sxplayer_class;
     av_opt_set_defaults(s);
-
-    s->filename = av_strdup(filename);
-    if (!s->filename)
-        goto fail;
 
     pthread_mutex_init(&s->lock, NULL);
     pthread_cond_init(&s->cond, NULL);
@@ -252,8 +265,6 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     s->first_ts = AV_NOPTS_VALUE;
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
     s->trim_duration64 = AV_NOPTS_VALUE;
-
-    DBG("create", "filename:%s (%p)\n", filename, s);
 
     av_assert0(!s->context_configured);
     return s;
@@ -271,7 +282,7 @@ static int join_dec_thread_if_dying(struct sxplayer_ctx *s)
 
     pthread_mutex_lock(&s->lock);
     if (s->thread_state == THREAD_STATE_DYING) {
-        DBG("main", "thread is dying: join\n");
+        TRACE(s, "thread is dying: join");
         pthread_mutex_unlock(&s->lock);
 
         pthread_join(s->dec_thread, NULL);
@@ -291,7 +302,7 @@ static void shoot_running_decoding_thread(struct sxplayer_ctx *s)
 {
     pthread_mutex_lock(&s->lock);
     if (s->thread_state == THREAD_STATE_RUNNING) {
-        DBG("free", "decoding thread is running, *BANG*\n");
+        TRACE(s, "decoding thread is running, *BANG*");
         s->thread_state = THREAD_STATE_DYING;
         pthread_cond_signal(&s->cond);
     }
@@ -302,7 +313,7 @@ void sxplayer_free(struct sxplayer_ctx **ss)
 {
     struct sxplayer_ctx *s = *ss;
 
-    DBG("free", "calling sxplayer_free() (%p)\n", s);
+    TRACE(s, "destroying context");
 
     if (!s)
         return;
@@ -379,7 +390,7 @@ static int setup_filtergraph(struct sxplayer_ctx *s)
     if (framerate.num && framerate.den)
         av_strlcatf(args, sizeof(args), ":frame_rate=%d/%d", framerate.num, framerate.den);
 
-    DBG("decoder", "graph buffer source args: %s\n", args);
+    TRACE(s, "graph buffer source args: %s", args);
 
     ret = avfilter_graph_create_filter(&s->buffersrc_ctx, buffersrc,
                                        outputs->name, args, NULL, s->filter_graph);
@@ -407,7 +418,7 @@ static int setup_filtergraph(struct sxplayer_ctx *s)
         av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
     }
 
-    DBG("decoder", "graph buffer sink args: %s\n", args);
+    TRACE(s, "graph buffer sink args: %s", args);
 
     /* create our filter graph */
     inputs->filter_ctx  = s->buffersink_ctx;
@@ -455,7 +466,6 @@ static char *update_filters_str(char *filters, const char *append)
     } else {
         str = av_strdup(append);
     }
-    DBG("decoder", "update filtergraph to: %s\n", str);
     return str;
 }
 
@@ -472,8 +482,8 @@ static int pull_packet_cb(void *priv, AVPacket *pkt)
             break;
 
         if (pkt->stream_index != target_stream_idx) {
-            DBG("pull_packet_cb", "pkt->idx=%d vs %d\n",
-                pkt->stream_index, target_stream_idx);
+            TRACE(s, "pkt->idx=%d vs %d",
+                  pkt->stream_index, target_stream_idx);
             continue;
         }
 
@@ -488,7 +498,7 @@ static int pull_packet_cb(void *priv, AVPacket *pkt)
         break;
     }
 
-    DBG("pull_packet_cb", "packet ret %s\n", av_err2str(ret));
+    TRACE(s, "packet ret %s", av_err2str(ret));
     return ret;
 }
 
@@ -509,7 +519,7 @@ static int seek_cb(void *arg, int64_t t)
 {
     struct sxplayer_ctx *s = arg;
 
-    DBG("decoder", "Seek in media (%s) at %s\n", s->filename, PTS2TIMESTR(t));
+    INFO(s, "Seek in media at ts=%s", PTS2TIMESTR(t));
     return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, t, t, 0);
 }
 
@@ -587,8 +597,8 @@ static void audio_frame_to_sound_texture(struct sxplayer_ctx *s, AVFrame *dst_vi
             const int nb_identical_values = source_step << 1;
             const int nb_dest_pixels = width / nb_identical_values;
 
-            DBG("audio2tex", "line %2d->%2d: %3d different pixels (copied %3dx) as destination, step source: %d\n",
-                source_line, source_line + AUDIO_NBCHANNELS, nb_dest_pixels, nb_identical_values, source_step);
+            TRACE(s, "line %2d->%2d: %3d different pixels (copied %3dx) as destination, step source: %d",
+                  source_line, source_line + AUDIO_NBCHANNELS, nb_dest_pixels, nb_identical_values, source_step);
 
             for (j = 0; j < nb_dest_pixels; j++) {
                 int x;
@@ -620,13 +630,13 @@ static int filter_frame(struct sxplayer_ctx *s, AVFrame *outframe, AVFrame *infr
     }
 
     if (inframe) {
-        DBG("filter", "received %s frame @ ts=%s\n",
+        TRACE(s, "received %s frame @ ts=%s",
             s->media_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(inframe->format)
                                                 : av_get_sample_fmt_name(inframe->format),
             PTS2TIMESTR(inframe->pts));
 
         if (s->filter_graph) {
-            DBG("filter", "push frame with ts=%s into filtergraph\n", PTS2TIMESTR(inframe->pts));
+            TRACE(s, "push frame with ts=%s into filtergraph", PTS2TIMESTR(inframe->pts));
 
             /* push the decoded frame into the filtergraph */
             ret = av_buffersrc_write_frame(s->buffersrc_ctx, inframe);
@@ -652,7 +662,7 @@ static int filter_frame(struct sxplayer_ctx *s, AVFrame *outframe, AVFrame *infr
     AVFrame *filtered_frame = s->media_type == AVMEDIA_TYPE_AUDIO ? s->tmp_audio_frame : outframe;
     if (s->filter_graph) {
         ret = av_buffersink_get_frame(s->buffersink_ctx, filtered_frame);
-        DBG("filter", "got frame from sink ret=[%s]\n", av_err2str(ret));
+        TRACE(s, "got frame from sink ret=[%s]", av_err2str(ret));
         if (ret < 0) {
             if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
                 fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
@@ -671,8 +681,8 @@ static int filter_frame(struct sxplayer_ctx *s, AVFrame *outframe, AVFrame *infr
         av_frame_ref(outframe, s->audio_texture_frame);
     }
 
-    DBG("filter", "outframe: %s frame @ ts=%s %"PRId64"\n",
-        av_get_pix_fmt_name(outframe->format), PTS2TIMESTR(outframe->pts));
+    TRACE(s, "outframe: %s frame @ ts=%s %"PRId64"",
+          av_get_pix_fmt_name(outframe->format), PTS2TIMESTR(outframe->pts));
 
     return ret;
 }
@@ -684,17 +694,17 @@ static int push_frame_cb(void *priv, AVFrame *frame)
     const int flush = !frame;
 
     if (frame) {
-        DBG("push_frame", "got frame (in %s) with t=%s\n",
+        TRACE(s, "got frame (in %s) with t=%s",
             s->media_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(frame->format)
                                                 : av_get_sample_fmt_name(frame->format),
             PTS2TIMESTR(frame->pts));
     } else {
-        DBG("push_frame", "got null frame\n");
+        TRACE(s, "got null frame");
     }
 
     ret = filter_frame(s, s->filtered_frame, frame);
     av_frame_free(&frame);
-    DBG("push_frame", "filter_frame returned [%s]\n", av_err2str(ret));
+    TRACE(s, "filter_frame returned [%s]", av_err2str(ret));
     if (ret < 0) {
         if (ret == AVERROR(EAGAIN)) {
             /* frame was pushed in filtegraph but nothing ready yet */
@@ -702,17 +712,17 @@ static int push_frame_cb(void *priv, AVFrame *frame)
         }
         if (ret == AVERROR_EOF) {
             /* filtergraph returned EOF so we can call for a terminate */
-            DBG("push_frame", "GOT EOF from filtergraph\n");
+            TRACE(s, "GOT EOF from filtergraph");
             shoot_running_decoding_thread(s);
         }
         return ret;
     }
 
-    DBG("push_frame", "frame filtered\n");
+    TRACE(s, "frame filtered");
 
     if (s->trim_duration64 >= 0) {
         if (s->filtered_frame->pts > s->skip64 + s->trim_duration64) {
-            DBG("push_frame", "reached trim duration, simulate EOF\n");
+            TRACE(s, "reached trim duration, simulate EOF");
             av_frame_unref(s->filtered_frame);
             shoot_running_decoding_thread(s);
             return AVERROR_EOF;
@@ -722,11 +732,11 @@ static int push_frame_cb(void *priv, AVFrame *frame)
     /* wait for the frame to be consumed by the main thread */
     pthread_mutex_lock(&s->lock);
     while (s->queued_frame && s->thread_state != THREAD_STATE_DYING) {
-        DBG("push_frame", "frame not poped out yet, wait\n");
+        TRACE(s, "frame not poped out yet, wait");
         pthread_cond_wait(&s->cond, &s->lock);
     }
     if (s->thread_state == THREAD_STATE_DYING) {
-        DBG("push_frame", "thread is dying\n");
+        TRACE(s, "thread is dying");
         av_frame_free(&s->queued_frame);
         // XXX: no need to signal cond, right?
         pthread_mutex_unlock(&s->lock);
@@ -734,15 +744,15 @@ static int push_frame_cb(void *priv, AVFrame *frame)
         return AVERROR_EOF;
     }
 
-    DBG("push_frame", "queuing frame\n");
+    TRACE(s, "queuing frame");
     s->queued_frame = av_frame_clone(s->filtered_frame); // XXX
     pthread_cond_signal(&s->cond);
     pthread_mutex_unlock(&s->lock);
     av_frame_unref(s->filtered_frame);
 
     if (flush) {
-        DBG("push_frame", "EOF/null frame was signaled but we got a frame out "
-            "of the filtergraph, so request a flush call again\n");
+        TRACE(s, "EOF/null frame was signaled but we got a frame out "
+              "of the filtergraph, so request a flush call again");
         return AVERROR(EAGAIN);
     }
 
@@ -770,7 +780,7 @@ static int open_ifile(struct sxplayer_ctx *s, const char *infile)
     if (!s->actx)
         return AVERROR(ENOMEM);
 
-    DBG("open_ifile", "opening %s\n", infile);
+    TRACE(s, "opening %s", infile);
     ret = avformat_open_input(&s->fmt_ctx, infile, NULL, NULL);
     if (ret < 0) {
         fprintf(stderr, "Unable to open input file '%s'\n", infile);
@@ -790,14 +800,14 @@ static int open_ifile(struct sxplayer_ctx *s, const char *infile)
      * will be then set to something like 5 seconds for video. */
     s->fmt_ctx->max_analyze_duration = -1;
 
-    DBG("open_ifile", "find stream info\n");
+    TRACE(s, "find stream info");
     ret = avformat_find_stream_info(s->fmt_ctx, NULL);
     if (ret < 0) {
         fprintf(stderr, "Unable to find input stream information\n");
         return ret;
     }
 
-    DBG("open_ifile", "find best stream\n");
+    TRACE(s, "find best stream");
     ret = av_find_best_stream(s->fmt_ctx, s->media_type, -1, -1, &s->dec, 0);
     if (ret < 0) {
         fprintf(stderr, "Unable to find a %s stream in the input file\n", s->media_type_string);
@@ -806,12 +816,12 @@ static int open_ifile(struct sxplayer_ctx *s, const char *infile)
     s->stream_idx = ret;
     s->stream = s->fmt_ctx->streams[s->stream_idx];
 
-    DBG("open_ifile", "create decoder\n");
+    TRACE(s, "create decoder");
     s->dec_ctx = decoder_create(dec_def, dec_def_fallback, s->stream->codec);
     if (!s->dec_ctx)
         return AVERROR(ENOMEM);
 
-    DBG("open_ifile", "register reader\n");
+    TRACE(s, "register reader");
     ret = async_register_reader(s->actx, s,
                                 pull_packet_cb, seek_cb,
                                 &s->reader);
@@ -847,17 +857,17 @@ static int open_ifile(struct sxplayer_ctx *s, const char *infile)
             const double probe_duration = probe_duration64 * av_q2d(scaleq);
 
             if (s->trim_duration < 0 || probe_duration < s->trim_duration) {
-                DBG("decoder", "fix trim_duration from %f to %f\n", s->trim_duration, probe_duration);
+                TRACE(s, "fix trim_duration from %f to %f", s->trim_duration, probe_duration);
                 s->trim_duration64 = av_rescale_q_rnd(probe_duration64, scaleq, AV_TIME_BASE_Q, 0);
                 s->trim_duration = probe_duration;
             }
         }
     }
 
-    DBG("decoder", "rescaled values: skip=%s dist:%s dur:%s\n",
-        PTS2TIMESTR(s->skip64),
-        PTS2TIMESTR(s->dist_time_seek_trigger64),
-        PTS2TIMESTR(s->trim_duration64));
+    TRACE(s, "rescaled values: skip=%s dist:%s dur:%s",
+          PTS2TIMESTR(s->skip64),
+          PTS2TIMESTR(s->dist_time_seek_trigger64),
+          PTS2TIMESTR(s->trim_duration64));
 
     if (s->autorotate) {
         const double theta = get_rotation(s->stream);
@@ -868,6 +878,7 @@ static int open_ifile(struct sxplayer_ctx *s, const char *infile)
             s->filters = update_filters_str(s->filters, "vflip,hflip");
         else if (fabs(theta - 270) < 1.0)
             s->filters = update_filters_str(s->filters, "transpose=cclock");
+        TRACE(s, "update filtergraph to: %s", s->filters);
     }
 
     av_dump_format(s->fmt_ctx, 0, infile, 0);
@@ -903,11 +914,10 @@ static int set_context_fields(struct sxplayer_ctx *s)
         s->auto_hwaccel = 0;
     }
 
-    DBG("main", "filename:%s avselect:%s skip:%f trim_duration:%f "
-        "dist_time_seek_trigger:%f max_nb_frames:%d filters:'%s' (%p)\n",
-        s->filename, s->media_type_string, s->skip, s->trim_duration,
-        s->dist_time_seek_trigger, s->max_nb_frames, s->filters ? s->filters : "",
-        s);
+    TRACE(s, "avselect:%s skip:%f trim_duration:%f "
+          "dist_time_seek_trigger:%f max_nb_frames:%d filters:'%s'",
+          s->media_type_string, s->skip, s->trim_duration,
+          s->dist_time_seek_trigger, s->max_nb_frames, s->filters ? s->filters : "");
 
     s->skip64 = TIME2INT64(s->skip);
     s->dist_time_seek_trigger64 = TIME2INT64(s->dist_time_seek_trigger);
@@ -963,7 +973,7 @@ static int configure_context(struct sxplayer_ctx *s)
     if (s->context_configured)
         return 0;
 
-    DBG("main", "configuring context: set context fields\n");
+    TRACE(s, "set context fields");
     ret = set_context_fields(s);
     if (ret < 0) {
         fprintf(stderr, "Unable to set context fields: %s\n", av_err2str(ret));
@@ -971,7 +981,7 @@ static int configure_context(struct sxplayer_ctx *s)
         return ret;
     }
 
-    DBG("main", "configuring context: open input file\n");
+    TRACE(s, "open input file");
     ret = open_ifile(s, s->filename);
     if (ret < 0) {
         fprintf(stderr, "Unable to open input file: %s\n", av_err2str(ret));
@@ -990,11 +1000,11 @@ static void *decoder_thread(void *arg)
     if (s->skip64)
         async_reader_seek(s->reader, s->skip64);
     async_start(s->actx);
-    DBG("decoder", "async started\n");
+    TRACE(s, "async started");
     async_wait(s->actx);
-    DBG("decoder", "async api done\n");
+    TRACE(s, "async api done");
     shoot_running_decoding_thread(s);
-    DBG("decoder", "decoding thread ends\n");
+    TRACE(s, "decoder thread ends");
     return NULL;
 }
 
@@ -1007,7 +1017,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     AVFrameSideData *sd;
 
     if (!frame) {
-        DBG("main", " <<< return nothing\n");
+        INFO(s, " <<< return nothing");
         return NULL;
     }
 
@@ -1015,11 +1025,11 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
 
     /* if same frame as previously, do not raise it again */
     if (s->last_pushed_frame_ts == frame_ts) {
-        DBG("main", " <<< same frame as previously, return NULL\n");
+        INFO(s, " <<< same frame as previously, return NULL");
         return NULL;
     } else {
-        DBG("main", "last_pushed_frame_ts:%s frame_ts:%s\n",
-            PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(frame_ts));
+        TRACE(s, "last_pushed_frame_ts:%s frame_ts:%s",
+              PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(frame_ts));
     }
 
     ret = av_mallocz(sizeof(*ret));
@@ -1037,7 +1047,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
             return NULL;
         }
         ret->nb_mvs = sd->size / sizeof(AVMotionVector);
-        DBG("main", "export %d motion vectors\n", ret->nb_mvs);
+        TRACE(s, "export %d motion vectors", ret->nb_mvs);
     }
 
     ret->internal = frame;
@@ -1049,30 +1059,30 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     ret->pix_fmt  = pix_fmts_ff2sx(frame->format);
 
     if (ENABLE_DBG && !s->can_seek_again)
-        DBG("main", "allow seeking again\n");
+        TRACE(s, "allow seeking again");
 
     s->can_seek_again = 1;
-    DBG("main", " <<< return frame @ ts=%s with requested time being %s [max:%s]\n",
-        PTS2TIMESTR(ret->ts), PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
+    INFO(s, " <<< return frame @ ts=%s with requested time being %s [max:%s]",
+         PTS2TIMESTR(ret->ts), PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
     return ret;
 }
 
 static int request_seek(struct sxplayer_ctx *s, int64_t t)
 {
     if (s->can_seek_again) {
-        DBG("main", "request seek at %s\n", PTS2TIMESTR(t));
+        TRACE(s, "request seek at t=%s (vt=%s)", PTS2TIMESTR(t),
+              PTS2TIMESTR(get_media_time(s, t)));
         async_reader_seek(s->reader, get_media_time(s, t));
         s->can_seek_again = 0;
         return 0;
     } else {
-        DBG("main", "can not seek again, reject request\n");
+        TRACE(s, "can not seek again, reject request");
         return -1;
     }
 }
 
 void sxplayer_release_frame(struct sxplayer_frame *frame)
 {
-    DBG("main", "release frame %p\n", frame);
     if (frame) {
         AVFrame *avframe = frame->internal;
         av_frame_free(&avframe);
@@ -1088,7 +1098,7 @@ int sxplayer_set_drop_ref(struct sxplayer_ctx *s, int drop)
 
 #if 0
     pthread_mutex_lock(&s->queue_lock);
-    DBG("main", "toggle drop frame from %d to %d\n", s->request_drop, drop);
+    TRACE(s, "toggle drop frame from %d to %d", s->request_drop, drop);
     s->request_drop = drop;
     pthread_mutex_unlock(&s->queue_lock);
     return 0;
@@ -1102,7 +1112,7 @@ static int spawn_decoding_thread_if_not_running(struct sxplayer_ctx *s)
     int ret = 0;
 
     if (join_dec_thread_if_dying(s)) {
-        DBG("main", "dec thread is dead, start it\n");
+        TRACE(s, "dec thread is dead, start it");
 
         ret = configure_context(s);
         if (ret < 0)
@@ -1112,7 +1122,7 @@ static int spawn_decoding_thread_if_not_running(struct sxplayer_ctx *s)
         ret = AVERROR(pthread_create(&s->dec_thread, NULL, decoder_thread, s));
         if (ret < 0) {
             s->thread_state = THREAD_STATE_NOTRUNNING;
-            DBG("main", "Unable to spawn decoding thread: %s\n", av_err2str(ret));
+            TRACE(s, "Unable to spawn decoding thread: %s", av_err2str(ret));
             return ret;
         }
 
@@ -1129,14 +1139,14 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
     AVFrame *frame = NULL;
 
     if (s->cached_frame) {
-        DBG("pop_frame", "we have a cached frame, pop this one\n");
+        TRACE(s, "we have a cached frame, pop this one");
         frame = s->cached_frame;
         s->cached_frame = NULL;
     } else {
-        DBG("pop_frame", "requesting a frame\n");
+        TRACE(s, "requesting a frame");
         pthread_mutex_lock(&s->lock);
         while (!s->queued_frame && s->thread_state == THREAD_STATE_RUNNING) {
-            DBG("pop_frame", "no frame yet, wait\n");
+            TRACE(s, "no frame yet, wait");
             pthread_cond_wait(&s->cond, &s->lock);
         }
         if (s->queued_frame) {
@@ -1149,11 +1159,11 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
 
     if (frame) {
         const int64_t ts = frame->pts;
-        DBG("pop_frame", "poped queued frame with ts=%s\n", PTS2TIMESTR(ts));
+        TRACE(s, "poped queued frame with ts=%s", PTS2TIMESTR(ts));
         if (s->first_ts == AV_NOPTS_VALUE)
             s->first_ts = ts;
     } else {
-        DBG("pop_frame", "no frame available\n");
+        TRACE(s, "no frame available");
     }
 
     return frame;
@@ -1187,8 +1197,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     AVFrame *candidate = NULL;
     const int64_t t64 = TIME2INT64(t);
 
-    DBG("main", " >>> get frame from %s for t=%s (user exact value:%f)\n",
-        s->filename, PTS2TIMESTR(t64), t);
+    INFO(s, " >>> get frame for t=%s (user exact value:%f)", PTS2TIMESTR(t64), t);
 
 #if SYNTH_FRAME
     return ret_synth_frame(s, t);
@@ -1199,17 +1208,17 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         return NULL;
 
     const int vt = get_media_time(s, t64);
-    DBG("main", "t=%s -> vt=%s\n", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
+    TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
 
     if (t64 < 0) {
-        DBG("main", "prefetch requested, returns NULL\n");
+        TRACE(s, "prefetch requested");
         spawn_decoding_thread_if_not_running(s);
         return ret_frame(s, NULL, vt);
     }
 
     for (;;) {
 
-        DBG("main", "entering loop\n");
+        TRACE(s, "entering loop");
 
         av_assert0(s->context_configured);
 
@@ -1218,16 +1227,16 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
          * picture we don't want to restart the decoding thread again so we
          * return NULL. */
         if (s->trim_duration64 < 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
-            DBG("main", "no trim duration, likely picture, and frame already returned\n");
+            TRACE(s, "no trim duration, likely picture, and frame already returned");
             return ret_frame(s, NULL, vt);
         }
 
         if (!candidate && s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
-            DBG("main", "no frame ever pushed yet, fetch a candidate\n");
+            TRACE(s, "no frame ever pushed yet, fetch a candidate");
             spawn_decoding_thread_if_not_running(s);
             candidate = pop_frame(s);
             if (!candidate) {
-                DBG("main", "no frame popable\n");
+                TRACE(s, "no frame popable");
                 return ret_frame(s, NULL, vt);
             }
         }
@@ -1240,9 +1249,9 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         }
 
         if (s->first_ts != AV_NOPTS_VALUE && vt < s->first_ts) {
-            DBG("main", "first_ts:%s media_time:%s t:%s\n",
-                PTS2TIMESTR(s->first_ts), PTS2TIMESTR(vt), PTS2TIMESTR(t64));
-            DBG("main", "requested a time before the first video timestamp\n");
+            TRACE(s, "first_ts:%s media_time:%s t:%s",
+                  PTS2TIMESTR(s->first_ts), PTS2TIMESTR(vt), PTS2TIMESTR(t64));
+            TRACE(s, "requested a time before the first video timestamp");
 
             av_frame_free(&s->cached_frame); // very unlikely to be useful (impossible?)
             s->cached_frame = candidate;
@@ -1251,12 +1260,12 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
         if (!candidate) { // means candidate refers to previously returned frame
             diff = vt - s->last_pushed_frame_ts;
-            DBG("main", "diff with latest frame (t=%s) returned: %s [%"PRId64"]\n",
-                PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(diff), diff);
+            TRACE(s, "diff with latest frame (t=%s) returned: %s [%"PRId64"]",
+                  PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(diff), diff);
         } else {
             diff = vt - candidate->pts;
-            DBG("main", "diff with candidate (t=%s): %s [%"PRId64"]\n",
-                PTS2TIMESTR(candidate->pts), PTS2TIMESTR(diff), diff);
+            TRACE(s, "diff with candidate (t=%s): %s [%"PRId64"]",
+                  PTS2TIMESTR(candidate->pts), PTS2TIMESTR(diff), diff);
         }
 
         if (!diff)
@@ -1265,7 +1274,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         spawn_decoding_thread_if_not_running(s);
 
         if (diff < 0) {
-            DBG("main", "diff %s [%"PRId64"] < 0\n", PTS2TIMESTR(diff), diff);
+            TRACE(s, "diff %s [%"PRId64"] < 0", PTS2TIMESTR(diff), diff);
 
             /* cached frame is most likely invalid since before fetch, remove
              * it from the cache */
@@ -1290,9 +1299,9 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
             candidate = pop_frame(s);
         } else if (diff > s->dist_time_seek_trigger64) {
 
-            DBG("main", "diff %s > %s [%"PRId64" > %"PRId64"] request future seek\n",
-                PTS2TIMESTR(diff), PTS2TIMESTR(s->dist_time_seek_trigger64),
-                diff, s->dist_time_seek_trigger64);
+            TRACE(s, "diff %s > %s [%"PRId64" > %"PRId64"] request future seek",
+                  PTS2TIMESTR(diff), PTS2TIMESTR(s->dist_time_seek_trigger64),
+                  diff, s->dist_time_seek_trigger64);
             av_frame_free(&s->cached_frame);
 
             request_seek(s, t64);
@@ -1301,7 +1310,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
             candidate = pop_frame(s);
 
         } else {
-            DBG("main", "grab second frame\n");
+            TRACE(s, "grab second frame");
             AVFrame *tmp_frame_2 = pop_frame(s);
             if (!tmp_frame_2) {
                 if (s->last_pushed_frame_ts == AV_NOPTS_VALUE)
@@ -1309,20 +1318,20 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
                 s->cached_frame = candidate;
                 return ret_frame(s, NULL, vt);
             }
-            DBG("main", "got second frame\n");
+            TRACE(s, "got second frame");
 
             const int64_t new_diff = vt - tmp_frame_2->pts;
-            DBG("main", "diff with sec frame %s [%"PRId64"]\n",
-                PTS2TIMESTR(new_diff), new_diff);
+            TRACE(s, "diff with sec frame %s [%"PRId64"]",
+                  PTS2TIMESTR(new_diff), new_diff);
 
             if (new_diff <= diff && new_diff >= 0) {
                 int need_more_frames;
 
-                DBG("main", "new diff is more interesting "
-                    "(new=%s [%"PRId64"] vs old=%s [%"PRId64"]), "
-                    "replace first candidate\n",
-                    PTS2TIMESTR(new_diff), new_diff,
-                    PTS2TIMESTR(diff), diff);
+                TRACE(s, "new diff is more interesting "
+                      "(new=%s [%"PRId64"] vs old=%s [%"PRId64"]), "
+                      "replace first candidate",
+                      PTS2TIMESTR(new_diff), new_diff,
+                      PTS2TIMESTR(diff), diff);
 
                 diff = new_diff;
 
@@ -1332,13 +1341,13 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
                 pthread_mutex_lock(&s->lock);
                 need_more_frames = s->thread_state == THREAD_STATE_RUNNING && diff;
                 pthread_mutex_unlock(&s->lock);
-                DBG("main", "do we still need to peek more frames? %s\n", need_more_frames ? "yes" : "no");
+                TRACE(s, "do we still need to peek more frames? %s", need_more_frames ? "yes" : "no");
                 if (!need_more_frames)
                     return ret_frame(s, candidate, vt);
 
             } else {
-                DBG("main", "second frame is not more interesting than "
-                    "candidate, caching it for next frame call\n");
+                TRACE(s, "second frame is not more interesting than "
+                      "candidate, caching it for next frame call");
 
                 s->cached_frame = tmp_frame_2;
                 return ret_frame(s, candidate, vt);
@@ -1351,7 +1360,7 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 {
     int ret;
 
-    DBG("main", " >>> get next frame from %s\n", s->filename);
+    TRACE(s, " >>> get next frame");
 
     ret = configure_context(s);
     if (ret < 0)
@@ -1360,7 +1369,7 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
     /* If we are joining (and killing) the thread, it means it reached a EOF,
      * and this is the only reason to return NULL in this function. */
     if (join_dec_thread_if_dying(s) == 2) {
-        DBG("main", "thread died, return EOF\n");
+        TRACE(s, "thread died, return EOF");
         return ret_frame(s, NULL, 0);
     }
 
@@ -1372,11 +1381,11 @@ int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration)
 {
     int ret;
 
-    DBG("main", "query duration\n");
+    INFO(s, "query duration");
     ret = configure_context(s);
     if (ret < 0)
         return ret;
     *duration = s->trim_duration;
-    DBG("main", "get duration -> %f\n", s->trim_duration);
+    TRACE(s, "get duration -> %f", s->trim_duration);
     return 0;
 }

@@ -22,7 +22,7 @@
 #include <libavutil/time.h>
 #include "internal.h"
 
-void do_log(const char *mod, const char *fmt, ...)
+void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
 {
     char logline[512];
     va_list arg_list;
@@ -31,5 +31,9 @@ void do_log(const char *mod, const char *fmt, ...)
     vsnprintf(logline, sizeof(logline), fmt, arg_list);
     va_end(arg_list);
 
-    printf("[sxplayer %f %s] %s", av_gettime() / 1000000., mod, logline);
+#if ENABLE_TIMINGS
+    av_log(log_ctx, log_level, "%s %f: %s\n", fn, av_gettime() / 1000000., logline);
+#else
+    av_log(log_ctx, log_level, "%s: %s\n", fn, logline);
+#endif
 }
