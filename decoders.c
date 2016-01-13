@@ -102,10 +102,11 @@ void decoder_uninit(struct decoder_ctx *ctx)
 {
     if (ctx->dec && ctx->dec->uninit)
         ctx->dec->uninit(ctx);
-    free_context_data(ctx);
 }
 
 void decoder_free(struct decoder_ctx **ctxp)
 {
+    if (*ctxp)
+        free_context_data(*ctxp);
     av_freep(ctxp);
 }
