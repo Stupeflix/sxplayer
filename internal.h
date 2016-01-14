@@ -93,7 +93,6 @@ struct sxplayer_ctx {
     int64_t pkt_count;
 
     /* main vs demuxer/decoder thread negotiation */
-    pthread_t dec_thread;                   // decoding thread
     pthread_mutex_t lock;
     pthread_cond_t cond;
 #define THREAD_STATE_NOTRUNNING 0

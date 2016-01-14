@@ -287,7 +287,7 @@ static int join_dec_thread_if_dying(struct sxplayer_ctx *s)
         TRACE(s, "thread is dying: join");
         pthread_mutex_unlock(&s->lock);
 
-        pthread_join(s->dec_thread, NULL);
+        async_wait(s->actx);
 
         pthread_mutex_lock(&s->lock);
         s->thread_state = THREAD_STATE_NOTRUNNING;
@@ -996,22 +996,6 @@ static int configure_context(struct sxplayer_ctx *s)
     return 0;
 }
 
-static void *decoder_thread(void *arg)
-{
-    struct sxplayer_ctx *s = arg;
-
-    av_assert0(s->context_configured);
-    if (s->skip64)
-        async_reader_seek(s->reader, s->skip64);
-    async_start(s->actx);
-    TRACE(s, "async started");
-    async_wait(s->actx);
-    TRACE(s, "async api done");
-    shoot_running_decoding_thread(s);
-    TRACE(s, "decoder thread ends");
-    return NULL;
-}
-
 /* Return the frame only if different from previous one. We do not make a
  * simple pointer check because of the frame reference counting (and thus
  * pointer reuse, depending on many parameters)  */
@@ -1105,12 +1089,10 @@ static int spawn_decoding_thread_if_not_running(struct sxplayer_ctx *s)
             return ret;
 
         s->thread_state = THREAD_STATE_RUNNING;
-        ret = AVERROR(pthread_create(&s->dec_thread, NULL, decoder_thread, s));
-        if (ret < 0) {
-            s->thread_state = THREAD_STATE_NOTRUNNING;
-            TRACE(s, "Unable to spawn decoding thread: %s", av_err2str(ret));
-            return ret;
-        }
+
+        if (s->skip64)
+            async_reader_seek(s->reader, s->skip64);
+        async_start(s->actx);
 
         s->request_drop = -1;
     }
