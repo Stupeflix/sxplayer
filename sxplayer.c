@@ -183,6 +183,8 @@ static void free_context(struct sxplayer_ctx *s)
 /* Destroy data allocated by configure_context() */
 static void free_temp_context_data(struct sxplayer_ctx *s)
 {
+    TRACE(s, "free temporary context data");
+
     av_frame_free(&s->filtered_frame);
     avfilter_graph_free(&s->filter_graph);
     av_frame_free(&s->queued_frame);
@@ -324,6 +326,7 @@ void sxplayer_free(struct sxplayer_ctx **ss)
     pthread_cond_destroy(&s->cond);
     pthread_mutex_destroy(&s->lock);
 
+    free_temp_context_data(s);
     free_context(s);
     *ss = NULL;
 }
@@ -484,6 +487,7 @@ static int pull_packet_cb(void *priv, AVPacket *pkt)
         if (pkt->stream_index != target_stream_idx) {
             TRACE(s, "pkt->idx=%d vs %d",
                   pkt->stream_index, target_stream_idx);
+            av_packet_unref(pkt);
             continue;
         }
 
