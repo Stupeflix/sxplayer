@@ -1058,27 +1058,9 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
     ret->pix_fmt  = pix_fmts_ff2sx(frame->format);
 
-    if (ENABLE_DBG && !s->can_seek_again)
-        TRACE(s, "allow seeking again");
-
-    s->can_seek_again = 1;
     INFO(s, " <<< return frame @ ts=%s with requested time being %s [max:%s]",
          PTS2TIMESTR(frame_ts), PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
     return ret;
-}
-
-static int request_seek(struct sxplayer_ctx *s, int64_t t)
-{
-    if (s->can_seek_again) {
-        TRACE(s, "request seek at t=%s (vt=%s)", PTS2TIMESTR(t),
-              PTS2TIMESTR(get_media_time(s, t)));
-        async_reader_seek(s->reader, get_media_time(s, t));
-        s->can_seek_again = 0;
-        return 0;
-    } else {
-        TRACE(s, "can not seek again, reject request");
-        return -1;
-    }
 }
 
 void sxplayer_release_frame(struct sxplayer_frame *frame)
@@ -1126,7 +1108,6 @@ static int spawn_decoding_thread_if_not_running(struct sxplayer_ctx *s)
             return ret;
         }
 
-        s->can_seek_again = 1;
         s->request_drop = -1;
     }
 
@@ -1278,7 +1259,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
         spawn_decoding_thread_if_not_running(s);
 
-        request_seek(s, t64);
+        async_reader_seek(s->reader, get_media_time(s, t64));
         av_frame_free(&candidate);
 
         /* If the seek is backward, wait for it to be effective */

@@ -102,7 +102,6 @@ struct sxplayer_ctx {
     int thread_state;
 
     /* fields specific to main thread */
-    int can_seek_again;                     // field used to avoid seeking again until the requested time is reached
     int request_drop;                       // field used by the main thread to request a change in the frame dropping mechanism
     int64_t last_pushed_frame_ts;           // ts value of the latest pushed frame (it acts as a UID)
     int64_t first_ts;
