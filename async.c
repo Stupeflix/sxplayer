@@ -209,6 +209,8 @@ static void *watcher_thread(void *arg)
     int ret;
     struct async_decoder *d = arg;
 
+    set_thread_name("sxplayer watcher");
+
     TRACE(d, "watching thread starting");
 
     for (;;) {
@@ -338,6 +340,8 @@ static void *decoder_thread(void *arg)
     int ret;
     struct async_decoder *d = arg;
 
+    set_thread_name("sxplayer decoder");
+
     TRACE(d, "start decoder thread");
 
     ret = decoder_init(d->codec_ctx, d->priv_data);
@@ -434,6 +438,8 @@ static void *reader_thread(void *arg)
     int ret;
     struct async_reader *r = arg;
     struct async_decoder *d = &r->decoder;
+
+    set_thread_name("sxplayer reader");
 
     TRACE(r, "reader thread starting");
 

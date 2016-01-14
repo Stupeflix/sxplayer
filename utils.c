@@ -1,3 +1,6 @@
+#define _GNU_SOURCE // pthread_setname_np on Linux
+#include <pthread.h>
+
 #include "sxplayer.h"
 #include "internal.h"
 
@@ -26,4 +29,13 @@ enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
         if (pix_fmts_mapping[i].ff == pix_fmt)
             return pix_fmts_mapping[i].sx;
     return -1;
+}
+
+void set_thread_name(const char *name)
+{
+#if __APPLE__
+    pthread_setname_np(name);
+#elif __linux__
+    pthread_setname_np(pthread_self(), name);
+#endif
 }
