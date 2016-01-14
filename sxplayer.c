@@ -1055,7 +1055,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     ret->linesize = frame->linesize[0];
     ret->width    = frame->width;
     ret->height   = frame->height;
-    ret->ts       = frame_ts;
+    ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
     ret->pix_fmt  = pix_fmts_ff2sx(frame->format);
 
     if (ENABLE_DBG && !s->can_seek_again)
@@ -1063,7 +1063,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
 
     s->can_seek_again = 1;
     INFO(s, " <<< return frame @ ts=%s with requested time being %s [max:%s]",
-         PTS2TIMESTR(ret->ts), PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
+         PTS2TIMESTR(frame_ts), PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
     return ret;
 }
 
