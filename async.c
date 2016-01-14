@@ -582,9 +582,5 @@ int async_wait(struct async_context *actx)
 
 void async_free(struct async_context **actxp)
 {
-    struct async_context *actx = *actxp;
-
-    if (!actx)
-        return;
     av_freep(actxp);
 }
