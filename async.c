@@ -245,13 +245,6 @@ static int queue_frame(struct async_decoder *d, AVFrame *frame)
 
     TRACE(d, "queue frame with ts=%s", PTS2TIMESTR(frame->pts));
 
-    if (d->seek_request != AV_NOPTS_VALUE && d->seek_request > 0 && frame->pts > d->seek_request) {
-        TRACE(d, "frame is after requested time, fixup its ts from %s to %s",
-              PTS2TIMESTR(frame->pts), PTS2TIMESTR(d->seek_request));
-        frame->pts = d->seek_request;
-        d->seek_request = AV_NOPTS_VALUE;
-    }
-
     ret = av_thread_message_queue_send(d->frames_queue, &frame, 0);
     if (ret < 0) {
         if (ret != AVERROR_EOF)
@@ -288,23 +281,32 @@ int async_queue_frame(struct async_decoder *d, AVFrame *frame)
     /* Rescale the timestamp to a global large time base: AV_TIME_BASE_Q */
     const int64_t ts = av_rescale_q_rnd(get_best_effort_ts(frame), d->st_timebase, AV_TIME_BASE_Q, 0);
 
-    TRACE(d, "processing frame with ts=%s", PTS2TIMESTR(ts));
+    TRACE(d, "processing frame with ts=%s (%"PRId64", rescaled from %"PRId64" in %d/%d)",
+          PTS2TIMESTR(ts), ts, get_best_effort_ts(frame), d->st_timebase.num, d->st_timebase.den);
 
     if (d->seek_request != AV_NOPTS_VALUE && ts < d->seek_request) {
-        TRACE(d, "frame ts:%s, skipping because before %s",
-              PTS2TIMESTR(ts), PTS2TIMESTR(d->seek_request));
+        TRACE(d, "frame ts:%s (%"PRId64"), skipping because before %s (%"PRId64")",
+              PTS2TIMESTR(ts), ts, PTS2TIMESTR(d->seek_request), d->seek_request);
         av_frame_free(&d->tmp_frame);
         d->tmp_frame = frame;
         return 0;
     }
 
+    frame->pts = ts;
+
     if (d->tmp_frame) {
         ret = queue_cached_frame(d);
         if (ret < 0)
             return ret;
+    } else {
+        if (d->seek_request != AV_NOPTS_VALUE && d->seek_request > 0 && frame->pts > d->seek_request) {
+            TRACE(d, "first frame obtained is after requested time, fixup its ts from %s to %s",
+                  PTS2TIMESTR(frame->pts), PTS2TIMESTR(d->seek_request));
+            frame->pts = d->seek_request;
+        }
     }
 
-    frame->pts = ts;
+    d->seek_request = AV_NOPTS_VALUE;
     return queue_frame(d, frame);
 }
 
