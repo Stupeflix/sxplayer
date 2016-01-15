@@ -56,10 +56,6 @@ void set_thread_name(const char *name);
 #define TIME2INT64(d) llrint((d) * av_q2d(av_inv_q(AV_TIME_BASE_Q)))
 #define PTS2TIMESTR(t64) av_ts2timestr(t64, &AV_TIME_BASE_Q)
 
-#define AUDIO_NBITS      10
-#define AUDIO_NBSAMPLES  (1<<(AUDIO_NBITS))
-#define AUDIO_NBCHANNELS 2
-
 struct sxplayer_ctx {
     const AVClass *class;                   // necessary for the AVOption mechanism
     char *filename;                         // input filename
@@ -93,39 +89,19 @@ struct sxplayer_ctx {
     struct async_context *actx;
     struct async_reader *reader;
     struct async_decoder *adec;
+    struct async_filterer *afilterer;
     AVFrame *cached_frame;
-    AVFrame *queued_frame;
     int64_t pkt_count;
 
-    /* main vs demuxer/decoder thread negotiation */
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
-#define THREAD_STATE_NOTRUNNING 0
-#define THREAD_STATE_RUNNING    1
-#define THREAD_STATE_DYING      2 // decoding thread is dying, and need to be joined before being restarted
-    int thread_state;
-
-    /* fields specific to main thread */
-    int request_drop;                       // field used by the main thread to request a change in the frame dropping mechanism
     int64_t last_pushed_frame_ts;           // ts value of the latest pushed frame (it acts as a UID)
     int64_t first_ts;
 
     /* fields specific to decoding thread */
-    AVFrame *filtered_frame;                // filtered version of decoded_frame
-    AVFrame *audio_texture_frame;           // wave/fft texture in case of audio
-    AVFrame *tmp_audio_frame;
     AVFormatContext *fmt_ctx;               // demuxing context
     struct decoder_ctx *dec_ctx;            // decoder context
     AVCodec *dec;
     AVStream *stream;                       // selected stream
     int stream_idx;                         // selected stream index
-    AVFilterGraph *filter_graph;            // libavfilter graph
-    AVFilterContext *buffersink_ctx;        // sink of the graph (from where we pull)
-    AVFilterContext *buffersrc_ctx;         // source of the graph (where we push)
-    float *window_func_lut;                 // audio window function lookup table
-    RDFTContext *rdft;                      // real discrete fourier transform context
-    FFTSample *rdft_data[AUDIO_NBCHANNELS]; // real discrete fourier transform data for each channel
-    enum AVPixelFormat last_frame_format;   // format of the last frame decoded
 };
 
 #endif

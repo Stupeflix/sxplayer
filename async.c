@@ -20,22 +20,23 @@
 
 #include <libavutil/avassert.h>
 #include <libavutil/opt.h>
+#include <libavutil/threadmessage.h>
 #include <libavutil/time.h>
 #include <libavutil/timestamp.h>
 
 #include "internal.h"
+#include "filtering.h"
 #include "async.h"
 
 struct async_decoder {
     const AVClass *class;
     struct decoder_ctx *codec_ctx;
     void *priv_data;
-    push_frame_func_type push_frame_cb;
     int pkt_id_match;
 
     int started;
     pthread_t tid;
-    pthread_t watcher_tid;
+    pthread_t filterer_tid;
 
     AVThreadMessageQueue *pkt_queue;
     AVThreadMessageQueue *frames_queue;
@@ -47,6 +48,10 @@ struct async_decoder {
     AVFrame *tmp_frame;
 
     int64_t seek_request;
+
+    struct filtering_ctx *f;
+    struct async_context *actx; // XXX drop me
+    int sw_pix_fmt; // XXX drop me
 };
 
 struct async_reader {
@@ -61,11 +66,13 @@ struct async_reader {
 
     pthread_mutex_t lock;
     int64_t request_seek;
+    struct async_context *actx; // XXX drop me
 };
 
 struct async_context {
     const AVClass *class;
     struct async_reader reader;
+    AVThreadMessageQueue *sink_queue;
 };
 
 enum msg_type {
@@ -83,6 +90,12 @@ static const AVClass async_context_class = {
     .item_name  = av_default_item_name,
 };
 
+static void free_frame_message(void *arg)
+{
+    AVFrame **frame = arg;
+    av_frame_free(frame);
+}
+
 struct async_context *async_alloc_context(void)
 {
     struct async_context *actx = av_mallocz(sizeof(*actx));
@@ -90,6 +103,20 @@ struct async_context *async_alloc_context(void)
         return NULL;
     actx->class = &async_context_class;
     return actx;
+}
+
+int async_register_filterer(struct async_decoder *d,
+                            const char *filters,
+                            int64_t trim_duration)
+{
+    d->f = filtering_alloc();
+    if (!d->f)
+        return AVERROR(ENOMEM);
+    av_opt_set_defaults(d->f);
+
+    av_opt_set(d->f, "filters", filters, 0);
+    av_opt_set_int(d->f, "max_pts", trim_duration, 0);
+    return 0;
 }
 
 static const AVClass async_reader_class = {
@@ -111,12 +138,6 @@ static void free_packet_message(void *arg)
     default:
         av_assert0(0);
     }
-}
-
-static void free_frame_message(void *arg)
-{
-    AVFrame **frame = arg;
-    av_frame_free(frame);
 }
 
 int async_reader_seek(struct async_reader *r, int64_t ts)
@@ -157,6 +178,8 @@ int async_register_reader(struct async_context *actx,
     reader->pull_packet_cb = pull_packet_cb;
     reader->seek_cb        = seek_cb;
 
+    reader->actx = actx;
+
     reset_reader(reader);
 
     *r = reader;
@@ -179,9 +202,9 @@ static const AVClass async_decoder_class = {
 
 int async_register_decoder(struct async_reader *r,
                            struct decoder_ctx *codec_ctx, void *priv,
-                           push_frame_func_type push_frame_cb,
                            struct async_decoder **d,
-                           AVRational st_timebase)
+                           AVRational st_timebase,
+                           int sw_pix_fmt)
 {
     struct async_decoder *adec = &r->decoder;
 
@@ -190,8 +213,10 @@ int async_register_decoder(struct async_reader *r,
 
     adec->codec_ctx     = codec_ctx;
     adec->priv_data     = priv;
-    adec->push_frame_cb = push_frame_cb;
     adec->st_timebase   = st_timebase;
+
+    adec->actx = r->actx;
+    adec->sw_pix_fmt = sw_pix_fmt;
 
     *d = adec;
     return 0;
@@ -201,44 +226,6 @@ static int64_t get_best_effort_ts(const AVFrame *f)
 {
     const int64_t t = av_frame_get_best_effort_timestamp(f);
     return t != AV_NOPTS_VALUE ? t : f->pts;
-}
-
-/* Watch the frames queue and push them to the user */
-static void *watcher_thread(void *arg)
-{
-    int ret;
-    struct async_decoder *d = arg;
-
-    set_thread_name("sxplayer watcher");
-
-    TRACE(d, "watching thread starting");
-
-    for (;;) {
-        AVFrame *frame;
-
-        /* Wait to get a frame from the queue. If it fails, then the watcher
-         * has to die. */
-        ret = av_thread_message_queue_recv(d->frames_queue, &frame, 0);
-        if (ret < 0) {
-            av_thread_message_queue_set_err_send(d->frames_queue, ret);
-            break;
-        }
-
-        TRACE(d, "pushing frame ts=%s to user", PTS2TIMESTR(frame->pts));
-
-        ret = d->push_frame_cb(d->priv_data, frame);
-        if (ret < 0) {
-            av_thread_message_queue_set_err_send(d->frames_queue, ret);
-            break;
-        }
-    }
-
-    do {
-        ret = d->push_frame_cb(d->priv_data, NULL);
-    } while (ret == AVERROR(EAGAIN));
-
-    TRACE(d, "watching thread ending");
-    return NULL;
 }
 
 static int queue_frame(struct async_decoder *d, AVFrame *frame)
@@ -335,6 +322,15 @@ static int push_seek_message(AVThreadMessageQueue *q, int64_t ts)
     return ret;
 }
 
+static void *filterer_thread(void *arg)
+{
+    set_thread_name("sxplayer filterer");
+    TRACE(arg, "filtering thread starting");
+    filtering_run(arg);
+    TRACE(arg, "filtering thread ending");
+    return NULL;
+}
+
 static void *decoder_thread(void *arg)
 {
     int ret;
@@ -348,17 +344,21 @@ static void *decoder_thread(void *arg)
     if (ret < 0)
         return NULL;
 
-    /* Initialize the frame queue (communication decode <-> watcher) */
+    /* Initialize the frame queue (communication decode <-> filter) */
     ret = av_thread_message_queue_alloc(&d->frames_queue, d->max_frames_queue, sizeof(AVFrame *));
     if (ret < 0)
         return NULL;
     av_thread_message_queue_set_free_func(d->frames_queue, free_frame_message);
 
-    /* Spawn frame queue watcher */
-    TRACE(d, "decoding thread starting");
-    if (pthread_create(&d->watcher_tid, NULL, watcher_thread, d)) {
+    TRACE(d, "frame queue: %p", d->frames_queue);
+
+    filtering_init(d->f, d->frames_queue, d->actx->sink_queue,
+                   d->sw_pix_fmt, d->codec_ctx->avctx);
+
+    /* Spawn frame filterer */
+    if (pthread_create(&d->filterer_tid, NULL, filterer_thread, d->f)) {
         ret = AVERROR(errno);
-        av_log(d, AV_LOG_ERROR, "Unable to start watcher thread: %s\n",
+        av_log(d, AV_LOG_ERROR, "Unable to start filtering thread: %s\n",
                av_err2str(ret));
         av_thread_message_queue_free(&d->frames_queue);
         return NULL;
@@ -408,6 +408,8 @@ static void *decoder_thread(void *arg)
             break;
     }
 
+    // XXX: do not flush in case of error?
+
     /* flush cached frames */
     TRACE(d, "flush cached frames");
     do {
@@ -420,9 +422,12 @@ static void *decoder_thread(void *arg)
 
     decoder_uninit(d->codec_ctx);
 
-    /* Decoder ends, notify frame watcher so it dies */
+    TRACE(d, "notify frame filterer to end");
     av_thread_message_queue_set_err_recv(d->frames_queue, ret < 0 ? ret : AVERROR_EOF);
-    pthread_join(d->watcher_tid, NULL);
+    pthread_join(d->filterer_tid, NULL);
+
+    TRACE(d, "filtering thread joined");
+    filtering_uninit(d->f);
 
     av_thread_message_queue_free(&d->frames_queue);
     av_frame_free(&d->tmp_frame);
@@ -549,13 +554,29 @@ end:
     return NULL;
 }
 
-int async_start(struct async_context *actx)
+int async_start(struct async_context *actx, int64_t skip)
 {
     int ret;
-
-    TRACE(actx, "Starting Async loop");
-
     struct async_reader *r = &actx->reader;
+
+    if (r->started)
+        return 0;
+
+    TRACE(r, "Starting Async loop");
+
+#if 1
+    ret = av_thread_message_queue_alloc(&actx->sink_queue, 3 /* FIXME */, sizeof(AVFrame *));
+#else
+    ret = av_thread_message_queue_alloc(&actx->sink_queue, 1 /* FIXME */, sizeof(AVFrame *));
+#endif
+    if (ret < 0) {
+        av_freep(&actx);
+        return ret;
+    }
+    av_thread_message_queue_set_free_func(actx->sink_queue, free_frame_message);
+
+    if (skip)
+        async_reader_seek(r, skip);
 
     ret = pthread_create(&r->tid, NULL, reader_thread, r);
     if (ret) {
@@ -581,12 +602,66 @@ int async_wait(struct async_context *actx)
             av_log(actx, AV_LOG_ERROR, "Unable to join reader: %s\n",
                    av_err2str(AVERROR(ret)));
         TRACE(actx, "reader thread joined");
+        r->started = 0;
         reset_reader(r);
     }
+
+    av_thread_message_queue_free(&actx->sink_queue);
+
     return 0;
+}
+
+int async_stop(struct async_context *actx)
+{
+    if (!actx)
+        return 0;
+
+    struct async_reader *r = &actx->reader;
+
+    TRACE(actx, "stopping");
+
+    if (!r->started) {
+        TRACE(actx, "nothing is started");
+        return 0;
+    }
+
+    // tell the filtering to stop queuing frames
+    av_thread_message_queue_set_err_send(actx->sink_queue, AVERROR_EOF);
+
+    // empty the remaining frames (no more frames will be added since the queue
+    // is marked in error)
+    av_thread_message_flush(actx->sink_queue);
+
+    // We now wait for everything to stop
+    return async_wait(actx);
+}
+
+AVFrame *async_pop_frame(struct async_context *actx)
+{
+    AVFrame *frame;
+    TRACE(actx, "fetching frame from sink");
+    int ret = av_thread_message_queue_recv(actx->sink_queue, &frame, 0);
+    if (ret < 0) {
+        TRACE(actx, "couldn't fetch frame from sink because %s", av_err2str(ret));
+        av_thread_message_queue_set_err_send(actx->sink_queue, ret);
+        return NULL;
+    }
+    return frame;
+}
+
+int async_started(struct async_context *actx)
+{
+    const struct async_reader *r = &actx->reader;
+    return r->started;
 }
 
 void async_free(struct async_context **actxp)
 {
+    struct async_context *actx = *actxp;
+
+    if (actx) {
+        async_stop(actx);
+        filtering_free(&actx->reader.decoder.f);
+    }
     av_freep(actxp);
 }

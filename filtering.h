@@ -21,8 +21,19 @@
 #ifndef FILTERING_H
 #define FILTERING_H
 
-#include <libavutil/frame.h>
+#include <libavutil/threadmessage.h>
 
-int push_frame_cb(void *priv, AVFrame *frame);
+struct filtering_ctx *filtering_alloc(void);
+
+int filtering_init(struct filtering_ctx *f,
+                   AVThreadMessageQueue *in_queue,
+                   AVThreadMessageQueue *out_queue,
+                   int sw_pix_fmt,
+                   const AVCodecContext *actx);
+
+void filtering_run(struct filtering_ctx *f);
+
+void filtering_uninit(struct filtering_ctx *f);
+void filtering_free(struct filtering_ctx **fp);
 
 #endif /* FILTERING_H */

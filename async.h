@@ -23,13 +23,12 @@
 
 #include <pthread.h>
 #include <libavcodec/avcodec.h>
-#include <libavutil/threadmessage.h>
 
 #include "internal.h"
+#include "filtering.h"
 
 typedef int (*pull_packet_func_type)(void *priv, AVPacket *pkt);
 typedef int (*seek_func_type)(void *priv, int64_t ts);
-typedef int (*push_frame_func_type)(void *priv, AVFrame *frame);
 
 struct async_decoder;
 struct async_reader;
@@ -49,15 +48,25 @@ int async_reader_seek(struct async_reader *r, int64_t ts);
 
 int async_register_decoder(struct async_reader *r,
                            struct decoder_ctx *codec_ctx, void *priv,
-                           push_frame_func_type push_frame_cb,
                            struct async_decoder **d,
-                           AVRational st_timebase);
+                           AVRational st_timebase,
+                           int sw_pix_fmt);
 
-int async_start(struct async_context *actx);
+int async_register_filterer(struct async_decoder *d,
+                            const char *filters,
+                            int64_t trim_duration);
+
+int async_start(struct async_context *actx, int64_t skip);
 
 int async_wait(struct async_context *actx);
 
+int async_stop(struct async_context *actx);
+
+int async_started(struct async_context *actx);
+
 void async_free(struct async_context **actxp);
+
+AVFrame *async_pop_frame(struct async_context *actx);
 
 int async_queue_frame(struct async_decoder *d, AVFrame *frame);
 

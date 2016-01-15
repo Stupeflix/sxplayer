@@ -19,26 +19,21 @@
  */
 
 #include <stdint.h>
-#include <pthread.h>
 #include <float.h> /* for DBL_MAX */
 
-#include <libavcodec/avfft.h>
 #include <libavformat/avformat.h>
-#include <libavfilter/avfilter.h>
-#include <libavfilter/buffersink.h>
-#include <libavfilter/buffersrc.h>
 #include <libavutil/avassert.h>
 #include <libavutil/avstring.h>
 #include <libavutil/display.h>
 #include <libavutil/eval.h>
 #include <libavutil/opt.h>
-#include <libavutil/pixdesc.h>
 #include <libavutil/timestamp.h>
 #include <libavutil/motion_vector.h>
 //#include <libswresample/swresample.h>
 //#include <libswscale/swscale.h>
 
 #include "sxplayer.h"
+#include "filtering.h"
 #include "async.h"
 #include "internal.h"
 #include "filtering.h"
@@ -120,31 +115,6 @@ end:
     return ret;
 }
 
-static AVFrame *get_audio_frame(void)
-{
-    AVFrame *frame = av_frame_alloc();
-    if (!frame)
-        return NULL;
-
-    frame->format = AV_PIX_FMT_RGB32;
-
-    frame->width  = AUDIO_NBSAMPLES/2;      // samples are float (32 bits), pix fmt is rgb32 (32 bits as well)
-    /* height:
-     *   AUDIO_NBCHANNELS (waves lines)
-     * + AUDIO_NBCHANNELS (fft lines of width AUDIO_NBCHANNELS/2, or 1<<(AUDIO_NBITS-1))
-     * + AUDIO_NBITS-1 AUDIO_NBCHANNELS (fft lines downscaled) */
-    frame->height = (1 + AUDIO_NBITS) * AUDIO_NBCHANNELS;
-
-    if (av_frame_get_buffer(frame, 16) < 0) {
-        av_frame_free(&frame);
-        return NULL;
-    }
-
-    memset(frame->data[0], 0, frame->height * frame->linesize[0]);
-
-    return frame;
-}
-
 static void free_context(struct sxplayer_ctx *s)
 {
     if (!s)
@@ -159,22 +129,7 @@ static void free_temp_context_data(struct sxplayer_ctx *s)
 {
     TRACE(s, "free temporary context data");
 
-    av_frame_free(&s->filtered_frame);
-    avfilter_graph_free(&s->filter_graph);
-    av_frame_free(&s->queued_frame);
     av_frame_free(&s->cached_frame);
-
-    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
-        av_frame_free(&s->audio_texture_frame);
-        av_frame_free(&s->tmp_audio_frame);
-        av_freep(&s->window_func_lut);
-        av_freep(&s->rdft_data[0]);
-        av_freep(&s->rdft_data[1]);
-        if (s->rdft) {
-            av_rdft_end(s->rdft);
-            s->rdft = NULL;
-        }
-    }
 
     if (s->fmt_ctx) {
         decoder_free(&s->dec_ctx);
@@ -233,9 +188,6 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
 
     av_opt_set_defaults(s);
 
-    pthread_mutex_init(&s->lock, NULL);
-    pthread_cond_init(&s->cond, NULL);
-
     /* At least first_ts and last_pushed_frame_ts must be kept between full
      * runs so we can not set this initialization in configure_context() */
     s->first_ts = AV_NOPTS_VALUE;
@@ -250,41 +202,6 @@ fail:
     return NULL;
 }
 
-/* If decoding thread is dying (EOF reached for example), wait for it to end
- * and confirm dead state */
-static int join_dec_thread_if_dying(struct sxplayer_ctx *s)
-{
-    int ret;
-
-    pthread_mutex_lock(&s->lock);
-    if (s->thread_state == THREAD_STATE_DYING) {
-        TRACE(s, "thread is dying: join");
-        pthread_mutex_unlock(&s->lock);
-
-        async_wait(s->actx);
-
-        pthread_mutex_lock(&s->lock);
-        s->thread_state = THREAD_STATE_NOTRUNNING;
-        free_temp_context_data(s);
-        ret = 2;
-    } else {
-        ret = s->thread_state == THREAD_STATE_NOTRUNNING;
-    }
-    pthread_mutex_unlock(&s->lock);
-    return ret;
-}
-
-static void shoot_running_decoding_thread(struct sxplayer_ctx *s)
-{
-    pthread_mutex_lock(&s->lock);
-    if (s->thread_state == THREAD_STATE_RUNNING) {
-        TRACE(s, "decoding thread is running, *BANG*");
-        s->thread_state = THREAD_STATE_DYING;
-        pthread_cond_signal(&s->cond);
-    }
-    pthread_mutex_unlock(&s->lock);
-}
-
 void sxplayer_free(struct sxplayer_ctx **ss)
 {
     struct sxplayer_ctx *s = *ss;
@@ -294,11 +211,7 @@ void sxplayer_free(struct sxplayer_ctx **ss)
     if (!s)
         return;
 
-    shoot_running_decoding_thread(s);
-    join_dec_thread_if_dying(s);
-
-    pthread_cond_destroy(&s->cond);
-    pthread_mutex_destroy(&s->lock);
+    async_stop(s->actx);
 
     free_temp_context_data(s);
     free_context(s);
@@ -460,20 +373,23 @@ static int open_ifile(struct sxplayer_ctx *s, const char *infile)
     if (ret < 0)
         return ret;
 
-    s->last_frame_format = AV_PIX_FMT_NONE;
-
     // XXX: check tb.den!=0?
     ret = async_register_decoder(s->reader, s->dec_ctx, s,
-                                 push_frame_cb, &s->adec,
-                                 s->stream->time_base);
+                                 &s->adec, s->stream->time_base,
+                                 s->sw_pix_fmt);
     if (ret < 0)
         return ret;
 
     // XXX
     s->dec_ctx->adec = s->adec;
 
+#if 1
     av_opt_set_int(s->adec, "max_frames_queue",  s->max_nb_frames,  0);
     av_opt_set_int(s->adec, "max_packets_queue", s->max_nb_packets, 0);
+#else
+    av_opt_set_int(s->adec, "max_frames_queue",  1,  0);
+    av_opt_set_int(s->adec, "max_packets_queue", 1, 0);
+#endif
 
     s->trim_duration64 = s->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(s->trim_duration);
 
@@ -513,6 +429,12 @@ static int open_ifile(struct sxplayer_ctx *s, const char *infile)
         TRACE(s, "update filtergraph to: %s", s->filters);
     }
 
+    ret = async_register_filterer(s->adec, s->filters,
+                                  s->trim_duration64 >= 0 ? s->skip64 + s->trim_duration64
+                                                          : AV_NOPTS_VALUE);
+    if (ret < 0)
+        return ret;
+
     av_dump_format(s->fmt_ctx, 0, infile, 0);
 
     s->context_configured = 1;
@@ -537,8 +459,6 @@ static int set_context_fields(struct sxplayer_ctx *s)
     s->media_type_string = av_get_media_type_string(s->media_type);
     av_assert0(s->media_type_string);
 
-    s->thread_state = THREAD_STATE_NOTRUNNING;
-
     if (s->auto_hwaccel && (s->filters || s->autorotate || s->export_mvs)) {
         fprintf(stderr, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
                 "are set but hwaccel is enabled, disabling auto_hwaccel so these "
@@ -553,42 +473,6 @@ static int set_context_fields(struct sxplayer_ctx *s)
 
     s->skip64 = TIME2INT64(s->skip);
     s->dist_time_seek_trigger64 = TIME2INT64(s->dist_time_seek_trigger);
-
-    s->filtered_frame = av_frame_alloc();
-    if (!s->filtered_frame)
-        return AVERROR(ENOMEM);
-
-    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
-        s->audio_texture_frame = get_audio_frame();
-        if (!s->audio_texture_frame)
-            return AVERROR(ENOMEM);
-        s->tmp_audio_frame = av_frame_alloc();
-        if (!s->tmp_audio_frame)
-            return AVERROR(ENOMEM);
-    }
-
-    if (s->media_type == AVMEDIA_TYPE_AUDIO) {
-        int i;
-
-        /* Pre-calc windowing function */
-        s->window_func_lut = av_malloc_array(AUDIO_NBSAMPLES, sizeof(*s->window_func_lut));
-        if (!s->window_func_lut)
-            return AVERROR(ENOMEM);
-        for (i = 0; i < AUDIO_NBSAMPLES; i++)
-            s->window_func_lut[i] = .5f * (1 - cos(2*M_PI*i / (AUDIO_NBSAMPLES-1)));
-
-        /* Real Discrete Fourier Transform context (Real to Complex) */
-        s->rdft = av_rdft_init(AUDIO_NBITS, DFT_R2C);
-        if (!s->rdft) {
-            fprintf(stderr, "Unable to init RDFT context with N=%d\n", AUDIO_NBITS);
-            return AVERROR(ENOMEM);
-        }
-
-        s->rdft_data[0] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*s->rdft_data[0]));
-        s->rdft_data[1] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*s->rdft_data[1]));
-        if (!s->rdft_data[0] || !s->rdft_data[1])
-            return AVERROR(ENOMEM);
-    }
 
     return 0;
 }
@@ -691,44 +575,9 @@ void sxplayer_release_frame(struct sxplayer_frame *frame)
 
 int sxplayer_set_drop_ref(struct sxplayer_ctx *s, int drop)
 {
-    if (!s)
-        return -1;
-
-#if 0
-    pthread_mutex_lock(&s->queue_lock);
-    TRACE(s, "toggle drop frame from %d to %d", s->request_drop, drop);
-    s->request_drop = drop;
-    pthread_mutex_unlock(&s->queue_lock);
-    return 0;
-#else
-    return -1;
-#endif
+    return -1; // TODO
 }
 
-static int spawn_decoding_thread_if_not_running(struct sxplayer_ctx *s)
-{
-    int ret = 0;
-
-    if (join_dec_thread_if_dying(s)) {
-        TRACE(s, "dec thread is dead, start it");
-
-        ret = configure_context(s);
-        if (ret < 0)
-            return ret;
-
-        s->thread_state = THREAD_STATE_RUNNING;
-
-        if (s->skip64)
-            async_reader_seek(s->reader, s->skip64);
-        async_start(s->actx);
-
-        s->request_drop = -1;
-    }
-
-    return ret;
-}
-
-/* Must be called by main thread only */
 static AVFrame *pop_frame(struct sxplayer_ctx *s)
 {
     AVFrame *frame = NULL;
@@ -738,27 +587,19 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
         frame = s->cached_frame;
         s->cached_frame = NULL;
     } else {
-        TRACE(s, "requesting a frame");
-        pthread_mutex_lock(&s->lock);
-        while (!s->queued_frame && s->thread_state == THREAD_STATE_RUNNING) {
-            TRACE(s, "no frame yet, wait");
-            pthread_cond_wait(&s->cond, &s->lock);
-        }
-        if (s->queued_frame) {
-            frame = s->queued_frame;
-            s->queued_frame = NULL;
-        }
-        pthread_cond_signal(&s->cond);
-        pthread_mutex_unlock(&s->lock);
+        async_start(s->actx, s->skip64);
+        TRACE(s, "querying async context");
+        frame = async_pop_frame(s->actx);
     }
 
     if (frame) {
         const int64_t ts = frame->pts;
-        TRACE(s, "poped queued frame with ts=%s", PTS2TIMESTR(ts));
+        TRACE(s, "poped frame with ts=%s", PTS2TIMESTR(ts));
         if (s->first_ts == AV_NOPTS_VALUE)
             s->first_ts = ts;
     } else {
         TRACE(s, "no frame available");
+        async_wait(s->actx);
     }
 
     return frame;
@@ -806,7 +647,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
     if (t64 < 0) {
         TRACE(s, "prefetch requested");
-        spawn_decoding_thread_if_not_running(s);
+        async_start(s->actx, s->skip64);
         return ret_frame(s, NULL, vt);
     }
 
@@ -824,7 +665,6 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     /* If no frame was ever pushed, we need to pop one */
     if (s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
         TRACE(s, "no frame ever pushed yet, pop a candidate");
-        spawn_decoding_thread_if_not_running(s);
         candidate = pop_frame(s);
         if (!candidate) {
             TRACE(s, "can not get a single frame for this media");
@@ -871,8 +711,6 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
                   PTS2TIMESTR(diff), PTS2TIMESTR(s->dist_time_seek_trigger64),
                   diff, s->dist_time_seek_trigger64);
 
-        spawn_decoding_thread_if_not_running(s);
-
         async_reader_seek(s->reader, get_media_time(s, t64));
         av_frame_free(&candidate);
 
@@ -880,17 +718,16 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         TRACE(s, "backward seek requested, wait for it to be effective");
         if (diff < 0) {
             do {
+                av_frame_free(&candidate);
                 AVFrame *next = pop_frame(s);
                 if (!next)
-                    break;
-                av_frame_free(&candidate);
+                    return ret_frame(s, NULL, vt);
                 candidate = next;
             } while (candidate->pts > vt);
         }
     }
 
-    if (!join_dec_thread_if_dying(s)) {
-
+    if (async_started(s->actx)) {
         /* Consume frames until we get a frame as accurate as possible */
         for (;;) {
             TRACE(s, "grab another frame");
@@ -918,14 +755,6 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
     if (ret < 0)
         return NULL;
 
-    /* If we are joining (and killing) the thread, it means it reached a EOF,
-     * and this is the only reason to return NULL in this function. */
-    if (join_dec_thread_if_dying(s) == 2) {
-        TRACE(s, "thread died, return EOF");
-        return ret_frame(s, NULL, 0);
-    }
-
-    spawn_decoding_thread_if_not_running(s);
     return ret_frame(s, pop_frame(s), 0);
 }
 
