@@ -52,15 +52,6 @@ static const struct decoder *decoder_def_hwaccel = &decoder_vt;
 static const struct decoder *decoder_def_hwaccel = NULL;
 #endif
 
-static const struct {
-    enum AVPixelFormat ff;
-    enum sxplayer_pixel_format sx;
-} pix_fmts_mapping[] = {
-    {AV_PIX_FMT_VIDEOTOOLBOX, SXPLAYER_PIXFMT_VT},
-    {AV_PIX_FMT_BGRA,         SXPLAYER_PIXFMT_BGRA},
-    {AV_PIX_FMT_RGBA,         SXPLAYER_PIXFMT_RGBA},
-};
-
 #define OFFSET(x) offsetof(struct sxplayer_ctx, x)
 static const AVOption sxplayer_options[] = {
     { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SXPLAYER_SELECT_VIDEO}, 0, NB_SXPLAYER_MEDIA_SELECTION-1 },
@@ -126,24 +117,6 @@ int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...)
 end:
     va_end(ap);
     return ret;
-}
-
-static enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt)
-{
-    int i;
-    for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
-        if (pix_fmts_mapping[i].sx == pix_fmt)
-            return pix_fmts_mapping[i].ff;
-    return AV_PIX_FMT_NONE;
-}
-
-static enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
-{
-    int i;
-    for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
-        if (pix_fmts_mapping[i].ff == pix_fmt)
-            return pix_fmts_mapping[i].sx;
-    return -1;
 }
 
 static AVFrame *get_audio_frame(void)

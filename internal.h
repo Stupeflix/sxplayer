@@ -27,6 +27,7 @@
 #include <libavfilter/avfilter.h>
 #include <libavformat/avformat.h>
 
+#include "sxplayer.h"
 #include "decoders.h"
 #include "async.h"
 
@@ -47,6 +48,9 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...);
  * compilation of the printf format, so we use this more complex form. */
 #define TRACE(log_ctx, ...) do { if (0) DO_LOG(log_ctx, AV_LOG_INFO, __VA_ARGS__); } while (0)
 #endif
+
+enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
+enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
 
 #define TIME2INT64(d) llrint((d) * av_q2d(av_inv_q(AV_TIME_BASE_Q)))
 #define PTS2TIMESTR(t64) av_ts2timestr(t64, &AV_TIME_BASE_Q)
