@@ -286,6 +286,34 @@ static int simple_pass_through(const char *filename)
     return ret;
 }
 
+static int test_next_frame(const char *filename)
+{
+    int i = 0, ret = 0, r;
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+
+    sxplayer_set_option(s, "auto_hwaccel", 0);
+
+    for (r = 0; r < 2; r++) {
+        printf("Test: %s run #%d\n", __FUNCTION__, r+1);
+        for (;;) {
+            struct sxplayer_frame *frame = sxplayer_get_next_frame(s);
+
+            if (!frame) {
+                printf("null frame\n");
+                break;
+            }
+            printf("frame #%d / data:%p ts:%f %dx%d lz:%d sfxpixfmt:%d\n",
+                   i++, frame->data, frame->ts, frame->width, frame->height,
+                   frame->linesize, frame->pix_fmt);
+
+            sxplayer_release_frame(frame);
+        }
+    }
+
+    sxplayer_free(&s);
+    return ret;
+}
+
 static int test_duration(const char *filename)
 {
     int ret;
@@ -322,6 +350,9 @@ int main(int ac, char **av)
     }
 
     if (test_duration(av[1 + (ac == 3)]) < 0)
+        return -1;
+
+    if (test_next_frame(av[1]) < 0)
         return -1;
 
     if (ac == 3 && !strcmp(av[1], "-notest"))
