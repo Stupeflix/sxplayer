@@ -22,36 +22,34 @@
 #define SXPLAYER_DECODERS_H
 
 #include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+
+struct decoding_ctx;
 
 struct decoder_ctx {
     const AVClass *class;
     AVCodecContext *avctx;
-    struct async_decoder *adec;
-
-    const struct decoder *dec_default;
-    const struct decoder *dec_fallback;
-    const AVCodecContext *avctx_orig;
-    const struct decoder *dec; // point to dec_default or dec_fallback
+    const struct decoder *dec;
     void *priv_data;
+    struct decoding_ctx *decoding_ctx;
 };
 
 struct decoder {
-    int (*init)(struct decoder_ctx *ctx, void *opaque);
+    const char *name;
+    int (*init)(struct decoder_ctx *ctx);
     void (*uninit)(struct decoder_ctx *ctx);
     int (*push_packet)(struct decoder_ctx *ctx, const AVPacket *pkt);
     void (*flush)(struct decoder_ctx *ctx);
     int priv_data_size;
-    const char *supported_codecs;
 };
 
-struct decoder_ctx *decoder_create(const struct decoder *dec_default,
-                                   const struct decoder *dec_fallback,
-                                   const AVCodecContext *avctx);
-
-int decoder_init(struct decoder_ctx *ctx, void *priv);
+struct decoder_ctx *decoder_alloc(void);
+int decoder_init(struct decoder_ctx *ctx,
+                 const struct decoder *dec,
+                 const AVStream *stream,
+                 struct decoding_ctx *decoding_ctx);
 int decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt);
 void decoder_flush(struct decoder_ctx *ctx);
-void decoder_uninit(struct decoder_ctx *ctx);
 void decoder_free(struct decoder_ctx **ctxp);
 
 #endif

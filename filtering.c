@@ -41,12 +41,11 @@ struct filtering_ctx {
 
     AVThreadMessageQueue *in_queue;
     AVThreadMessageQueue *out_queue;
-    AVCodecContext *avctx;              // TODO remove
-    int sw_pix_fmt;                     // TODO remove
 
-    /* options */
+    AVCodecContext *avctx;
     char *filters;
     int64_t max_pts;
+    int sw_pix_fmt;
 
     AVFilterGraph *filter_graph;
     AVFrame *filtered_frame;
@@ -60,18 +59,9 @@ struct filtering_ctx {
     FFTSample *rdft_data[AUDIO_NBCHANNELS]; // real discrete fourier transform data for each channel
 };
 
-#define OFFSET_DEC(x) offsetof(struct filtering_ctx, x)
-#define FLAGS AV_OPT_FLAG_FILTERING_PARAM
-static const AVOption filtering_options[] = {
-    { "filters", NULL,  OFFSET_DEC(filters), AV_OPT_TYPE_STRING, {.str=NULL},           CHAR_MIN,  CHAR_MAX,  FLAGS },
-    { "max_pts", NULL,  OFFSET_DEC(max_pts), AV_OPT_TYPE_INT64,  {.i64=AV_NOPTS_VALUE}, INT64_MIN, INT64_MAX, FLAGS },
-    { NULL }
-};
-
 static const AVClass filtering_class = {
     .class_name = "filtering",
     .item_name  = av_default_item_name,
-    .option     = filtering_options,
 };
 
 struct filtering_ctx *filtering_alloc(void)
@@ -80,12 +70,12 @@ struct filtering_ctx *filtering_alloc(void)
     if (!f)
         return NULL;
     f->class = &filtering_class;
+    f->avctx = avcodec_alloc_context3(NULL);
+    if (!f->avctx) {
+        av_freep(&f);
+        return NULL;
+    }
     return f;
-}
-
-void filtering_free(struct filtering_ctx **fp)
-{
-    av_freep(fp);
 }
 
 /**
@@ -338,7 +328,7 @@ static int filter_frame(struct filtering_ctx *f, AVFrame *outframe, AVFrame *inf
         ret = av_buffersink_get_frame(f->buffersink_ctx, filtered_frame);
         TRACE(f, "got frame from sink ret=[%s]", av_err2str(ret));
         if (ret < 0) {
-            if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
+            if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF && ret != AVERROR_EXIT)
                 fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
         }
     }
@@ -383,19 +373,23 @@ static AVFrame *get_audio_frame(void)
 int filtering_init(struct filtering_ctx *f,
                    AVThreadMessageQueue *in_queue,
                    AVThreadMessageQueue *out_queue,
+                   const AVCodecContext *avctx,
+                   const char *filters,
                    int sw_pix_fmt,
-                   const AVCodecContext *avctx)
+                   int64_t max_pts)
 {
     f->in_queue  = in_queue;
     f->out_queue = out_queue;
     f->sw_pix_fmt = sw_pix_fmt;
+    f->max_pts = max_pts;
 
-    f->avctx = avcodec_alloc_context3(NULL);
-    if (!f->avctx)
-        return AVERROR(ENOMEM);
+    if (filters) {
+        f->filters = av_strdup(filters);
+        if (!f->filters)
+            return AVERROR(ENOMEM);
+    }
+
     avcodec_copy_context(f->avctx, avctx);
-
-    f->last_frame_format = AV_PIX_FMT_NONE;
 
     if (avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
         f->audio_texture_frame = get_audio_frame();
@@ -456,6 +450,11 @@ void filtering_run(struct filtering_ctx *f)
 {
     int ret;
 
+    TRACE(f, "filtering packets from %p into %p", f->in_queue, f->out_queue);
+
+    // we want to force the reconstruction of the filtergraph
+    f->last_frame_format = AV_PIX_FMT_NONE;
+
     for (;;) {
         AVFrame *frame;
 
@@ -480,6 +479,8 @@ void filtering_run(struct filtering_ctx *f)
             break;
         }
 
+        TRACE(f, "filtering frame with ts=%s", PTS2TIMESTR(frame->pts));
+
         // TODO: replace with a trim filter in libavfilter (check if hw accelerated
         // filters work)
         if (f->max_pts != AV_NOPTS_VALUE && frame->pts >= f->max_pts) {
@@ -488,7 +489,6 @@ void filtering_run(struct filtering_ctx *f)
             break;
         }
 
-        TRACE(f, "filtering frame with ts=%s", PTS2TIMESTR(frame->pts));
         ret = filter_frame(f, f->filtered_frame, frame);
         av_frame_free(&frame);
         if (ret < 0) {
@@ -510,8 +510,13 @@ void filtering_run(struct filtering_ctx *f)
     av_thread_message_queue_set_err_recv(f->out_queue, ret);
 }
 
-void filtering_uninit(struct filtering_ctx *f)
+void filtering_free(struct filtering_ctx **fp)
 {
+    struct filtering_ctx *f = *fp;
+
+    if (!f)
+        return;
+
     if (f->avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
         av_frame_free(&f->audio_texture_frame);
         av_frame_free(&f->tmp_audio_frame);
@@ -526,4 +531,6 @@ void filtering_uninit(struct filtering_ctx *f)
     av_frame_free(&f->filtered_frame);
     avfilter_graph_free(&f->filter_graph);
     avcodec_free_context(&f->avctx);
+    av_freep(&f->filters);
+    av_freep(fp);
 }

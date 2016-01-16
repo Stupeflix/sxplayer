@@ -21,32 +21,18 @@
 #include <stdint.h>
 #include <float.h> /* for DBL_MAX */
 
+#include <libavcodec/avcodec.h>
+#include <libavfilter/avfilter.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avassert.h>
 #include <libavutil/avstring.h>
-#include <libavutil/display.h>
-#include <libavutil/eval.h>
-#include <libavutil/opt.h>
-#include <libavutil/timestamp.h>
 #include <libavutil/motion_vector.h>
+#include <libavutil/opt.h>
 //#include <libswresample/swresample.h>
 //#include <libswscale/swscale.h>
 
 #include "sxplayer.h"
-#include "filtering.h"
-#include "async.h"
 #include "internal.h"
-#include "filtering.h"
-
-extern const struct decoder decoder_ffmpeg;
-static const struct decoder *decoder_def_software = &decoder_ffmpeg;
-
-#if __APPLE__
-extern const struct decoder decoder_vt;
-static const struct decoder *decoder_def_hwaccel = &decoder_vt;
-#else
-static const struct decoder *decoder_def_hwaccel = NULL;
-#endif
 
 #define OFFSET(x) offsetof(struct sxplayer_ctx, x)
 static const AVOption sxplayer_options[] = {
@@ -55,7 +41,8 @@ static const AVOption sxplayer_options[] = {
     { "trim_duration",          NULL, OFFSET(trim_duration),          AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
     { "dist_time_seek_trigger", NULL, OFFSET(dist_time_seek_trigger), AV_OPT_TYPE_DOUBLE,    {.dbl=1.5},    -1, DBL_MAX },
     { "max_nb_packets",         NULL, OFFSET(max_nb_packets),         AV_OPT_TYPE_INT,       {.i64=5},       1, 100 },
-    { "max_nb_frames",          NULL, OFFSET(max_nb_frames),          AV_OPT_TYPE_INT,       {.i64=3},       1, 100 },
+    { "max_nb_frames",          NULL, OFFSET(max_nb_frames),          AV_OPT_TYPE_INT,       {.i64=2},       1, 100 },
+    { "max_nb_sink",            NULL, OFFSET(max_nb_sink),            AV_OPT_TYPE_INT,       {.i64=2},       1, 100 },
     { "filters",                NULL, OFFSET(filters),                AV_OPT_TYPE_STRING,    {.str=NULL},    0,       0 },
     { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SXPLAYER_PIXFMT_BGRA},  0, 1 },
     { "autorotate",             NULL, OFFSET(autorotate),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
@@ -131,10 +118,6 @@ static void free_temp_context_data(struct sxplayer_ctx *s)
 
     av_frame_free(&s->cached_frame);
 
-    if (s->fmt_ctx) {
-        decoder_free(&s->dec_ctx);
-        avformat_close_input(&s->fmt_ctx);
-    }
     async_free(&s->actx);
 
     s->context_configured = 0;
@@ -188,11 +171,10 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
 
     av_opt_set_defaults(s);
 
-    /* At least first_ts and last_pushed_frame_ts must be kept between full
-     * runs so we can not set this initialization in configure_context() */
-    s->first_ts = AV_NOPTS_VALUE;
+    s->last_ts              = AV_NOPTS_VALUE;
+    s->last_frame_poped_ts  = AV_NOPTS_VALUE;
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
-    s->trim_duration64 = AV_NOPTS_VALUE;
+    s->trim_duration64      = AV_NOPTS_VALUE;
 
     av_assert0(!s->context_configured);
     return s;
@@ -218,71 +200,6 @@ void sxplayer_free(struct sxplayer_ctx **ss)
     *ss = NULL;
 }
 
-static double get_rotation(AVStream *st)
-{
-    AVDictionaryEntry *rotate_tag = av_dict_get(st->metadata, "rotate", NULL, 0);
-    uint8_t* displaymatrix = av_stream_get_side_data(st, AV_PKT_DATA_DISPLAYMATRIX, NULL);
-    double theta = 0;
-
-    if (rotate_tag && *rotate_tag->value && strcmp(rotate_tag->value, "0")) {
-        char *tail;
-        theta = av_strtod(rotate_tag->value, &tail);
-        if (*tail)
-            theta = 0;
-    }
-    if (displaymatrix && !theta)
-        theta = -av_display_rotation_get((int32_t *)displaymatrix);
-    theta -= 360*floor(theta/360 + 0.9/360);
-    return theta;
-}
-
-static char *update_filters_str(char *filters, const char *append)
-{
-    char *str;
-
-    if (filters) {
-        str = av_asprintf("%s,%s", filters, append);
-        av_free(filters);
-    } else {
-        str = av_strdup(append);
-    }
-    return str;
-}
-
-static int pull_packet_cb(void *priv, AVPacket *pkt)
-{
-    int ret;
-    struct sxplayer_ctx *s = priv;
-    AVFormatContext *fmt_ctx = s->fmt_ctx;
-    const int target_stream_idx = s->stream->index;
-
-    for (;;) {
-        ret = av_read_frame(fmt_ctx, pkt);
-        if (ret < 0)
-            break;
-
-        if (pkt->stream_index != target_stream_idx) {
-            TRACE(s, "pkt->idx=%d vs %d",
-                  pkt->stream_index, target_stream_idx);
-            av_packet_unref(pkt);
-            continue;
-        }
-
-        if (s->pkt_skip_mod) {
-            s->pkt_count++;
-            if (s->pkt_count % s->pkt_skip_mod && !(pkt->flags & AV_PKT_FLAG_KEY)) {
-                av_packet_unref(pkt);
-                continue;
-            }
-        }
-
-        break;
-    }
-
-    TRACE(s, "packet ret %s", av_err2str(ret));
-    return ret;
-}
-
 /**
  * Map the timeline time to the media time
  */
@@ -293,171 +210,15 @@ static int64_t get_media_time(const struct sxplayer_ctx *s, int64_t t)
     return s->skip64 + FFMIN(t, s->trim_duration64);
 }
 
-/**
- * Request a seek to the demuxer
- */
-static int seek_cb(void *arg, int64_t t)
-{
-    struct sxplayer_ctx *s = arg;
-
-    INFO(s, "Seek in media at ts=%s", PTS2TIMESTR(t));
-    return avformat_seek_file(s->fmt_ctx, -1, INT64_MIN, t, t, 0);
-}
-
-/**
- * Open the input file.
- */
-static int open_ifile(struct sxplayer_ctx *s, const char *infile)
-{
-    int ret;
-    const struct decoder *dec_def, *dec_def_fallback;
-
-    if (s->auto_hwaccel && decoder_def_hwaccel) {
-        dec_def          = decoder_def_hwaccel;
-        dec_def_fallback = decoder_def_software;
-    } else {
-        dec_def          = decoder_def_software;
-        dec_def_fallback = NULL;
-    }
-
-    av_assert0(!s->actx);
-    s->actx = async_alloc_context();
-    if (!s->actx)
-        return AVERROR(ENOMEM);
-
-    TRACE(s, "opening %s", infile);
-    ret = avformat_open_input(&s->fmt_ctx, infile, NULL, NULL);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to open input file '%s'\n", infile);
-        return ret;
-    }
-
-    /* Evil hack: we make sure avformat_find_stream_info() doesn't decode any
-     * video, because it will use the software decoder, which will be slow and
-     * use an indecent amount of memory (15-20MB). It slows down startup
-     * significantly on embedded platforms and risks a kill from the OOM
-     * because of the large and fast amount of allocated memory.
-     *
-     * The max_analyze_duration is accessible through avoptions, but a negative
-     * value isn't actually in the allowed range, so we directly mess with the
-     * field. We can't unfortunately set it to 0, because at the moment of
-     * writing this code 0 (which is the default value) means "auto", which
-     * will be then set to something like 5 seconds for video. */
-    s->fmt_ctx->max_analyze_duration = -1;
-
-    TRACE(s, "find stream info");
-    ret = avformat_find_stream_info(s->fmt_ctx, NULL);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to find input stream information\n");
-        return ret;
-    }
-
-    TRACE(s, "find best stream");
-    ret = av_find_best_stream(s->fmt_ctx, s->media_type, -1, -1, &s->dec, 0);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to find a %s stream in the input file\n", s->media_type_string);
-        return ret;
-    }
-    s->stream_idx = ret;
-    s->stream = s->fmt_ctx->streams[s->stream_idx];
-
-    TRACE(s, "create decoder");
-    s->dec_ctx = decoder_create(dec_def, dec_def_fallback, s->stream->codec);
-    if (!s->dec_ctx)
-        return AVERROR(ENOMEM);
-
-    TRACE(s, "register reader");
-    ret = async_register_reader(s->actx, s,
-                                pull_packet_cb, seek_cb,
-                                &s->reader);
-    if (ret < 0)
-        return ret;
-
-    // XXX: check tb.den!=0?
-    ret = async_register_decoder(s->reader, s->dec_ctx, s,
-                                 &s->adec, s->stream->time_base,
-                                 s->sw_pix_fmt);
-    if (ret < 0)
-        return ret;
-
-    // XXX
-    s->dec_ctx->adec = s->adec;
-
-#if 1
-    av_opt_set_int(s->adec, "max_frames_queue",  s->max_nb_frames,  0);
-    av_opt_set_int(s->adec, "max_packets_queue", s->max_nb_packets, 0);
-#else
-    av_opt_set_int(s->adec, "max_frames_queue",  1,  0);
-    av_opt_set_int(s->adec, "max_packets_queue", 1, 0);
-#endif
-
-    s->trim_duration64 = s->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(s->trim_duration);
-
-    if (!strstr(s->fmt_ctx->iformat->name, "image2") && !strstr(s->fmt_ctx->iformat->name, "_pipe")) {
-        int64_t probe_duration64 = s->fmt_ctx->duration;
-        AVRational scaleq = AV_TIME_BASE_Q;
-        if (probe_duration64 == AV_NOPTS_VALUE && s->stream->time_base.den) {
-            probe_duration64 = s->stream->duration;
-            scaleq = s->stream->time_base;
-        }
-
-        if (probe_duration64 != AV_NOPTS_VALUE) {
-            const double probe_duration = probe_duration64 * av_q2d(scaleq);
-
-            if (s->trim_duration < 0 || probe_duration < s->trim_duration) {
-                TRACE(s, "fix trim_duration from %f to %f", s->trim_duration, probe_duration);
-                s->trim_duration64 = av_rescale_q_rnd(probe_duration64, scaleq, AV_TIME_BASE_Q, 0);
-                s->trim_duration = probe_duration;
-            }
-        }
-    }
-
-    TRACE(s, "rescaled values: skip=%s dist:%s dur:%s",
-          PTS2TIMESTR(s->skip64),
-          PTS2TIMESTR(s->dist_time_seek_trigger64),
-          PTS2TIMESTR(s->trim_duration64));
-
-    if (s->autorotate) {
-        const double theta = get_rotation(s->stream);
-
-        if (fabs(theta - 90) < 1.0)
-            s->filters = update_filters_str(s->filters, "transpose=clock");
-        else if (fabs(theta - 180) < 1.0)
-            s->filters = update_filters_str(s->filters, "vflip,hflip");
-        else if (fabs(theta - 270) < 1.0)
-            s->filters = update_filters_str(s->filters, "transpose=cclock");
-        TRACE(s, "update filtergraph to: %s", s->filters);
-    }
-
-    ret = async_register_filterer(s->adec, s->filters,
-                                  s->trim_duration64 >= 0 ? s->skip64 + s->trim_duration64
-                                                          : AV_NOPTS_VALUE);
-    if (ret < 0)
-        return ret;
-
-    av_dump_format(s->fmt_ctx, 0, infile, 0);
-
-    s->context_configured = 1;
-
-    return 0;
-}
-
 static int set_context_fields(struct sxplayer_ctx *s)
 {
+    int ret;
+    int64_t probe_duration;
+
     if (pix_fmts_sx2ff(s->sw_pix_fmt) == AV_PIX_FMT_NONE) {
         fprintf(stderr, "Invalid software decoding pixel format specified\n");
         return AVERROR(EINVAL);
     }
-
-    switch (s->avselect) {
-    case SXPLAYER_SELECT_VIDEO: s->media_type = AVMEDIA_TYPE_VIDEO; break;
-    case SXPLAYER_SELECT_AUDIO: s->media_type = AVMEDIA_TYPE_AUDIO; break;
-    default:
-        av_assert0(0);
-    }
-
-    s->media_type_string = av_get_media_type_string(s->media_type);
-    av_assert0(s->media_type_string);
 
     if (s->auto_hwaccel && (s->filters || s->autorotate || s->export_mvs)) {
         fprintf(stderr, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
@@ -466,13 +227,48 @@ static int set_context_fields(struct sxplayer_ctx *s)
         s->auto_hwaccel = 0;
     }
 
-    TRACE(s, "avselect:%s skip:%f trim_duration:%f "
-          "dist_time_seek_trigger:%f max_nb_frames:%d filters:'%s'",
-          s->media_type_string, s->skip, s->trim_duration,
-          s->dist_time_seek_trigger, s->max_nb_frames, s->filters ? s->filters : "");
+    TRACE(s, "avselect:%d skip:%f trim_duration:%f "
+          "dist_time_seek_trigger:%f queues:[%d %d %d] filters:'%s'",
+          s->avselect, s->skip, s->trim_duration,
+          s->dist_time_seek_trigger,
+          s->max_nb_packets, s->max_nb_frames, s->max_nb_sink,
+          s->filters ? s->filters : "");
 
     s->skip64 = TIME2INT64(s->skip);
     s->dist_time_seek_trigger64 = TIME2INT64(s->dist_time_seek_trigger);
+    s->trim_duration64 = s->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(s->trim_duration);
+
+    TRACE(s, "rescaled values: skip=%s dist:%s dur:%s",
+          PTS2TIMESTR(s->skip64),
+          PTS2TIMESTR(s->dist_time_seek_trigger64),
+          PTS2TIMESTR(s->trim_duration64));
+
+    av_assert0(!s->actx);
+    s->actx = async_alloc_context();
+    if (!s->actx)
+        return AVERROR(ENOMEM);
+
+    ret = async_init(s->actx, s);
+    if (ret < 0)
+        return ret;
+
+    if (s->skip64) {
+        TRACE(s, "request initial skip");
+        ret = async_seek(s->actx, s->skip64);
+        if (ret < 0)
+            return ret;
+    }
+
+    probe_duration = async_probe_duration(s->actx);
+    if (probe_duration != AV_NOPTS_VALUE && (s->trim_duration64 == AV_NOPTS_VALUE ||
+                                             probe_duration < s->trim_duration64)) {
+        const double new_duration = probe_duration * av_q2d(AV_TIME_BASE_Q);
+        TRACE(s, "fix trim_duration from %f to %f", s->trim_duration, new_duration);
+        s->trim_duration64 = probe_duration;
+        s->trim_duration = new_duration;
+    }
+
+    s->context_configured = 1;
 
     return 0;
 }
@@ -493,14 +289,6 @@ static int configure_context(struct sxplayer_ctx *s)
     ret = set_context_fields(s);
     if (ret < 0) {
         fprintf(stderr, "Unable to set context fields: %s\n", av_err2str(ret));
-        free_temp_context_data(s);
-        return ret;
-    }
-
-    TRACE(s, "open input file");
-    ret = open_ifile(s, s->filename);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to open input file: %s\n", av_err2str(ret));
         free_temp_context_data(s);
         return ret;
     }
@@ -587,7 +375,7 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
         frame = s->cached_frame;
         s->cached_frame = NULL;
     } else {
-        async_start(s->actx, s->skip64);
+        async_start(s->actx);
         TRACE(s, "querying async context");
         frame = async_pop_frame(s->actx);
     }
@@ -595,10 +383,18 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
     if (frame) {
         const int64_t ts = frame->pts;
         TRACE(s, "poped frame with ts=%s", PTS2TIMESTR(ts));
-        if (s->first_ts == AV_NOPTS_VALUE)
-            s->first_ts = ts;
+        s->last_frame_poped_ts = ts;
     } else {
         TRACE(s, "no frame available");
+        /* We save the last timestamp in order to avoid restarting the decoding
+         * thread again */
+        if (s->last_ts == AV_NOPTS_VALUE ||
+            (s->last_frame_poped_ts != AV_NOPTS_VALUE && s->last_frame_poped_ts > s->last_ts)) {
+            TRACE(s, "last timestamp is apparently %s", PTS2TIMESTR(s->last_ts));
+            s->last_ts = s->last_frame_poped_ts;
+        }
+        // async_pop_frame() returned NULL so we know the threads are going to
+        // stop by themselves, so we just have to wait
         async_wait(s->actx);
     }
 
@@ -647,7 +443,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
     if (t64 < 0) {
         TRACE(s, "prefetch requested");
-        async_start(s->actx, s->skip64);
+        async_start(s->actx);
         return ret_frame(s, NULL, vt);
     }
 
@@ -660,10 +456,25 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         return ret_frame(s, NULL, vt);
     }
 
+    if (s->last_ts != AV_NOPTS_VALUE && vt >= s->last_ts &&
+        s->last_pushed_frame_ts == s->last_ts) {
+        TRACE(s, "requested the last frame again");
+        return ret_frame(s, NULL, vt);
+    }
+
     AVFrame *candidate = NULL;
 
     /* If no frame was ever pushed, we need to pop one */
     if (s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
+
+        /* If prefetch wasn't done (async not started), and we requested a time
+         * that is beyond the initial skip, we request an appropriate seek
+         * before we start the decoding process in order to save one seek and
+         * some decoding (a seek for the initial skip, then another one soon
+         * after to reach the requested time). */
+        if (!async_started(s->actx) && vt > s->skip64)
+            async_seek(s->actx, get_media_time(s, t64));
+
         TRACE(s, "no frame ever pushed yet, pop a candidate");
         candidate = pop_frame(s);
         if (!candidate) {
@@ -680,26 +491,8 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
               PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(diff), diff);
     }
 
-    //XXX: why not?? erg audio, first frame nopts
-    //av_assert0(s->first_ts != AV_NOPTS_VALUE);
-
     if (!diff)
         return ret_frame(s, candidate, vt);
-
-    /* The first timestamp as been obtained (either by poping a frame earlier
-     * in this function, or because a frame was already pushed), so we can
-     * check if the timestamp requested is before the first visible frame */
-    if (vt < s->first_ts) {
-        TRACE(s, "requested a time before the first video timestamp");
-        // The frame poped needs to be cached before the requested timestamps
-        // reaches this candidate
-
-        //av_assert0(!s->cached_frame);
-        av_frame_free(&s->cached_frame); // XXX: why? :(
-
-        s->cached_frame = candidate;
-        return ret_frame(s, NULL, vt);
-    }
 
     /* Check if a seek is needed */
     if (diff < 0 || diff > s->dist_time_seek_trigger64) {
@@ -711,7 +504,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
                   PTS2TIMESTR(diff), PTS2TIMESTR(s->dist_time_seek_trigger64),
                   diff, s->dist_time_seek_trigger64);
 
-        async_reader_seek(s->reader, get_media_time(s, t64));
+        async_seek(s->actx, get_media_time(s, t64));
         av_frame_free(&candidate);
 
         /* If the seek is backward, wait for it to be effective */

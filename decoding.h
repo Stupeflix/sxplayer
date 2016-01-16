@@ -18,32 +18,29 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef ASYNC_H
-#define ASYNC_H
+#ifndef DECODING_H
+#define DECODING_H
 
-#include <stdint.h>
-#include <libavutil/rational.h>
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/frame.h>
+#include <libavutil/threadmessage.h>
 
-#include "internal.h"
+struct decoding_ctx *decoding_alloc(void);
 
-struct async_context *async_alloc_context(void);
+int decoding_init(struct decoding_ctx *ctx,
+                  AVThreadMessageQueue *pkt_queue,
+                  AVThreadMessageQueue *frames_queue,
+                  const AVStream *stream,
+                  int auto_hwaccel,
+                  int export_mvs);
 
-int async_init(struct async_context *actx, const struct sxplayer_ctx *s);
+const AVCodecContext *decoding_get_avctx(struct decoding_ctx *ctx);
 
-int async_start(struct async_context *actx);
+int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame);
 
-int64_t async_probe_duration(const struct async_context *actx);
+void decoding_run(struct decoding_ctx *ctx);
 
-int async_seek(struct async_context *actx, int64_t ts);
+void decoding_free(struct decoding_ctx **ctxp);
 
-AVFrame *async_pop_frame(struct async_context *actx);
-
-int async_wait(struct async_context *actx);
-
-int async_stop(struct async_context *actx);
-
-int async_started(const struct async_context *actx);
-
-void async_free(struct async_context **actxp);
-
-#endif /* ASYNC_H */
+#endif /* DECODING_H */

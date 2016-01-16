@@ -23,17 +23,20 @@
 
 #include <libavutil/threadmessage.h>
 
+#include "decoding.h"
+
 struct filtering_ctx *filtering_alloc(void);
 
-int filtering_init(struct filtering_ctx *f,
+int filtering_init(struct filtering_ctx *ctx,
                    AVThreadMessageQueue *in_queue,
                    AVThreadMessageQueue *out_queue,
+                   const AVCodecContext *avctx,
+                   const char *filters,
                    int sw_pix_fmt,
-                   const AVCodecContext *actx);
+                   int64_t max_pts);
 
-void filtering_run(struct filtering_ctx *f);
+void filtering_run(struct filtering_ctx *ctx);
 
-void filtering_uninit(struct filtering_ctx *f);
-void filtering_free(struct filtering_ctx **fp);
+void filtering_free(struct filtering_ctx **ctxp);
 
 #endif /* FILTERING_H */

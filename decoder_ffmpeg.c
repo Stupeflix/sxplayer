@@ -22,22 +22,21 @@
 #include <libavutil/opt.h>
 #include <libavutil/avassert.h>
 
+#include "decoding.h"
+#include "decoders.h"
 #include "internal.h"
 
-static int ffdec_init(struct decoder_ctx *ctx, void *opaque)
+static int ffdec_init(struct decoder_ctx *ctx)
 {
     int ret;
-    struct sxplayer_ctx *s = opaque;
-    AVCodec *dec = s->dec;
+    AVCodecContext *avctx = ctx->avctx;
+    AVCodec *dec = avcodec_find_decoder(avctx->codec_id);
 
     TRACE(ctx, "initialize context");
 
-    av_opt_set_int(ctx->avctx, "refcounted_frames", 1, 0);
+    av_opt_set_int(avctx, "refcounted_frames", 1, 0);
 
-    if (s->export_mvs)
-        av_opt_set(ctx->avctx, "flags2", "+export_mvs", 0);
-
-    if (ctx->avctx->codec_id == AV_CODEC_ID_H264) {
+    if (avctx->codec_id == AV_CODEC_ID_H264) {
         AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
         if (codec)
             dec = codec;
@@ -45,11 +44,11 @@ static int ffdec_init(struct decoder_ctx *ctx, void *opaque)
 
     TRACE(ctx, "codec open");
 
-    ret = avcodec_open2(ctx->avctx, dec, NULL);
-    if (ret < 0) {
-        fprintf(stderr, "Unable to open input %s decoder\n", s->media_type_string);
+    ret = avcodec_open2(avctx, dec, NULL);
+    if (ret < 0)
         return ret;
-    }
+
+    ctx->avctx = avctx;
 
     return ret;
 }
@@ -89,7 +88,7 @@ static int decode_packet(struct decoder_ctx *ctx, const AVPacket *pkt, int *got_
     decoded = FFMIN(ret, pkt->size);
 
     if (*got_frame) {
-        ret = async_queue_frame(ctx->adec, dec_frame);
+        ret = decoding_queue_frame(ctx->decoding_ctx, dec_frame);
         if (ret < 0) {
             TRACE(ctx, "could not queue frame: %s", av_err2str(ret));
             av_frame_free(&dec_frame);
@@ -118,7 +117,7 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
         avpkt.size -= ret;
     } while (avpkt.size > 0 || (flush && got_frame));
     if (ret == 0 && flush && !got_frame)
-        return async_queue_frame(ctx->adec, NULL);
+        return decoding_queue_frame(ctx->decoding_ctx, NULL);
     return ret;
 }
 
@@ -129,6 +128,7 @@ static void ffdec_flush(struct decoder_ctx *ctx)
 }
 
 const struct decoder decoder_ffmpeg = {
+    .name        = "ffmpeg",
     .init        = ffdec_init,
     .push_packet = ffdec_push_packet,
     .flush       = ffdec_flush,

@@ -22,15 +22,15 @@
 #define SXPLAYER_INTERNAL_H
 
 #include <stdio.h>
-#include <libavcodec/avcodec.h>
-#include <libavcodec/avfft.h>
-#include <libavfilter/avfilter.h>
-#include <libavformat/avformat.h>
+#include <libavutil/log.h>
+#include <libavutil/frame.h>
+#include <libavutil/timestamp.h>
 
 #include "sxplayer.h"
-#include "decoders.h"
 #include "async.h"
 
+// TODO: some must be rutime configurable
+// TODO: add logging user callback
 #define ENABLE_INFO 0
 #define ENABLE_DBG 0
 #define ENABLE_TIMINGS 0
@@ -49,6 +49,16 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...);
 #define TRACE(log_ctx, ...) do { if (0) DO_LOG(log_ctx, AV_LOG_INFO, __VA_ARGS__); } while (0)
 #endif
 
+enum msg_type {
+    MSG_PACKET,
+    MSG_SEEK,
+};
+
+struct message {
+    void *data;
+    enum msg_type type;
+};
+
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
 void set_thread_name(const char *name);
@@ -61,15 +71,14 @@ struct sxplayer_ctx {
     char *filename;                         // input filename
     char *logname;
 
-    int context_configured;                 // set if options are pre-processed, file is opened, ...
-
     /* configurable options */
     int avselect;                           // select audio or video
     double skip;                            // see public header
     double trim_duration;                   // see public header
-    double dist_time_seek_trigger;          // distance time triggering a seek
+    double dist_time_seek_trigger;          // see public header
     int max_nb_frames;                      // maximum number of frames in the queue
     int max_nb_packets;                     // maximum number of packets in the queue
+    int max_nb_sink;                        // maximum number of frames in the filtered queue
     char *filters;                          // user filter graph string
     int sw_pix_fmt;                         // sx pixel format to use for software decoding
     int autorotate;                         // switch for automatically rotate in software decoding
@@ -77,31 +86,16 @@ struct sxplayer_ctx {
     int export_mvs;                         // export motion vectors into frame->mvs
     int pkt_skip_mod;                       // skip packet if module pkt_skip_mod (and not a key pkt)
 
+    struct async_context *actx;
     int64_t skip64;
     int64_t trim_duration64;
     int64_t dist_time_seek_trigger64;
+    int context_configured;
 
-    /* misc general fields */
-    enum AVMediaType media_type;            // AVMEDIA_TYPE_{VIDEO,AUDIO} according to avselect
-    const char *media_type_string;          // "audio" or "video" according to avselect
-
-    /* ... */
-    struct async_context *actx;
-    struct async_reader *reader;
-    struct async_decoder *adec;
-    struct async_filterer *afilterer;
     AVFrame *cached_frame;
-    int64_t pkt_count;
-
     int64_t last_pushed_frame_ts;           // ts value of the latest pushed frame (it acts as a UID)
-    int64_t first_ts;
-
-    /* fields specific to decoding thread */
-    AVFormatContext *fmt_ctx;               // demuxing context
-    struct decoder_ctx *dec_ctx;            // decoder context
-    AVCodec *dec;
-    AVStream *stream;                       // selected stream
-    int stream_idx;                         // selected stream index
+    int64_t last_frame_poped_ts;
+    int64_t last_ts;
 };
 
 #endif

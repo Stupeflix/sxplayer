@@ -18,32 +18,28 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef ASYNC_H
-#define ASYNC_H
+#ifndef DEMUXING_H
+#define DEMUXING_H
 
 #include <stdint.h>
-#include <libavutil/rational.h>
+#include <libavformat/avformat.h>
+#include <libavutil/threadmessage.h>
 
-#include "internal.h"
+struct demuxing_ctx *demuxing_alloc(void);
 
-struct async_context *async_alloc_context(void);
+int demuxing_init(struct demuxing_ctx *ctx,
+                  AVThreadMessageQueue *pkt_queue,
+                  const char *filename, int avselect,
+                  int pkt_skip_mod);
 
-int async_init(struct async_context *actx, const struct sxplayer_ctx *s);
+int demuxing_seek(struct demuxing_ctx *ctx, int64_t ts);
 
-int async_start(struct async_context *actx);
+int64_t demuxing_probe_duration(const struct demuxing_ctx *ctx);
+double demuxing_probe_rotation(const struct demuxing_ctx *ctx);
+const AVStream *demuxing_get_stream(const struct demuxing_ctx *ctx);
 
-int64_t async_probe_duration(const struct async_context *actx);
+void demuxing_run(struct demuxing_ctx *ctx);
 
-int async_seek(struct async_context *actx, int64_t ts);
+void demuxing_free(struct demuxing_ctx **ctxp);
 
-AVFrame *async_pop_frame(struct async_context *actx);
-
-int async_wait(struct async_context *actx);
-
-int async_stop(struct async_context *actx);
-
-int async_started(const struct async_context *actx);
-
-void async_free(struct async_context **actxp);
-
-#endif /* ASYNC_H */
+#endif /* DEMUXING_H */

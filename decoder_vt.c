@@ -23,12 +23,8 @@
 #include <VideoToolbox/VideoToolbox.h>
 #undef Picture
 
-#include <libavcodec/avcodec.h>
-#include <libavutil/opt.h>
-#include <libavutil/avassert.h>
-
+#include "decoding.h"
 #include "internal.h"
-#include "async.h"
 
 #define REQUESTED_PIX_FMT kCVPixelFormatType_32BGRA
 
@@ -250,10 +246,9 @@ static void decode_callback(void *opaque,
     pthread_mutex_unlock(&vt->lock);
 }
 
-static int vtdec_init(struct decoder_ctx *dec_ctx, void *opaque)
+static int vtdec_init(struct decoder_ctx *dec_ctx)
 {
-    struct sxplayer_ctx *s = opaque;
-    const AVCodecContext *avctx = s->stream->codec;
+    const AVCodecContext *avctx = dec_ctx->avctx;
     struct vtdec_context *vt = dec_ctx->priv_data;
     int cm_codec_type;
     OSStatus status;
@@ -263,7 +258,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, void *opaque)
 
     TRACE(dec_ctx, "init");
 
-    dec_ctx->avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
+    avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
 
     pthread_mutex_init(&vt->lock, NULL);
     pthread_cond_init(&vt->cond, NULL);
@@ -459,6 +454,7 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
 }
 
 const struct decoder decoder_vt = {
+    .name             = "videotoolbox",
     .init             = vtdec_init,
     .push_packet      = vtdec_push_packet,
     .flush            = vtdec_flush,
