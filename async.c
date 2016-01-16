@@ -155,7 +155,7 @@ int async_reader_seek(struct async_reader *r, int64_t ts)
 static void reset_reader(struct async_reader *r)
 {
     r->started = 0;
-    r->request_seek = -1.0;
+    r->request_seek = AV_NOPTS_VALUE;
 }
 
 int async_register_reader(struct async_context *actx,
@@ -480,12 +480,12 @@ static void *reader_thread(void *arg)
         if (ret < 0)
             break;
         seek_to = r->request_seek;
-        r->request_seek = -1.0;
+        r->request_seek = AV_NOPTS_VALUE;
         ret = AVERROR(pthread_mutex_unlock(&r->lock));
         if (ret < 0)
             break;
 
-        if (seek_to >= 0) {
+        if (seek_to != AV_NOPTS_VALUE) {
 
             /* notify the decoder about the seek by using its pkt queue */
             TRACE(r, "forward seek message (to %s) to decoder",
