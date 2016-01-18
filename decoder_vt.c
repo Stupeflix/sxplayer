@@ -266,11 +266,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     pthread_cond_init(&vt->cond, NULL);
 
     switch (avctx->codec_id) {
-    case AV_CODEC_ID_H263:       cm_codec_type = kCMVideoCodecType_H263;       break;
     case AV_CODEC_ID_H264:       cm_codec_type = kCMVideoCodecType_H264;       break;
-    case AV_CODEC_ID_MPEG1VIDEO: cm_codec_type = kCMVideoCodecType_MPEG1Video; break;
-    case AV_CODEC_ID_MPEG2VIDEO: cm_codec_type = kCMVideoCodecType_MPEG2Video; break;
-    case AV_CODEC_ID_MPEG4:      cm_codec_type = kCMVideoCodecType_MPEG4Video; break;
     default:
         return AVERROR_DECODER_NOT_FOUND;
     }
