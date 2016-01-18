@@ -85,6 +85,7 @@ struct sxplayer_ctx {
     int auto_hwaccel;                       // attempt to enable hardware acceleration
     int export_mvs;                         // export motion vectors into frame->mvs
     int pkt_skip_mod;                       // skip packet if module pkt_skip_mod (and not a key pkt)
+    int thread_stack_size;
 
     struct async_context *actx;
     int64_t skip64;

@@ -54,6 +54,8 @@ struct async_context {
     AVThreadMessageQueue *pkt_queue;        // demuxer  <-> decoder
     AVThreadMessageQueue *frames_queue;     // decoder  <-> filterer
     AVThreadMessageQueue *sink_queue;       // filterer <-> user
+
+    int thread_stack_size;
 };
 
 static const AVClass async_context_class = {
@@ -172,6 +174,8 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
 {
     int ret;
 
+    actx->thread_stack_size = s->thread_stack_size;
+
     TRACE(actx, "allocate queues");
     ret = av_thread_message_queue_alloc(&actx->pkt_queue, s->max_nb_packets,
                                         sizeof(struct message));
@@ -222,8 +226,27 @@ static void *name##_thread(void *arg)                                           
         TRACE(actx, "not starting " AV_STRINGIFY(name)                          \
               " thread: already running");                                      \
     } else {                                                                    \
-        int ret = pthread_create(&actx->name##_tid, NULL, name##_thread,        \
+        pthread_attr_t attr;                                                    \
+        pthread_attr_t *attrp = NULL;                                           \
+        if (actx->thread_stack_size > 0) {                                      \
+            pthread_attr_init(&attr);                                           \
+            if (ENABLE_DBG) {                                                   \
+                size_t stack_size;                                              \
+                pthread_attr_getstacksize(&attr, &stack_size);                  \
+                TRACE(actx, "stack size before: %zd", stack_size);              \
+                pthread_attr_setstacksize(&attr, actx->thread_stack_size);      \
+                stack_size = 0;                                                 \
+                pthread_attr_getstacksize(&attr, &stack_size);                  \
+                TRACE(actx, "stack size after: %zd", stack_size);               \
+            } else {                                                            \
+                pthread_attr_setstacksize(&attr, actx->thread_stack_size);      \
+            }                                                                   \
+            attrp = &attr;                                                      \
+        }                                                                       \
+        int ret = pthread_create(&actx->name##_tid, attrp, name##_thread,       \
                                  actx->name);                                   \
+        if (attrp)                                                              \
+            pthread_attr_destroy(attrp);                                        \
         if (ret) {                                                              \
             const int err = AVERROR(ret);                                       \
             av_log(actx, AV_LOG_ERROR, "Unable to start " AV_STRINGIFY(name)    \
