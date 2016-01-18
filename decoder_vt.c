@@ -443,6 +443,7 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
 
     if (vt->session) {
         VTDecompressionSessionInvalidate(vt->session);
+        CFRelease(vt->session);
         vt->session = NULL;
     }
 
