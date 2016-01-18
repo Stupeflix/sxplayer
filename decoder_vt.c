@@ -19,11 +19,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <pthread.h>
+
 #define Picture QuickdrawPicture
 #include <VideoToolbox/VideoToolbox.h>
 #undef Picture
 
 #include "decoding.h"
+#include "decoders.h"
 #include "internal.h"
 
 #define REQUESTED_PIX_FMT kCVPixelFormatType_32BGRA
@@ -171,9 +174,8 @@ static int push_async_frame(const AVCodecContext *avctx,
         av_frame_free(&frame);
         return AVERROR(ENOMEM);
     }
-    TRACE(dec_ctx, "push frame pts=%"PRId64" to AsyncDecoder %p",
-          frame->pts, dec_ctx->adec);
-    ret = async_queue_frame(dec_ctx->adec, frame);
+    TRACE(dec_ctx, "push frame pts=%"PRId64, frame->pts);
+    ret = decoding_queue_frame(dec_ctx->decoding_ctx, frame);
     if (ret < 0)
         av_frame_free(&frame);
     return ret;
@@ -248,7 +250,7 @@ static void decode_callback(void *opaque,
 
 static int vtdec_init(struct decoder_ctx *dec_ctx)
 {
-    const AVCodecContext *avctx = dec_ctx->avctx;
+    AVCodecContext *avctx = dec_ctx->avctx;
     struct vtdec_context *vt = dec_ctx->priv_data;
     int cm_codec_type;
     OSStatus status;
@@ -416,7 +418,7 @@ static void vtdec_flush(struct decoder_ctx *dec_ctx)
         VTDecompressionSessionWaitForAsynchronousFrames(vt->session);
     }
     TRACE(dec_ctx, "decompression session finished delaying frames");
-    async_queue_frame(dec_ctx->adec, NULL);
+    decoding_queue_frame(dec_ctx->decoding_ctx, NULL);
     pthread_mutex_lock(&vt->lock);
     TRACE(dec_ctx, "dropping %d frames", vt->nb_frames);
     while (vt->queue != NULL) {
