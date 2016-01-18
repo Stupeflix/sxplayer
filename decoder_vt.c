@@ -445,8 +445,6 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
     pthread_cond_signal(&vt->cond);
     pthread_mutex_unlock(&vt->lock);
 
-    vtdec_flush(dec_ctx);
-
     if (vt->session) {
         VTDecompressionSessionInvalidate(vt->session);
         vt->session = NULL;
