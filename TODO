@@ -1,6 +1,4 @@
 -> better behaviour when VT init succeed but decode fails
--> rename to sxplayer
-  `-> upstream on github
 -> restore drop ref feature
   `-> new API?
 -> logging cleanup
