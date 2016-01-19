@@ -39,8 +39,6 @@ struct async_frame {
 
 struct vtdec_context {
     VTDecompressionSessionRef session;
-    VTDecompressionOutputCallback output_callback;
-    OSType cv_pix_fmt_type;
     CMVideoFormatDescriptionRef cm_fmt_desc;
     struct async_frame *queue;
     pthread_mutex_t lock;
