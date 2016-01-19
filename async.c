@@ -100,6 +100,15 @@ int64_t async_probe_duration(const struct async_context *actx)
     return demuxing_probe_duration(actx->demuxer);
 }
 
+int async_fetch_info(const struct async_context *actx, struct sxplayer_info *info)
+{
+    const AVCodecContext *avctx = decoding_get_avctx(actx->decoder);
+    info->width    = avctx->width;
+    info->height   = avctx->height;
+    info->duration = demuxing_probe_duration(actx->demuxer);
+    return 0;
+}
+
 int async_seek(struct async_context *actx, int64_t ts)
 {
     return demuxing_seek(actx->demuxer, ts);

@@ -81,6 +81,12 @@ struct sxplayer_frame {
     void *internal;     // sxplayer internal frame context frame, do not alter
 };
 
+struct sxplayer_info {
+    int width;
+    int height;
+    double duration;
+};
+
 /**
  * Create media player context
  *
@@ -113,11 +119,13 @@ int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
  * Get the media duration (clipped to trim_duration if set).
  *
  * The duration is expressed in seconds.
- *
- * Warning: this function must be called before any call to
- * sxplayer_get_frame() or sxplayer_get_next_frame().
  */
 int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration);
+
+/**
+ * Get various information on the media.
+ */
+int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info);
 
 /**
  * Get the frame at an absolute time.

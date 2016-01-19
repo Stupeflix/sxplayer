@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <libavutil/rational.h>
 
+#include "sxplayer.h"
 #include "internal.h"
 
 struct async_context *async_alloc_context(void);
@@ -33,6 +34,8 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s);
 int async_start(struct async_context *actx);
 
 int64_t async_probe_duration(const struct async_context *actx);
+
+int async_fetch_info(const struct async_context *actx, struct sxplayer_info *info);
 
 int async_seek(struct async_context *actx, int64_t ts);
 

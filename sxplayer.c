@@ -552,15 +552,28 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
     return ret_frame(s, pop_frame(s), 0);
 }
 
-int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration)
+int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)
 {
     int ret;
 
-    INFO(s, "query duration");
     ret = configure_context(s);
     if (ret < 0)
         return ret;
-    *duration = s->trim_duration;
-    TRACE(s, "get duration -> %f", s->trim_duration);
+    ret = async_fetch_info(s->actx, info);
+    if (ret < 0)
+        return ret;
+    TRACE(s, "media info: %dx%d %f", info->width, info->height, info->duration);
+    return 0;
+}
+
+int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration)
+{
+    int ret;
+    struct sxplayer_info info;
+
+    ret = sxplayer_get_info(s, &info);
+    if (ret < 0)
+        return ret;
+    *duration = info.duration;
     return 0;
 }
