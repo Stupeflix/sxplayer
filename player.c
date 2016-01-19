@@ -38,16 +38,28 @@ static void render(GLFWwindow *window)
     sxplayer_release_frame(frame);
 }
 
+static double clipd(double v, double min, double max)
+{
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+}
+
+static void seek_to(GLFWwindow *window, double t)
+{
+    t = clipd(t, 0, g_info.duration);
+    printf("seek to %f/%f (%d%%)\n", t, g_info.duration, (int)(t/g_info.duration*100));
+    g_subtime = glfwGetTime() - t;
+    if (g_paused)
+        render(window);
+}
+
 static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-        double xpos, ypos, seek_to;
+        double xpos, ypos;
         glfwGetCursorPos(window, &xpos, &ypos);
-        seek_to = xpos / g_info.width * g_info.duration;
-        g_subtime = glfwGetTime() - seek_to;
-        printf("seek to %f/%f\n", seek_to, g_info.duration);
-        if (g_paused)
-            render(window);
+        seek_to(window, xpos / g_info.width * g_info.duration);
     }
 }
 
@@ -72,6 +84,10 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
                 show_frame(frame);
                 sxplayer_release_frame(frame);
             }
+        } else if (key == GLFW_KEY_LEFT) {
+            seek_to(window, g_last_rendered_frame_ts - 5.0);
+        } else if (key == GLFW_KEY_RIGHT) {
+            seek_to(window, g_last_rendered_frame_ts + 5.0);
         }
     }
 }
