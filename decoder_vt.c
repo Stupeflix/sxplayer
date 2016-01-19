@@ -149,11 +149,11 @@ static void videotoolbox_buffer_release(void *opaque, uint8_t *data)
     CVPixelBufferRelease(cv_buffer);
 }
 
-static int push_async_frame(const AVCodecContext *avctx,
-                            struct decoder_ctx *dec_ctx,
+static int push_async_frame(struct decoder_ctx *dec_ctx,
                             struct async_frame *async_frame)
 {
     int ret;
+    const AVCodecContext *avctx = dec_ctx->avctx;
     AVFrame *frame = av_frame_alloc();
     if (!frame)
         return AVERROR(ENOMEM);
@@ -188,7 +188,6 @@ static void decode_callback(void *opaque,
                             CMTime duration)
 {
     struct decoder_ctx *dec_ctx = opaque;
-    const AVCodecContext *avctx = dec_ctx->avctx;
     struct vtdec_context *vt = dec_ctx->priv_data;
     struct async_frame *new_frame;
     struct async_frame *queue_walker;
@@ -236,7 +235,7 @@ static void decode_callback(void *opaque,
             }
 
             /* We passed a frame, which as a result becomes a valid frame to push */
-            push_async_frame(avctx, dec_ctx, queue_walker);
+            push_async_frame(dec_ctx, queue_walker);
             av_free(queue_walker);
             vt->nb_frames--;
             vt->queue = queue_walker = next_frame;
@@ -402,6 +401,34 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
     return pkt->size;
 }
 
+static inline void process_queued_frames(struct decoder_ctx *dec_ctx, int push)
+{
+    struct vtdec_context *vt = dec_ctx->priv_data;
+
+    pthread_mutex_lock(&vt->lock);
+    TRACE(dec_ctx, "%sing %d frames", push ? "push" : "dropp", vt->nb_frames);
+    while (vt->queue != NULL) {
+        struct async_frame *top_frame = vt->queue;
+        vt->queue = top_frame->next_frame;
+        if (push)
+            push_async_frame(dec_ctx, top_frame);
+        av_freep(&top_frame);
+    }
+    vt->nb_frames = 0;
+    pthread_cond_signal(&vt->cond);
+    pthread_mutex_unlock(&vt->lock);
+}
+
+static void drop_queued_frames(struct decoder_ctx *dec_ctx)
+{
+    process_queued_frames(dec_ctx, 0);
+}
+
+static void send_queued_frames(struct decoder_ctx *dec_ctx)
+{
+    process_queued_frames(dec_ctx, 1);
+}
+
 static void vtdec_flush(struct decoder_ctx *dec_ctx)
 {
     struct vtdec_context *vt = dec_ctx->priv_data;
@@ -412,17 +439,8 @@ static void vtdec_flush(struct decoder_ctx *dec_ctx)
         VTDecompressionSessionWaitForAsynchronousFrames(vt->session);
     }
     TRACE(dec_ctx, "decompression session finished delaying frames");
+    send_queued_frames(dec_ctx);
     decoding_queue_frame(dec_ctx->decoding_ctx, NULL);
-    pthread_mutex_lock(&vt->lock);
-    TRACE(dec_ctx, "dropping %d frames", vt->nb_frames);
-    while (vt->queue != NULL) {
-        struct async_frame *top_frame = vt->queue;
-        vt->queue = top_frame->next_frame;
-        av_freep(&top_frame);
-    }
-    vt->nb_frames = 0;
-    pthread_cond_signal(&vt->cond);
-    pthread_mutex_unlock(&vt->lock);
     TRACE(dec_ctx, "queue cleared, flush ends");
 }
 
@@ -433,6 +451,8 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
     TRACE(dec_ctx, "uninit");
     if (vt->cm_fmt_desc)
         CFRelease(vt->cm_fmt_desc);
+
+    drop_queued_frames(dec_ctx);
 
     pthread_mutex_lock(&vt->lock);
     vt->terminated = 1;
