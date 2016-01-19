@@ -52,7 +52,7 @@ endif
 CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PROJECT_PKG_CONFIG_LIBS)) $(CFLAGS)
 LDLIBS := $(shell $(PKG_CONFIG) --libs   $(PROJECT_PKG_CONFIG_LIBS)) $(LDLIBS) $(PROJECT_LIBS)
 
-PROGOBJS = main.o
+PROGOBJS = player.o
 TESTPROG = test-prog
 TESTOBJS = $(TESTPROG).o
 
