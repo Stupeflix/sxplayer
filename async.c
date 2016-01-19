@@ -105,7 +105,7 @@ int async_fetch_info(const struct async_context *actx, struct sxplayer_info *inf
     const AVCodecContext *avctx = decoding_get_avctx(actx->decoder);
     info->width    = avctx->width;
     info->height   = avctx->height;
-    info->duration = demuxing_probe_duration(actx->demuxer);
+    info->duration = demuxing_probe_duration(actx->demuxer) * av_q2d(AV_TIME_BASE_Q);
     return 0;
 }
 
