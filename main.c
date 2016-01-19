@@ -4,6 +4,10 @@
 
 #include "sxplayer.h"
 
+static int g_paused;
+static double g_paused_at;
+static double g_subtime;
+
 static void error_callback(int error, const char *description)
 {
     fprintf(stderr, "glfw error: %s\n", description);
@@ -11,13 +15,25 @@ static void error_callback(int error, const char *description)
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-    if ((key == GLFW_KEY_ESCAPE || key == GLFW_KEY_Q) && action == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, GL_TRUE);
+    if (action == GLFW_PRESS) {
+        if (key == GLFW_KEY_ESCAPE || key == GLFW_KEY_Q) {
+            glfwSetWindowShouldClose(window, GL_TRUE);
+        } else if (key == GLFW_KEY_SPACE) {
+            g_paused ^= 1;
+            if (g_paused)
+                g_paused_at = glfwGetTime();
+            else
+                g_subtime += glfwGetTime() - g_paused_at;
+        }
+    }
 }
 
 static void render(GLFWwindow *window, struct sxplayer_ctx *s)
 {
-    const double time = glfwGetTime();
+    if (g_paused)
+        return;
+
+    const double time = glfwGetTime() - g_subtime;
     struct sxplayer_frame *frame = sxplayer_get_frame(s, time);
 
     if (!frame)
