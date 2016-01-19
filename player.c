@@ -7,10 +7,22 @@
 static int g_paused;
 static double g_paused_at;
 static double g_subtime;
+struct sxplayer_info g_info;
 
 static void error_callback(int error, const char *description)
 {
     fprintf(stderr, "glfw error: %s\n", description);
+}
+
+static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+{
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        double xpos, ypos, seek_to;
+        glfwGetCursorPos(window, &xpos, &ypos);
+        seek_to = xpos / g_info.width * g_info.duration;
+        g_subtime = glfwGetTime() - seek_to;
+        printf("seek to %f/%f\n", seek_to, g_info.duration);
+    }
 }
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
@@ -55,7 +67,6 @@ int main(int ac, char **av)
 {
     int ret;
     GLFWwindow *window;
-    struct sxplayer_info info;
     struct sxplayer_ctx *s;
 
     if (ac != 2) {
@@ -67,7 +78,7 @@ int main(int ac, char **av)
     if (!s)
         return -1;
 
-    ret = sxplayer_get_info(s, &info);
+    ret = sxplayer_get_info(s, &g_info);
     if (ret < 0)
         return ret;
 
@@ -76,7 +87,7 @@ int main(int ac, char **av)
 
     glfwSetErrorCallback(error_callback);
 
-    window = glfwCreateWindow(info.width, info.height, "sxplayer", NULL, NULL);
+    window = glfwCreateWindow(g_info.width, g_info.height, "sxplayer", NULL, NULL);
     if (!window) {
         glfwTerminate();
         return -1;
@@ -86,6 +97,7 @@ int main(int ac, char **av)
 
     glfwSwapInterval(1);
     glfwSetKeyCallback(window, key_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
 
     while (!glfwWindowShouldClose(window)) {
         render(window, s);
