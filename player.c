@@ -5,13 +5,37 @@
 #include "sxplayer.h"
 
 static int g_paused;
-static double g_paused_at;
+static double g_last_rendered_frame_ts;
 static double g_subtime;
 struct sxplayer_info g_info;
+struct sxplayer_ctx *g_s;
 
 static void error_callback(int error, const char *description)
 {
     fprintf(stderr, "glfw error: %s\n", description);
+}
+
+static void show_frame(const struct sxplayer_frame *frame)
+{
+    gluBuild2DMipmaps(GL_TEXTURE_2D, 3, frame->width, frame->height, GL_BGRA, GL_UNSIGNED_BYTE, frame->data);
+    glBegin(GL_QUADS);
+    glTexCoord2d(0.0, 0.0); glVertex2d(-1.0,  1.0);
+    glTexCoord2d(1.0, 0.0); glVertex2d( 1.0,  1.0);
+    glTexCoord2d(1.0, 1.0); glVertex2d( 1.0, -1.0);
+    glTexCoord2d(0.0, 1.0); glVertex2d(-1.0, -1.0);
+    glEnd();
+    g_last_rendered_frame_ts = frame->ts;
+}
+
+static void render(GLFWwindow *window)
+{
+    const double time = glfwGetTime() - g_subtime;
+    struct sxplayer_frame *frame = sxplayer_get_frame(g_s, time);
+
+    if (!frame)
+        return;
+    show_frame(frame);
+    sxplayer_release_frame(frame);
 }
 
 static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
@@ -22,6 +46,8 @@ static void mouse_button_callback(GLFWwindow* window, int button, int action, in
         seek_to = xpos / g_info.width * g_info.duration;
         g_subtime = glfwGetTime() - seek_to;
         printf("seek to %f/%f\n", seek_to, g_info.duration);
+        if (g_paused)
+            render(window);
     }
 }
 
@@ -32,53 +58,39 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
             glfwSetWindowShouldClose(window, GL_TRUE);
         } else if (key == GLFW_KEY_SPACE) {
             g_paused ^= 1;
-            if (g_paused)
-                g_paused_at = glfwGetTime();
-            else
-                g_subtime += glfwGetTime() - g_paused_at;
+            if (g_paused) {
+                printf("pause\n");
+            } else {
+                printf("unpause\n");
+                g_subtime = glfwGetTime() - g_last_rendered_frame_ts;
+            }
+        } else if (key == GLFW_KEY_PERIOD || key == GLFW_KEY_S) {
+            g_paused = 1;
+            struct sxplayer_frame *frame = sxplayer_get_next_frame(g_s);
+            if (frame) {
+                printf("stepped to frame t=%f\n", frame->ts);
+                show_frame(frame);
+                sxplayer_release_frame(frame);
+            }
         }
     }
-}
-
-static void render(GLFWwindow *window, struct sxplayer_ctx *s)
-{
-    if (g_paused)
-        return;
-
-    const double time = glfwGetTime() - g_subtime;
-    struct sxplayer_frame *frame = sxplayer_get_frame(s, time);
-
-    if (!frame)
-        return;
-
-    glEnable(GL_TEXTURE_2D);
-    gluBuild2DMipmaps(GL_TEXTURE_2D, 3, frame->width, frame->height, GL_BGRA, GL_UNSIGNED_BYTE, frame->data);
-    glBegin(GL_QUADS);
-    glTexCoord2d(0.0, 0.0); glVertex2d(-1.0,  1.0);
-    glTexCoord2d(1.0, 0.0); glVertex2d( 1.0,  1.0);
-    glTexCoord2d(1.0, 1.0); glVertex2d( 1.0, -1.0);
-    glTexCoord2d(0.0, 1.0); glVertex2d(-1.0, -1.0);
-    glEnd();
-
-    sxplayer_release_frame(frame);
 }
 
 int main(int ac, char **av)
 {
     int ret;
     GLFWwindow *window;
-    struct sxplayer_ctx *s;
 
     if (ac != 2) {
         fprintf(stderr, "Usage: %s <media>\n", av[0]);
         return -1;
     }
 
-    s = sxplayer_create(av[1]);
-    if (!s)
+    g_s = sxplayer_create(av[1]);
+    if (!g_s)
         return -1;
 
-    ret = sxplayer_get_info(s, &g_info);
+    ret = sxplayer_get_info(g_s, &g_info);
     if (ret < 0)
         return ret;
 
@@ -99,13 +111,16 @@ int main(int ac, char **av)
     glfwSetKeyCallback(window, key_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
 
+    glEnable(GL_TEXTURE_2D);
+
     while (!glfwWindowShouldClose(window)) {
-        render(window, s);
+        if (!g_paused)
+            render(window);
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    sxplayer_free(&s);
+    sxplayer_free(&g_s);
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
