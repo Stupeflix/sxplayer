@@ -63,7 +63,10 @@ else
 	$(AR) rcs $@ $^
 endif
 
+$(NAME): LDLIBS += $(shell $(PKG_CONFIG) --libs glfw3 glu)
+$(NAME): CFLAGS += $(shell $(PKG_CONFIG) --cflags glfw3 glu)
 $(NAME): $(OBJS) $(PROGOBJS)
+
 $(TESTPROG): $(OBJS) $(TESTOBJS)
 
 all: $(LIBNAME) $(PCNAME) $(NAME)
