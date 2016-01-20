@@ -219,7 +219,6 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
     return 0;
 }
 
-// TODO: set a smaller stack size for threads?
 #define MODULE_THREAD_FUNC(name, action)                                        \
 static void *name##_thread(void *arg)                                           \
 {                                                                               \
