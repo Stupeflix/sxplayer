@@ -173,6 +173,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     av_opt_set_defaults(s);
 
     s->last_ts              = AV_NOPTS_VALUE;
+    s->first_ts             = AV_NOPTS_VALUE;
     s->last_frame_poped_ts  = AV_NOPTS_VALUE;
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
     s->trim_duration64      = AV_NOPTS_VALUE;
@@ -481,6 +482,12 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         return ret_frame(s, NULL, vt);
     }
 
+    if (s->first_ts != AV_NOPTS_VALUE && vt <= s->first_ts &&
+        s->last_pushed_frame_ts == s->first_ts) {
+        TRACE(s, "requested the first frame again");
+        return ret_frame(s, NULL, vt);
+    }
+
     AVFrame *candidate = NULL;
 
     /* If no frame was ever pushed, we need to pop one */
@@ -491,7 +498,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
          * before we start the decoding process in order to save one seek and
          * some decoding (a seek for the initial skip, then another one soon
          * after to reach the requested time). */
-        if (!async_started(s->actx) && vt > s->skip64)
+        if (!async_started(s->actx) && t64 > 0)
             async_seek(s->actx, get_media_time(s, t64));
 
         TRACE(s, "no frame ever pushed yet, pop a candidate");
@@ -504,6 +511,21 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         diff = vt - candidate->pts;
         TRACE(s, "diff with candidate (t=%s): %s [%"PRId64"]",
               PTS2TIMESTR(candidate->pts), PTS2TIMESTR(diff), diff);
+
+        /* No frame was ever pushed, but the timestamp of the first frame
+         * obtained is past the requested time. This should never happen if a
+         * seek happened (async module will fix the timestamp in the worst
+         * case), BUT it could happen in case the first timestamp of the video
+         * is actually not 0. In this case, we decide to return the frame
+         * anyway. */
+        if (diff < 0) {
+            /* Warning: we must absolutely NOT save the timestamp of the
+             * candidate if the first time requested is not actually 0 */
+            if (t64 == 0)
+                s->first_ts = candidate->pts;
+            return ret_frame(s, candidate, vt);
+        }
+
     } else {
         diff = vt - s->last_pushed_frame_ts;
         TRACE(s, "diff with latest frame (t=%s) returned: %s [%"PRId64"]",

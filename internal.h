@@ -86,6 +86,7 @@ struct sxplayer_ctx {
     AVFrame *cached_frame;
     int64_t last_pushed_frame_ts;           // ts value of the latest pushed frame (it acts as a UID)
     int64_t last_frame_poped_ts;
+    int64_t first_ts;
     int64_t last_ts;
 };
 
