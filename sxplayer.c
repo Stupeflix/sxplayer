@@ -583,7 +583,7 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 {
     int ret;
 
-    TRACE(s, " >>> get next frame");
+    INFO(s, " >>> get next frame");
 
     ret = configure_context(s);
     if (ret < 0)
@@ -595,6 +595,8 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)
 {
     int ret;
+
+    INFO(s, "probing information");
 
     ret = configure_context(s);
     if (ret < 0)
@@ -610,6 +612,8 @@ int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration)
 {
     int ret;
     struct sxplayer_info info;
+
+    INFO(s, "getting duration");
 
     ret = sxplayer_get_info(s, &info);
     if (ret < 0)
