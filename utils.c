@@ -53,9 +53,9 @@ enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
 
 void set_thread_name(const char *name)
 {
-#if __APPLE__
+#if defined(__APPLE__)
     pthread_setname_np(name);
-#elif __linux__
+#elif defined(__linux__) && defined(__GLIBC__)
     pthread_setname_np(pthread_self(), name);
 #endif
 }
