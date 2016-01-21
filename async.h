@@ -27,6 +27,21 @@
 #include "sxplayer.h"
 #include "internal.h"
 
+enum msg_type {
+    MSG_FRAME,
+    MSG_PACKET,
+    MSG_SEEK,
+};
+
+struct message {
+    void *data;
+    enum msg_type type;
+};
+
+const char *async_get_msg_type_string(enum msg_type type);
+
+void async_free_message_data(void *arg);
+
 struct async_context *async_alloc_context(void);
 
 int async_init(struct async_context *actx, const struct sxplayer_ctx *s);
@@ -39,7 +54,7 @@ int async_fetch_info(const struct async_context *actx, struct sxplayer_info *inf
 
 int async_seek(struct async_context *actx, int64_t ts);
 
-AVFrame *async_pop_frame(struct async_context *actx);
+int async_pop_msg(struct async_context *actx, struct message *msg);
 
 int async_wait(struct async_context *actx);
 

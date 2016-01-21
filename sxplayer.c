@@ -377,8 +377,28 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
         s->cached_frame = NULL;
     } else {
         async_start(s->actx);
-        TRACE(s, "querying async context");
-        frame = async_pop_frame(s->actx);
+        for (;;) {
+            int ret;
+            struct message msg;
+
+            TRACE(s, "querying async context");
+            ret = async_pop_msg(s->actx, &msg);
+            if (ret < 0) {
+                frame = NULL;
+                TRACE(s, "poped a message raising %s, wait for the threads to end", av_err2str(ret));
+                async_wait(s->actx);
+                break;
+            } else if (msg.type == MSG_SEEK) {
+                // probably from the initial seek
+                TRACE(s, "got a seek message while poping, ignoring");
+                async_free_message_data(&msg);
+                continue;
+            } else {
+                TRACE(s, "got a frame!");
+                frame = msg.data;
+                break;
+            }
+        }
     }
 
     if (frame) {
@@ -394,11 +414,9 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
             TRACE(s, "last timestamp is apparently %s", PTS2TIMESTR(s->last_ts));
             s->last_ts = s->last_frame_poped_ts;
         }
-        // async_pop_frame() returned NULL so we know the threads are going to
-        // stop by themselves, so we just have to wait
-        async_wait(s->actx);
     }
 
+    TRACE(s, "pop frame %p", frame);
     return frame;
 }
 
@@ -497,6 +515,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
     /* Check if a seek is needed */
     if (diff < 0 || diff > s->dist_time_seek_trigger64) {
+        struct message msg;
 
         if (diff < 0)
             TRACE(s, "diff %s [%"PRId64"] < 0 request backward seek", PTS2TIMESTR(diff), diff);
@@ -506,22 +525,22 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
                   diff, s->dist_time_seek_trigger64);
 
         async_seek(s->actx, get_media_time(s, t64));
+        async_start(s->actx);
         av_frame_free(&candidate);
+        av_frame_free(&s->cached_frame);
 
-        /* If the seek is backward, wait for it to be effective */
-        TRACE(s, "backward seek requested, wait for it to be effective");
-        if (diff < 0) {
-            do {
-                av_frame_free(&candidate);
-                AVFrame *next = pop_frame(s);
-                if (!next)
-                    return ret_frame(s, NULL, vt);
-                candidate = next;
-            } while (candidate->pts > vt);
-        }
+        TRACE(s, "seek requested, wait for it to be effective");
+        do {
+            ret = async_pop_msg(s->actx, &msg);
+            if (ret < 0) {
+                async_wait(s->actx);
+                return ret_frame(s, NULL, vt);
+            }
+            async_free_message_data(&msg);
+        } while (msg.type != MSG_SEEK);
+        TRACE(s, "seek message obtained");
     }
 
-    if (async_started(s->actx)) {
         /* Consume frames until we get a frame as accurate as possible */
         for (;;) {
             TRACE(s, "grab another frame");
@@ -534,7 +553,6 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
             av_frame_free(&candidate);
             candidate = next;
         }
-    }
 
     return ret_frame(s, candidate, vt);
 }

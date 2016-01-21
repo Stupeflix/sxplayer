@@ -49,16 +49,6 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...);
 #define TRACE(log_ctx, ...) do { if (0) DO_LOG(log_ctx, AV_LOG_INFO, __VA_ARGS__); } while (0)
 #endif
 
-enum msg_type {
-    MSG_PACKET,
-    MSG_SEEK,
-};
-
-struct message {
-    void *data;
-    enum msg_type type;
-};
-
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
 void set_thread_name(const char *name);

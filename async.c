@@ -63,12 +63,6 @@ static const AVClass async_context_class = {
     .item_name  = av_default_item_name,
 };
 
-static void free_frame_message(void *arg)
-{
-    AVFrame **frame = arg;
-    av_frame_free(frame);
-}
-
 struct async_context *async_alloc_context(void)
 {
     struct async_context *actx = av_mallocz(sizeof(*actx));
@@ -78,10 +72,16 @@ struct async_context *async_alloc_context(void)
     return actx;
 }
 
-static void free_packet_message(void *arg)
+void async_free_message_data(void *arg)
 {
     struct message *msg = arg;
+
     switch (msg->type) {
+    case MSG_FRAME: {
+        AVFrame *frame = msg->data;
+        av_frame_free(&frame);
+        break;
+    }
     case MSG_PACKET:
         av_packet_unref(msg->data);
         av_freep(&msg->data);
@@ -190,19 +190,20 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
                                         sizeof(struct message));
     if (ret < 0)
         return ret;
-    av_thread_message_queue_set_free_func(actx->pkt_queue, free_packet_message);
 
     ret = av_thread_message_queue_alloc(&actx->frames_queue, s->max_nb_frames,
-                                        sizeof(AVFrame *));
+                                        sizeof(struct message));
     if (ret < 0)
         return ret;
-    av_thread_message_queue_set_free_func(actx->frames_queue, free_frame_message);
 
     ret = av_thread_message_queue_alloc(&actx->sink_queue, s->max_nb_sink,
-                                        sizeof(AVFrame *));
+                                        sizeof(struct message));
     if (ret < 0)
         return ret;
-    av_thread_message_queue_set_free_func(actx->sink_queue, free_frame_message);
+
+    av_thread_message_queue_set_free_func(actx->pkt_queue,    async_free_message_data);
+    av_thread_message_queue_set_free_func(actx->frames_queue, async_free_message_data);
+    av_thread_message_queue_set_free_func(actx->sink_queue,   async_free_message_data);
 
     TRACE(actx, "create modules");
     actx->demuxer  = demuxing_alloc();
@@ -335,18 +336,28 @@ int async_stop(struct async_context *actx)
     return async_wait(actx);
 }
 
-AVFrame *async_pop_frame(struct async_context *actx)
+const char *async_get_msg_type_string(enum msg_type type)
 {
-    AVFrame *frame;
-    TRACE(actx, "fetching a frame from the sink");
+    static const char * const s[] = {
+        [MSG_FRAME]  = "frame",
+        [MSG_PACKET] = "packet",
+        [MSG_SEEK]   = "seek"
+    };
+    return s[type];
+}
+
+int async_pop_msg(struct async_context *actx, struct message *msg)
+{
+    TRACE(actx, "fetching a message from the sink");
     av_assert0(actx->threads_started);
-    int ret = av_thread_message_queue_recv(actx->sink_queue, &frame, 0);
+    int ret = av_thread_message_queue_recv(actx->sink_queue, msg, 0);
     if (ret < 0) {
-        TRACE(actx, "couldn't fetch frame from sink because %s", av_err2str(ret));
+        TRACE(actx, "couldn't fetch message from sink because %s", av_err2str(ret));
         av_thread_message_queue_set_err_send(actx->sink_queue, ret);
-        return NULL;
+        return ret;
     }
-    return frame;
+    TRACE(actx, "got a message of type %s", async_get_msg_type_string(msg->type));
+    return 0;
 }
 
 int async_started(const struct async_context *actx)

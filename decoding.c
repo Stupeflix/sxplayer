@@ -132,10 +132,14 @@ static int64_t get_best_effort_ts(const AVFrame *f)
 static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
 {
     int ret;
+    struct message msg = {
+        .type = MSG_FRAME,
+        .data = frame,
+    };
 
     TRACE(ctx, "queue frame with ts=%s", PTS2TIMESTR(frame->pts));
 
-    ret = av_thread_message_queue_send(ctx->frames_queue, &frame, 0);
+    ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);
     if (ret < 0) {
         if (ret != AVERROR_EOF && ret != AVERROR_EXIT)
             av_log(ctx, AV_LOG_ERROR, "Unable to push frame: %s\n", av_err2str(ret));
@@ -222,7 +226,6 @@ void decoding_run(struct decoding_ctx *ctx)
 
         if (msg.type == MSG_SEEK) {
             const int64_t seek_ts = *(int64_t *)msg.data;
-            av_freep(&msg.data);
 
             TRACE(ctx, "got a seek message (to %s) in the pkt queue",
                   PTS2TIMESTR(seek_ts));
@@ -241,6 +244,13 @@ void decoding_run(struct decoding_ctx *ctx)
             /* Mark the seek request so async_queue_frame() can do its
              * "filtering" work. */
             ctx->seek_request = seek_ts;
+
+            /* Forward seek message */
+            ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);
+            if (ret < 0) {
+                av_freep(&msg.data);
+                break;
+            }
 
             continue;
         }

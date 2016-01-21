@@ -433,16 +433,36 @@ int filtering_init(struct filtering_ctx *f,
 static int send_frame(struct filtering_ctx *f, AVFrame *frame)
 {
     int ret;
+    AVFrame *out_frame = av_frame_clone(frame); // XXX
+    struct message msg = {
+        .type = MSG_FRAME,
+        .data = out_frame,
+    };
 
-    frame = av_frame_clone(frame); // XXX
-    av_frame_unref(f->filtered_frame);
-    if (!frame)
+    av_frame_unref(frame);
+    if (!out_frame)
         return AVERROR(ENOMEM);
 
     TRACE(f, "sending filtered frame to the sink");
-    ret = av_thread_message_queue_send(f->out_queue, &frame, 0);
+    ret = av_thread_message_queue_send(f->out_queue, &msg, 0);
     if (ret < 0)
-        av_frame_free(&frame);
+        av_frame_free(&out_frame);
+    return ret;
+}
+
+static int flush_frames(struct filtering_ctx *ctx)
+{
+    int ret;
+
+    TRACE(ctx, "flush frames from filtergraph");
+    for (;;) {
+        ret = filter_frame(ctx, ctx->filtered_frame, NULL);
+        if (ret < 0)
+            break;
+        ret = send_frame(ctx, ctx->filtered_frame);
+        if (ret < 0)
+            break;
+    }
     return ret;
 }
 
@@ -457,27 +477,32 @@ void filtering_run(struct filtering_ctx *f)
 
     for (;;) {
         AVFrame *frame;
+        struct message msg;
 
         TRACE(f, "fetching a frame from the inqueue");
-        ret = av_thread_message_queue_recv(f->in_queue, &frame, 0);
+        ret = av_thread_message_queue_recv(f->in_queue, &msg, 0);
         if (ret < 0) {
             TRACE(f, "unable to fetch a frame from the inqueue: %s", av_err2str(ret));
 
             // Only valid reason to flush: when there is no packet remaining in
             // the input queue
-            if (ret == AVERROR_EOF) {
-                TRACE(f, "flush frames from filtergraph");
-                for (;;) {
-                    ret = filter_frame(f, f->filtered_frame, NULL);
-                    if (ret < 0)
-                        break;
-                    ret = send_frame(f, f->filtered_frame);
-                    if (ret < 0)
-                        break;
-                }
-            }
+            if (ret == AVERROR_EOF)
+                ret = flush_frames(f);
             break;
         }
+
+        if (msg.type == MSG_SEEK) {
+            TRACE(f, "message is a seek, forward to out queue");
+            //flush_frames(f);
+            ret = av_thread_message_queue_send(f->out_queue, &msg, 0);
+            if (ret < 0) {
+                av_freep(&msg.data);
+                break;
+            }
+            continue;
+        }
+
+        frame = msg.data;
 
         TRACE(f, "filtering frame with ts=%s", PTS2TIMESTR(frame->pts));
 
