@@ -223,7 +223,7 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
 #define MODULE_THREAD_FUNC(name, action)                                        \
 static void *name##_thread(void *arg)                                           \
 {                                                                               \
-    set_thread_name("sxplayer " AV_STRINGIFY(name));                            \
+    set_thread_name("sxp-" AV_STRINGIFY(name));                                 \
     TRACE(arg, "[>] " AV_STRINGIFY(action) " thread starting");                 \
     action##_run(arg);                                                          \
     TRACE(arg, "[<] " AV_STRINGIFY(action) " thread ending");                   \
