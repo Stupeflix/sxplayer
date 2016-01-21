@@ -100,7 +100,7 @@ uninstall:
 
 test: $(TESTPROG)
 	./$(TESTPROG) media.mkv
-testmem: $(NAME)
+testmem: $(TESTPROG)
 	valgrind --leak-check=full ./$(TESTPROG) media.mkv
 
 .PHONY: all test clean install uninstall
