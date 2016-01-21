@@ -195,6 +195,8 @@ static int setup_filtergraph(struct filtering_ctx *f)
 
     f->filter_graph = avfilter_graph_alloc();
 
+    av_opt_set_int(f->filter_graph, "threads", 1, 0);
+
     if (!inputs || !outputs || !f->filter_graph) {
         ret = AVERROR(ENOMEM);
         goto end;
