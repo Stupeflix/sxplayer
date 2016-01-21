@@ -541,18 +541,18 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         TRACE(s, "seek message obtained");
     }
 
-        /* Consume frames until we get a frame as accurate as possible */
-        for (;;) {
-            TRACE(s, "grab another frame");
-            AVFrame *next = pop_frame(s);
-            if (!next || next->pts > vt) {
-                av_frame_free(&s->cached_frame);
-                s->cached_frame = next;
-                break;
-            }
-            av_frame_free(&candidate);
-            candidate = next;
+    /* Consume frames until we get a frame as accurate as possible */
+    for (;;) {
+        TRACE(s, "grab another frame");
+        AVFrame *next = pop_frame(s);
+        if (!next || next->pts > vt) {
+            av_frame_free(&s->cached_frame);
+            s->cached_frame = next;
+            break;
         }
+        av_frame_free(&candidate);
+        candidate = next;
+    }
 
     return ret_frame(s, candidate, vt);
 }
