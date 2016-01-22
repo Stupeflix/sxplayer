@@ -81,6 +81,12 @@ int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...)
         goto end;
     }
 
+    if (s->context_configured) {
+        fprintf(stderr, "Context is already configured, can not set option '%s'\n", key);
+        ret = AVERROR(EINVAL);
+        goto end;
+    }
+
     switch (o->type) {
     case AV_OPT_TYPE_INT:
         n = va_arg(ap, int);
