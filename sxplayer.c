@@ -448,7 +448,7 @@ int sxplayer_prefetch(struct sxplayer_ctx *s)
 {
     int ret;
 
-    TRACE(s, "prefetch requested");
+    INFO(s, "prefetch requested");
     ret = configure_context(s);
     if (ret < 0)
         return ret;
