@@ -192,7 +192,7 @@ void sxplayer_free(struct sxplayer_ctx **ss)
 {
     struct sxplayer_ctx *s = *ss;
 
-    TRACE(s, "destroying context");
+    INFO(s, "destroying context");
 
     if (!s)
         return;
