@@ -19,8 +19,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <pthread.h>
-
 #define Picture QuickdrawPicture
 #include <VideoToolbox/VideoToolbox.h>
 #undef Picture
@@ -41,10 +39,7 @@ struct vtdec_context {
     VTDecompressionSessionRef session;
     CMVideoFormatDescriptionRef cm_fmt_desc;
     struct async_frame *queue;
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
     int nb_frames;
-    int terminated;
 };
 
 static CMVideoFormatDescriptionRef videotoolbox_format_desc_create(CMVideoCodecType codec_type,
@@ -204,11 +199,6 @@ static void decode_callback(void *opaque,
     new_frame->cv_buffer = CVPixelBufferRetain(image_buffer);
     new_frame->pts = pts.value;
 
-    pthread_mutex_lock(&vt->lock);
-
-    while (vt->nb_frames == 6 && !vt->terminated)
-        pthread_cond_wait(&vt->cond, &vt->lock);
-
     queue_walker = vt->queue;
 
     if (!queue_walker || (new_frame->pts < queue_walker->pts)) {
@@ -241,8 +231,6 @@ static void decode_callback(void *opaque,
             vt->queue = queue_walker = next_frame;
         }
     }
-
-    pthread_mutex_unlock(&vt->lock);
 }
 
 static int vtdec_init(struct decoder_ctx *dec_ctx)
@@ -258,9 +246,6 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     TRACE(dec_ctx, "init");
 
     avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
-
-    pthread_mutex_init(&vt->lock, NULL);
-    pthread_cond_init(&vt->cond, NULL);
 
     switch (avctx->codec_id) {
     case AV_CODEC_ID_H264:       cm_codec_type = kCMVideoCodecType_H264;       break;
@@ -405,7 +390,6 @@ static inline void process_queued_frames(struct decoder_ctx *dec_ctx, int push)
 {
     struct vtdec_context *vt = dec_ctx->priv_data;
 
-    pthread_mutex_lock(&vt->lock);
     TRACE(dec_ctx, "%sing %d frames", push ? "push" : "dropp", vt->nb_frames);
     while (vt->queue != NULL) {
         struct async_frame *top_frame = vt->queue;
@@ -415,8 +399,6 @@ static inline void process_queued_frames(struct decoder_ctx *dec_ctx, int push)
         av_freep(&top_frame);
     }
     vt->nb_frames = 0;
-    pthread_cond_signal(&vt->cond);
-    pthread_mutex_unlock(&vt->lock);
 }
 
 static void drop_queued_frames(struct decoder_ctx *dec_ctx)
@@ -454,18 +436,11 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
 
     drop_queued_frames(dec_ctx);
 
-    pthread_mutex_lock(&vt->lock);
-    vt->terminated = 1;
-    pthread_cond_signal(&vt->cond);
-    pthread_mutex_unlock(&vt->lock);
-
     if (vt->session) {
         VTDecompressionSessionInvalidate(vt->session);
         CFRelease(vt->session);
         vt->session = NULL;
     }
-
-    pthread_mutex_destroy(&vt->lock);
 }
 
 const struct decoder decoder_vt = {
