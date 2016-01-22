@@ -40,10 +40,9 @@ struct vtdec_context {
     int nb_frames;
 };
 
-static CMVideoFormatDescriptionRef videotoolbox_format_desc_create(CMVideoCodecType codec_type,
-                                                                   CFDictionaryRef decoder_spec,
-                                                                   int width,
-                                                                   int height)
+static CMVideoFormatDescriptionRef format_desc_create(CMVideoCodecType codec_type,
+                                                      CFDictionaryRef decoder_spec,
+                                                      int width, int height)
 {
     CMFormatDescriptionRef cm_fmt_desc;
     OSStatus status;
@@ -69,8 +68,8 @@ static void dict_set_data(CFMutableDictionaryRef dict, CFStringRef key, uint8_t 
     CFRelease(data);
 }
 
-static CFDictionaryRef videotoolbox_decoder_config_create(CMVideoCodecType codec_type,
-                                                          const AVCodecContext *avctx)
+static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
+                                             const AVCodecContext *avctx)
 {
     CFMutableDictionaryRef config_info = CFDictionaryCreateMutable(kCFAllocatorDefault,
                                                                    1,
@@ -100,9 +99,7 @@ static CFDictionaryRef videotoolbox_decoder_config_create(CMVideoCodecType codec
     return config_info;
 }
 
-static CFDictionaryRef videotoolbox_buffer_attributes_create(int width,
-                                                             int height,
-                                                             OSType pix_fmt)
+static CFDictionaryRef buffer_attributes_create(int width, int height, OSType pix_fmt)
 {
     CFMutableDictionaryRef buffer_attributes;
     CFMutableDictionaryRef io_surface_properties;
@@ -136,7 +133,7 @@ static CFDictionaryRef videotoolbox_buffer_attributes_create(int width,
     return buffer_attributes;
 }
 
-static void videotoolbox_buffer_release(void *opaque, uint8_t *data)
+static void buffer_release(void *opaque, uint8_t *data)
 {
     CVPixelBufferRef cv_buffer = (CVImageBufferRef)data;
     CVPixelBufferRelease(cv_buffer);
@@ -158,7 +155,7 @@ static int push_async_frame(struct decoder_ctx *dec_ctx,
     frame->data[3] = (uint8_t *)async_frame->cv_buffer;
     frame->buf[0]  = av_buffer_create(frame->data[3],
                                       sizeof(frame->data[3]),
-                                      videotoolbox_buffer_release,
+                                      buffer_release,
                                       NULL,
                                       AV_BUFFER_FLAG_READONLY);
     if (!frame->buf[0]) {
@@ -251,12 +248,10 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         return AVERROR_DECODER_NOT_FOUND;
     }
 
-    decoder_spec = videotoolbox_decoder_config_create(cm_codec_type, avctx);
+    decoder_spec = decoder_config_create(cm_codec_type, avctx);
 
-    vt->cm_fmt_desc = videotoolbox_format_desc_create(cm_codec_type,
-                                                       decoder_spec,
-                                                       avctx->width,
-                                                       avctx->height);
+    vt->cm_fmt_desc = format_desc_create(cm_codec_type, decoder_spec,
+                                         avctx->width, avctx->height);
     if (!vt->cm_fmt_desc) {
         if (decoder_spec)
             CFRelease(decoder_spec);
@@ -265,9 +260,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         return AVERROR_EXTERNAL;
     }
 
-    buf_attr = videotoolbox_buffer_attributes_create(avctx->width,
-                                                     avctx->height,
-                                                     REQUESTED_PIX_FMT);
+    buf_attr = buffer_attributes_create(avctx->width, avctx->height, REQUESTED_PIX_FMT);
 
     decoder_cb.decompressionOutputCallback = decode_callback;
     decoder_cb.decompressionOutputRefCon   = dec_ctx;
@@ -299,7 +292,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     }
 }
 
-static CMSampleBufferRef videotoolbox_sample_buffer_create(CMFormatDescriptionRef fmt_desc,
+static CMSampleBufferRef sample_buffer_create(CMFormatDescriptionRef fmt_desc,
                                                            void *buffer,
                                                            int size,
                                                            int64_t frame_pts)
@@ -358,7 +351,7 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
     }
 
     VTDecodeFrameFlags decodeFlags = kVTDecodeFrame_EnableAsynchronousDecompression;
-    CMSampleBufferRef sample_buf = videotoolbox_sample_buffer_create(vt->cm_fmt_desc, pkt->data, pkt->size, pkt->pts);
+    CMSampleBufferRef sample_buf = sample_buffer_create(vt->cm_fmt_desc, pkt->data, pkt->size, pkt->pts);
 
     if (!sample_buf)
         return AVERROR_EXTERNAL;
