@@ -28,8 +28,6 @@
 #include <libavutil/avstring.h>
 #include <libavutil/motion_vector.h>
 #include <libavutil/opt.h>
-//#include <libswresample/swresample.h>
-//#include <libswscale/swscale.h>
 
 #include "sxplayer.h"
 #include "internal.h"
@@ -142,9 +140,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
         {"avutil",     LIBAVUTIL_VERSION_INT,     avutil_version()},
         {"avcodec",    LIBAVCODEC_VERSION_INT,    avcodec_version()},
         {"avformat",   LIBAVFORMAT_VERSION_INT,   avformat_version()},
-        //{"swscale",    LIBSWSCALE_VERSION_INT,    swscale_version()},
         {"avfilter",   LIBAVFILTER_VERSION_INT,   avfilter_version()},
-        //{"swresample", LIBSWRESAMPLE_VERSION_INT, swresample_version()},
     };
 
     s = av_mallocz(sizeof(*s));
