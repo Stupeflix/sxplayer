@@ -37,7 +37,7 @@
 
 void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...);
 
-#define DO_LOG(log_ctx, log_level, ...) do_log(log_ctx, log_level, __PRETTY_FUNCTION__, __VA_ARGS__)
+#define DO_LOG(log_ctx, log_level, ...) do_log(log_ctx, log_level, __FUNCTION__, __VA_ARGS__)
 
 #define INFO(log_ctx, ...)  DO_LOG(log_ctx, AV_LOG_INFO, __VA_ARGS__)
 
