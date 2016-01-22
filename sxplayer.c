@@ -498,8 +498,11 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
          * before we start the decoding process in order to save one seek and
          * some decoding (a seek for the initial skip, then another one soon
          * after to reach the requested time). */
-        if (!async_started(s->actx) && t64 > 0)
-            async_seek(s->actx, get_media_time(s, t64));
+        if (!async_started(s->actx) && vt > s->skip64) {
+            TRACE(s, "no prefetch, but requested time (%s) beyond initial skip (%s)",
+                  PTS2TIMESTR(vt), PTS2TIMESTR(s->skip64));
+            async_seek(s->actx, vt);
+        }
 
         TRACE(s, "no frame ever pushed yet, pop a candidate");
         candidate = pop_frame(s);
