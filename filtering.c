@@ -471,6 +471,7 @@ static int flush_frames(struct filtering_ctx *ctx)
 void filtering_run(struct filtering_ctx *f)
 {
     int ret;
+    int in_err, out_err;
 
     TRACE(f, "filtering packets from %p into %p", f->in_queue, f->out_queue);
 
@@ -530,11 +531,16 @@ void filtering_run(struct filtering_ctx *f)
         }
     }
 
-    if (!ret)
-        ret = AVERROR_EOF;
-    TRACE(f, "mark in & out queue with %s", av_err2str(ret));
-    av_thread_message_queue_set_err_send(f->in_queue,  ret);
-    av_thread_message_queue_set_err_recv(f->out_queue, ret);
+    if (ret < 0 && ret != AVERROR_EOF) {
+        in_err = out_err = ret;
+    } else {
+        in_err = AVERROR_EXIT;
+        out_err = AVERROR_EOF;
+    }
+    TRACE(f, "notify decoder with %s and sink with %s",
+          av_err2str(in_err), av_err2str(out_err));
+    av_thread_message_queue_set_err_send(f->in_queue,  in_err);
+    av_thread_message_queue_set_err_recv(f->out_queue, out_err);
 }
 
 void filtering_free(struct filtering_ctx **fp)
