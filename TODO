@@ -8,7 +8,6 @@
   `-> widht/height rescaler
   `-> force vs enable hw accel so it's using VT even for sw decoding or not
 -> VT
-  `-> QuickdrawPicture weird thing needed?
   `-> kCFAllocatorDefault == NULL?
   `-> play with advanced flags?
 -> make a wrapper pthread function to abort in case of error

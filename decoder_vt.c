@@ -19,9 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define Picture QuickdrawPicture
 #include <VideoToolbox/VideoToolbox.h>
-#undef Picture
 
 #include "decoding.h"
 #include "decoders.h"
