@@ -229,7 +229,7 @@ static int set_context_fields(struct sxplayer_ctx *s)
         s->auto_hwaccel = 0;
     }
 
-    TRACE(s, "avselect:%d skip:%f trim_duration:%f "
+    INFO(s, "avselect:%d skip:%f trim_duration:%f "
           "dist_time_seek_trigger:%f queues:[%d %d %d] filters:'%s'",
           s->avselect, s->skip, s->trim_duration,
           s->dist_time_seek_trigger,
