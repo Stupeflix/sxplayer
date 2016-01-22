@@ -134,15 +134,23 @@ int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info);
  *
  * The returned frame needs to be released using sxplayer_release_frame().
  *
- * A negative t value means prefetching: it starts the decoding thread and
- * returns. Note that the function always returns immediately (it doesn't wait
- * for a frame to be decoded) with a NULL.
+ * Requesting a negative time is equivalent to calling sxplayer_prefetch().
  *
  * If you are working on a player (which typically needs seeking and has a
  * refresh rate architecture), this is the function you are probably interested
  * in.
  */
 struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
+
+/**
+ * Start the decoding threads and return.
+ *
+ * The function always returns immediately (it doesn't wait for a frame to be
+ * decoded).
+ *
+ * Return 0 on success, a negative value on error.
+ */
+int sxplayer_prefetch(struct sxplayer_ctx *s);
 
 /**
  * Get the next frame.

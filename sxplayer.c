@@ -442,6 +442,17 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 }
 #endif
 
+int sxplayer_prefetch(struct sxplayer_ctx *s)
+{
+    int ret;
+
+    TRACE(s, "prefetch requested");
+    ret = configure_context(s);
+    if (ret < 0)
+        return ret;
+    return async_start(s->actx);
+}
+
 struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 {
     int ret;
@@ -462,8 +473,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
 
     if (t64 < 0) {
-        TRACE(s, "prefetch requested");
-        async_start(s->actx);
+        sxplayer_prefetch(s);
         return ret_frame(s, NULL, vt);
     }
 
