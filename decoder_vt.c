@@ -370,7 +370,7 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
     CFRelease(sample_buf);
 
     if (status) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to decode frame (%d)\n", status);
+        LOG_ERROR(dec_ctx, "Failed to decode frame (%d)", status);
         return AVERROR_EXTERNAL;
     }
 
