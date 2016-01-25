@@ -198,10 +198,10 @@ void sxplayer_free(struct sxplayer_ctx **ss)
 {
     struct sxplayer_ctx *s = *ss;
 
-    INFO(s, "destroying context");
-
     if (!s)
         return;
+
+    INFO(s, "destroying context");
 
     async_stop(s->actx);
 
