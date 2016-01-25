@@ -284,7 +284,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
             av_packet_unref(&pkt);
             av_freep(&msg.data);
             if (ret != AVERROR_EOF && ret != AVERROR_EXIT)
-                av_log(ctx, AV_LOG_ERROR, "Unable to send packet to decoder: %s\n", av_err2str(ret));
+                LOG_ERROR(ctx, "Unable to send packet to decoder: %s", av_err2str(ret));
             TRACE(ctx, "can't send pkt to decoder: %s", av_err2str(ret));
             av_thread_message_queue_set_err_recv(ctx->pkt_queue, ret);
             break;
