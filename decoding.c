@@ -292,6 +292,7 @@ void decoding_run(struct decoding_ctx *ctx)
     TRACE(ctx, "notify demuxer with %s and frames queue with %s",
           av_err2str(in_err), av_err2str(out_err));
     av_thread_message_queue_set_err_send(ctx->pkt_queue,    in_err);
+    av_thread_message_flush(ctx->pkt_queue);
     av_thread_message_queue_set_err_recv(ctx->frames_queue, out_err);
 }
 

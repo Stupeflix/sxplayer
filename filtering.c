@@ -540,6 +540,7 @@ void filtering_run(struct filtering_ctx *f)
     TRACE(f, "notify decoder with %s and sink with %s",
           av_err2str(in_err), av_err2str(out_err));
     av_thread_message_queue_set_err_send(f->in_queue,  in_err);
+    av_thread_message_flush(f->in_queue);
     av_thread_message_queue_set_err_recv(f->out_queue, out_err);
 }
 
