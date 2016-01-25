@@ -74,13 +74,13 @@ int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...)
     va_start(ap, key);
 
     if (!o) {
-        fprintf(stderr, "Option '%s' not found\n", key);
+        LOG_ERROR(s, "Option '%s' not found", key);
         ret = AVERROR(EINVAL);
         goto end;
     }
 
     if (s->context_configured) {
-        fprintf(stderr, "Context is already configured, can not set option '%s'\n", key);
+        LOG_ERROR(s, "Context is already configured, can not set option '%s'", key);
         ret = AVERROR(EINVAL);
         goto end;
     }
@@ -167,7 +167,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
         INFO(s, "lib%-12s build:%3d.%3d.%3d runtime:%3d.%3d.%3d",
              fflibs[i].libname, VFMT(bversion), VFMT(rversion));
         if (bversion != rversion)
-            fprintf(stderr, "WARNING: build and runtime version of FFmpeg mismatch\n");
+            LOG_ERROR(s, "WARNING: build and runtime version of FFmpeg mismatch");
     }
 
     av_register_all();
@@ -221,14 +221,14 @@ static int set_context_fields(struct sxplayer_ctx *s)
     int64_t probe_duration;
 
     if (pix_fmts_sx2ff(s->sw_pix_fmt) == AV_PIX_FMT_NONE) {
-        fprintf(stderr, "Invalid software decoding pixel format specified\n");
+        LOG_ERROR(s, "Invalid software decoding pixel format specified");
         return AVERROR(EINVAL);
     }
 
     if (s->auto_hwaccel && (s->filters || s->autorotate || s->export_mvs)) {
-        fprintf(stderr, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
-                "are set but hwaccel is enabled, disabling auto_hwaccel so these "
-                "options are honored\n", s->filters, s->autorotate, s->export_mvs);
+        LOG_ERROR(s, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
+                  "are set but hwaccel is enabled, disabling auto_hwaccel so these "
+                  "options are honored", s->filters, s->autorotate, s->export_mvs);
         s->auto_hwaccel = 0;
     }
 
@@ -293,7 +293,7 @@ static int configure_context(struct sxplayer_ctx *s)
     TRACE(s, "set context fields");
     ret = set_context_fields(s);
     if (ret < 0) {
-        fprintf(stderr, "Unable to set context fields: %s\n", av_err2str(ret));
+        LOG_ERROR(s, "Unable to set context fields: %s", av_err2str(ret));
         free_temp_context_data(s);
         return ret;
     }
@@ -335,7 +335,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     if (sd) {
         ret->mvs = av_memdup(sd->data, sd->size);
         if (!ret->mvs) {
-            fprintf(stderr, "Unable to memdup motion vectors side data\n");
+            LOG_ERROR(s, "Unable to memdup motion vectors side data");
             av_free(ret);
             return NULL;
         }

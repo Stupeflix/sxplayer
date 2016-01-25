@@ -232,7 +232,7 @@ static int setup_filtergraph(struct filtering_ctx *f)
     ret = avfilter_graph_create_filter(&f->buffersrc_ctx, buffersrc,
                                        outputs->name, args, NULL, f->filter_graph);
     if (ret < 0) {
-        fprintf(stderr, "Unable to create buffer filter source\n");
+        LOG_ERROR(f, "Unable to create buffer filter source");
         goto end;
     }
 
@@ -240,7 +240,7 @@ static int setup_filtergraph(struct filtering_ctx *f)
     ret = avfilter_graph_create_filter(&f->buffersink_ctx, buffersink,
                                        inputs->name, NULL, NULL, f->filter_graph);
     if (ret < 0) {
-        fprintf(stderr, "Unable to create buffer filter sink\n");
+        LOG_ERROR(f, "Unable to create buffer filter sink");
         goto end;
     }
 
@@ -313,7 +313,7 @@ static int filter_frame(struct filtering_ctx *f, AVFrame *outframe, AVFrame *inf
 
         ret = av_buffersrc_write_frame(f->buffersrc_ctx, inframe);
         if (ret < 0) {
-            fprintf(stderr, "Error while feeding the filtergraph\n");
+            LOG_ERROR(f, "Error while feeding the filtergraph");
             return ret;
         }
 
@@ -325,7 +325,7 @@ static int filter_frame(struct filtering_ctx *f, AVFrame *outframe, AVFrame *inf
         TRACE(f, "got frame from sink ret=[%s]", av_err2str(ret));
         if (ret < 0) {
             if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF && ret != AVERROR_EXIT)
-                fprintf(stderr, "Error while pulling the frame from the filtergraph\n");
+                LOG_ERROR(f, "Error while pulling the frame from the filtergraph");
         }
     }
 
@@ -415,7 +415,7 @@ int filtering_init(void *log_ctx,
         /* Real Discrete Fourier Transform context (Real to Complex) */
         f->rdft = av_rdft_init(AUDIO_NBITS, DFT_R2C);
         if (!f->rdft) {
-            fprintf(stderr, "Unable to init RDFT context with N=%d\n", AUDIO_NBITS);
+            LOG_ERROR(f, "Unable to init RDFT context with N=%d", AUDIO_NBITS);
             return AVERROR(ENOMEM);
         }
 

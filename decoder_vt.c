@@ -256,7 +256,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         if (decoder_spec)
             CFRelease(decoder_spec);
 
-        fprintf(stderr, "format description creation failed\n");
+        LOG_ERROR(dec_ctx, "format description creation failed");
         return AVERROR_EXTERNAL;
     }
 

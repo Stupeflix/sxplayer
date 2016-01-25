@@ -102,7 +102,7 @@ int decoding_init(void *log_ctx,
         TRACE(ctx, "unable to init %s decoder, fallback on %s decoder",
               dec_def->name, dec_def_fallback->name);
         if (ret != AVERROR_DECODER_NOT_FOUND)
-            fprintf(stderr, "Decoder fallback\n"); // TODO: no fallback here on iOS
+            LOG_ERROR(ctx, "Decoder fallback"); // TODO: no fallback here on iOS
         ret = decoder_init(log_ctx, ctx->decoder, dec_def_fallback, stream, ctx);
     }
     if (ret < 0)

@@ -2,7 +2,6 @@
 -> restore drop ref feature
   `-> new API?
 -> logging cleanup
-  `-> use av_log instead of printf/fprintf
   `-> allow user callback settings
 -> add VT options:
   `-> widht/height rescaler

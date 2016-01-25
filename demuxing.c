@@ -119,7 +119,7 @@ int demuxing_init(void *log_ctx,
     TRACE(ctx, "opening %s", filename);
     ret = avformat_open_input(&ctx->fmt_ctx, filename, NULL, NULL);
     if (ret < 0) {
-        fprintf(stderr, "Unable to open input file '%s'\n", filename);
+        LOG_ERROR(ctx, "Unable to open input file '%s'", filename);
         return ret;
     }
 
@@ -139,15 +139,15 @@ int demuxing_init(void *log_ctx,
     TRACE(ctx, "find stream info");
     ret = avformat_find_stream_info(ctx->fmt_ctx, NULL);
     if (ret < 0) {
-        fprintf(stderr, "Unable to find input stream information\n");
+        LOG_ERROR(ctx, "Unable to find input stream information");
         return ret;
     }
 
     TRACE(ctx, "find best stream");
     ret = av_find_best_stream(ctx->fmt_ctx, media_type, -1, -1, NULL, 0);
     if (ret < 0) {
-        fprintf(stderr, "Unable to find a %s stream in the input file\n",
-                av_get_media_type_string(media_type));
+        LOG_ERROR(ctx, "Unable to find a %s stream in the input file",
+                  av_get_media_type_string(media_type));
         return ret;
     }
     ctx->stream_idx = ret;

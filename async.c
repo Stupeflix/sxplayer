@@ -257,8 +257,8 @@ static void *name##_thread(void *arg)                                           
             pthread_attr_destroy(attrp);                                        \
         if (ret) {                                                              \
             const int err = AVERROR(ret);                                       \
-            fprintf(stderr, "Unable to start " AV_STRINGIFY(name)               \
-                   " thread: %s\n", av_err2str(err));                           \
+            LOG_ERROR(actx, "Unable to start " AV_STRINGIFY(name)               \
+                      " thread: %s", av_err2str(err));                          \
             return err;                                                         \
         }                                                                       \
         actx->name##_started = 1;                                               \
@@ -272,8 +272,8 @@ static void *name##_thread(void *arg)                                           
         TRACE(actx, "joining " AV_STRINGIFY(name) " thread");                   \
         int ret = pthread_join(actx->name##_tid, NULL);                         \
         if (ret)                                                                \
-            fprintf(stderr, "Unable to join " AV_STRINGIFY(name)                \
-                   ": %s\n", av_err2str(AVERROR(ret)));                         \
+            LOG_ERROR(actx, "Unable to join " AV_STRINGIFY(name) ": %s",        \
+                      av_err2str(AVERROR(ret)));                                \
         TRACE(actx, AV_STRINGIFY(name) " thread joined");                       \
         actx->name##_started = 0;                                               \
     }                                                                           \

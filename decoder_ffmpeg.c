@@ -79,7 +79,7 @@ static int decode_packet(struct decoder_ctx *ctx, const AVPacket *pkt, int *got_
     }
 
     if (ret < 0) {
-        fprintf(stderr, "Error decoding packet: %s\n", av_err2str(ret));
+        LOG_ERROR(ctx, "Error decoding packet: %s", av_err2str(ret));
         av_frame_free(&dec_frame);
         return ret;
     }

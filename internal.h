@@ -40,6 +40,7 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...);
 #define DO_LOG(c, log_level, ...) do_log((c)->log_ctx, log_level, __FUNCTION__, __VA_ARGS__)
 
 #define INFO(c, ...)  DO_LOG(c, AV_LOG_INFO, __VA_ARGS__)
+#define LOG_ERROR(c, ...) DO_LOG(c, AV_LOG_ERROR, __VA_ARGS__)
 
 #if ENABLE_DBG
 #define TRACE(c, ...) do { DO_LOG(c, AV_LOG_INFO, __VA_ARGS__); fflush(stdout); } while (0)
