@@ -138,7 +138,7 @@ static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
     ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);
     if (ret < 0) {
         if (ret != AVERROR_EOF && ret != AVERROR_EXIT)
-            av_log(ctx, AV_LOG_ERROR, "Unable to push frame: %s\n", av_err2str(ret));
+            LOG_ERROR(ctx, "Unable to push frame: %s", av_err2str(ret));
         av_thread_message_queue_set_err_recv(ctx->frames_queue, ret);
     }
     return ret;
