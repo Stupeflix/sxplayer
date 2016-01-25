@@ -61,22 +61,22 @@ struct filtering_ctx {
 
 struct filtering_ctx *filtering_alloc(void)
 {
-    struct filtering_ctx *f = av_mallocz(sizeof(*f));
-    if (!f)
+    struct filtering_ctx *ctx = av_mallocz(sizeof(*ctx));
+    if (!ctx)
         return NULL;
-    f->avctx = avcodec_alloc_context3(NULL);
-    if (!f->avctx) {
-        av_freep(&f);
+    ctx->avctx = avcodec_alloc_context3(NULL);
+    if (!ctx->avctx) {
+        av_freep(&ctx);
         return NULL;
     }
-    return f;
+    return ctx;
 }
 
 /**
  * Convert an audio frame (PCM data) to a textured video frame with waves and
  * FFT lines
  */
-static void audio_frame_to_sound_texture(struct filtering_ctx *f, AVFrame *dst_video,
+static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst_video,
                                          const AVFrame *audio_src)
 {
     int i, j, ch;
@@ -101,11 +101,11 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *f, AVFrame *dst_v
         const int lz = dst_video->linesize[0];
         float *fft_dst = (float *)(dst_video->data[0] + (AUDIO_NBCHANNELS + ch) * lz);
         const float *samples_src = (const float *)audio_src->extended_data[ch];
-        float *bins = f->rdft_data[ch];
+        float *bins = ctx->rdft_data[ch];
 
         /* Apply window function to input samples */
         for (i = 0; i < nb_samples; i++)
-            bins[i] = samples_src[i] * f->window_func_lut[i];
+            bins[i] = samples_src[i] * ctx->window_func_lut[i];
 
         /* Run transform.
          *
@@ -118,7 +118,7 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *f, AVFrame *dst_v
          * are assumed as such. This trick allowed an in-place processing for
          * the N samples into N+1 complex.
          */
-        av_rdft_calc(f->rdft, bins);
+        av_rdft_calc(ctx->rdft, bins);
 
         /* Get magnitude of frequency bins and copy result into texture
          *
@@ -146,7 +146,7 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *f, AVFrame *dst_v
             const int nb_identical_values = source_step << 1;
             const int nb_dest_pixels = width / nb_identical_values;
 
-            TRACE(f, "line %2d->%2d: %3d different pixels (copied %3dx) as destination, step source: %d",
+            TRACE(ctx, "line %2d->%2d: %3d different pixels (copied %3dx) as destination, step source: %d",
                   source_line, source_line + AUDIO_NBCHANNELS, nb_dest_pixels, nb_identical_values, source_step);
 
             for (j = 0; j < nb_dest_pixels; j++) {
@@ -166,20 +166,20 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *f, AVFrame *dst_v
  * request a pixel format we want, and let libavfilter insert the necessary
  * scaling filter (typically, an automatic conversion from yuv420p to rgb32).
  */
-static int setup_filtergraph(struct filtering_ctx *f)
+static int setup_filtergraph(struct filtering_ctx *ctx)
 {
     int ret = 0;
     char args[512];
     //AVRational framerate;
     AVFilter *buffersrc, *buffersink;
     AVFilterInOut *outputs, *inputs;
-    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(f->last_frame_format);
-    const AVCodecContext *avctx = f->avctx;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
+    const AVCodecContext *avctx = ctx->avctx;
 
     if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
         return 0;
 
-    avfilter_graph_free(&f->filter_graph);
+    avfilter_graph_free(&ctx->filter_graph);
 
     outputs = avfilter_inout_alloc();
     inputs  = avfilter_inout_alloc();
@@ -187,11 +187,11 @@ static int setup_filtergraph(struct filtering_ctx *f)
     buffersrc  = avfilter_get_by_name(avctx->codec_type == AVMEDIA_TYPE_VIDEO ? "buffer" : "abuffer");
     buffersink = avfilter_get_by_name(avctx->codec_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
 
-    f->filter_graph = avfilter_graph_alloc();
+    ctx->filter_graph = avfilter_graph_alloc();
 
-    av_opt_set_int(f->filter_graph, "threads", 1, 0);
+    av_opt_set_int(ctx->filter_graph, "threads", 1, 0);
 
-    if (!inputs || !outputs || !f->filter_graph) {
+    if (!inputs || !outputs || !ctx->filter_graph) {
         ret = AVERROR(ENOMEM);
         goto end;
     }
@@ -208,7 +208,7 @@ static int setup_filtergraph(struct filtering_ctx *f)
         const AVRational time_base = AV_TIME_BASE_Q;
         snprintf(args, sizeof(args),
                  "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
-                 avctx->width, avctx->height, av_get_pix_fmt_name(f->last_frame_format),
+                 avctx->width, avctx->height, av_get_pix_fmt_name(ctx->last_frame_format),
                  time_base.num, time_base.den,
                  avctx->sample_aspect_ratio.num, avctx->sample_aspect_ratio.den);
     } else {
@@ -227,45 +227,45 @@ static int setup_filtergraph(struct filtering_ctx *f)
         av_strlcatf(args, sizeof(args), ":frame_rate=%d/%d", framerate.num, framerate.den);
 #endif
 
-    TRACE(f, "graph buffer source args: %s", args);
+    TRACE(ctx, "graph buffer source args: %s", args);
 
-    ret = avfilter_graph_create_filter(&f->buffersrc_ctx, buffersrc,
-                                       outputs->name, args, NULL, f->filter_graph);
+    ret = avfilter_graph_create_filter(&ctx->buffersrc_ctx, buffersrc,
+                                       outputs->name, args, NULL, ctx->filter_graph);
     if (ret < 0) {
-        LOG_ERROR(f, "Unable to create buffer filter source");
+        LOG_ERROR(ctx, "Unable to create buffer filter source");
         goto end;
     }
 
     /* create buffer filter sink (where we pull the frame) */
-    ret = avfilter_graph_create_filter(&f->buffersink_ctx, buffersink,
-                                       inputs->name, NULL, NULL, f->filter_graph);
+    ret = avfilter_graph_create_filter(&ctx->buffersink_ctx, buffersink,
+                                       inputs->name, NULL, NULL, ctx->filter_graph);
     if (ret < 0) {
-        LOG_ERROR(f, "Unable to create buffer filter sink");
+        LOG_ERROR(ctx, "Unable to create buffer filter sink");
         goto end;
     }
 
     /* define the output of the graph */
-    snprintf(args, sizeof(args), "%s", f->filters ? f->filters : "");
+    snprintf(args, sizeof(args), "%s", ctx->filters ? ctx->filters : "");
     if (avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
-        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(f->last_frame_format);
-        const enum AVPixelFormat sw_pix_fmt = pix_fmts_sx2ff(f->sw_pix_fmt);
-        const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? sw_pix_fmt : f->last_frame_format;
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
+        const enum AVPixelFormat sw_pix_fmt = pix_fmts_sx2ff(ctx->sw_pix_fmt);
+        const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? sw_pix_fmt : ctx->last_frame_format;
         av_strlcatf(args, sizeof(args), "%sformat=%s", *args ? "," : "", av_get_pix_fmt_name(pix_fmt));
     } else {
         av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
     }
 
-    TRACE(f, "graph buffer sink args: %s", args);
+    TRACE(ctx, "graph buffer sink args: %s", args);
 
     /* create our filter graph */
-    inputs->filter_ctx  = f->buffersink_ctx;
-    outputs->filter_ctx = f->buffersrc_ctx;
+    inputs->filter_ctx  = ctx->buffersink_ctx;
+    outputs->filter_ctx = ctx->buffersrc_ctx;
 
-    ret = avfilter_graph_parse_ptr(f->filter_graph, args, &inputs, &outputs, NULL);
+    ret = avfilter_graph_parse_ptr(ctx->filter_graph, args, &inputs, &outputs, NULL);
     if (ret < 0)
         goto end;
 
-    ret = avfilter_graph_config(f->filter_graph, NULL);
+    ret = avfilter_graph_config(ctx->filter_graph, NULL);
     if (ret < 0)
         goto end;
 
@@ -275,7 +275,7 @@ end:
     return ret;
 }
 
-static int filter_frame(struct filtering_ctx *f, AVFrame *outframe, AVFrame *inframe)
+static int filter_frame(struct filtering_ctx *ctx, AVFrame *outframe, AVFrame *inframe)
 {
     int ret = 0;
 
@@ -283,23 +283,23 @@ static int filter_frame(struct filtering_ctx *f, AVFrame *outframe, AVFrame *inf
      * frame to see what pixel format is getting decoded (no other way
      * with hardware acceleration apparently) */
     if (inframe) {
-        TRACE(f, "input %s frame @ ts=%s",
-            f->avctx->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(inframe->format)
+        TRACE(ctx, "input %s frame @ ts=%s",
+            ctx->avctx->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(inframe->format)
                                                        : av_get_sample_fmt_name(inframe->format),
             PTS2TIMESTR(inframe->pts));
 
         // XXX: check width/height changes?
-        if (f->last_frame_format != inframe->format) {
-            f->last_frame_format = inframe->format;
-            ret = setup_filtergraph(f);
+        if (ctx->last_frame_format != inframe->format) {
+            ctx->last_frame_format = inframe->format;
+            ret = setup_filtergraph(ctx);
             if (ret < 0)
                 return ret;
         }
     }
 
-    AVFrame *filtered_frame = f->avctx->codec_type == AVMEDIA_TYPE_AUDIO ? f->tmp_audio_frame : outframe;
+    AVFrame *filtered_frame = ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO ? ctx->tmp_audio_frame : outframe;
 
-    if (!f->filter_graph) {
+    if (!ctx->filter_graph) {
         if (!inframe)
             return AVERROR_EOF;
         av_frame_move_ref(filtered_frame, inframe);
@@ -307,13 +307,13 @@ static int filter_frame(struct filtering_ctx *f, AVFrame *outframe, AVFrame *inf
 
         /* Push */
         if (inframe)
-            TRACE(f, "push frame with ts=%s into filtergraph", PTS2TIMESTR(inframe->pts));
+            TRACE(ctx, "push frame with ts=%s into filtergraph", PTS2TIMESTR(inframe->pts));
         else
-            TRACE(f, "push null frame into filtergraph");
+            TRACE(ctx, "push null frame into filtergraph");
 
-        ret = av_buffersrc_write_frame(f->buffersrc_ctx, inframe);
+        ret = av_buffersrc_write_frame(ctx->buffersrc_ctx, inframe);
         if (ret < 0) {
-            LOG_ERROR(f, "Error while feeding the filtergraph");
+            LOG_ERROR(ctx, "Error while feeding the filtergraph");
             return ret;
         }
 
@@ -321,21 +321,21 @@ static int filter_frame(struct filtering_ctx *f, AVFrame *outframe, AVFrame *inf
         av_frame_unref(inframe);
 
         /* Pull */
-        ret = av_buffersink_get_frame(f->buffersink_ctx, filtered_frame);
-        TRACE(f, "got frame from sink ret=[%s]", av_err2str(ret));
+        ret = av_buffersink_get_frame(ctx->buffersink_ctx, filtered_frame);
+        TRACE(ctx, "got frame from sink ret=[%s]", av_err2str(ret));
         if (ret < 0) {
             if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF && ret != AVERROR_EXIT)
-                LOG_ERROR(f, "Error while pulling the frame from the filtergraph");
+                LOG_ERROR(ctx, "Error while pulling the frame from the filtergraph");
         }
     }
 
-    if (f->avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
-        audio_frame_to_sound_texture(f, f->audio_texture_frame, filtered_frame);
+    if (ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+        audio_frame_to_sound_texture(ctx, ctx->audio_texture_frame, filtered_frame);
         av_frame_unref(filtered_frame);
-        av_frame_ref(outframe, f->audio_texture_frame);
+        av_frame_ref(outframe, ctx->audio_texture_frame);
     }
 
-    TRACE(f, "output %s frame @ ts=%s",
+    TRACE(ctx, "output %s frame @ ts=%s",
           av_get_pix_fmt_name(outframe->format), PTS2TIMESTR(outframe->pts));
 
     return ret;
@@ -367,7 +367,7 @@ static AVFrame *get_audio_frame(void)
 }
 
 int filtering_init(void *log_ctx,
-                   struct filtering_ctx *f,
+                   struct filtering_ctx *ctx,
                    AVThreadMessageQueue *in_queue,
                    AVThreadMessageQueue *out_queue,
                    const AVCodecContext *avctx,
@@ -375,60 +375,60 @@ int filtering_init(void *log_ctx,
                    int sw_pix_fmt,
                    int64_t max_pts)
 {
-    f->log_ctx = log_ctx;
-    f->in_queue  = in_queue;
-    f->out_queue = out_queue;
-    f->sw_pix_fmt = sw_pix_fmt;
-    f->max_pts = max_pts;
+    ctx->log_ctx = log_ctx;
+    ctx->in_queue  = in_queue;
+    ctx->out_queue = out_queue;
+    ctx->sw_pix_fmt = sw_pix_fmt;
+    ctx->max_pts = max_pts;
 
     if (filters) {
-        f->filters = av_strdup(filters);
-        if (!f->filters)
+        ctx->filters = av_strdup(filters);
+        if (!ctx->filters)
             return AVERROR(ENOMEM);
     }
 
-    avcodec_copy_context(f->avctx, avctx);
+    avcodec_copy_context(ctx->avctx, avctx);
 
     if (avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
-        f->audio_texture_frame = get_audio_frame();
-        if (!f->audio_texture_frame)
+        ctx->audio_texture_frame = get_audio_frame();
+        if (!ctx->audio_texture_frame)
             return AVERROR(ENOMEM);
-        f->tmp_audio_frame = av_frame_alloc();
-        if (!f->tmp_audio_frame)
+        ctx->tmp_audio_frame = av_frame_alloc();
+        if (!ctx->tmp_audio_frame)
             return AVERROR(ENOMEM);
     }
 
-    f->filtered_frame = av_frame_alloc();
-    if (!f->filtered_frame)
+    ctx->filtered_frame = av_frame_alloc();
+    if (!ctx->filtered_frame)
         return AVERROR(ENOMEM);
 
     if (avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
         int i;
 
         /* Pre-calc windowing function */
-        f->window_func_lut = av_malloc_array(AUDIO_NBSAMPLES, sizeof(*f->window_func_lut));
-        if (!f->window_func_lut)
+        ctx->window_func_lut = av_malloc_array(AUDIO_NBSAMPLES, sizeof(*ctx->window_func_lut));
+        if (!ctx->window_func_lut)
             return AVERROR(ENOMEM);
         for (i = 0; i < AUDIO_NBSAMPLES; i++)
-            f->window_func_lut[i] = .5f * (1 - cos(2*M_PI*i / (AUDIO_NBSAMPLES-1)));
+            ctx->window_func_lut[i] = .5f * (1 - cos(2*M_PI*i / (AUDIO_NBSAMPLES-1)));
 
         /* Real Discrete Fourier Transform context (Real to Complex) */
-        f->rdft = av_rdft_init(AUDIO_NBITS, DFT_R2C);
-        if (!f->rdft) {
-            LOG_ERROR(f, "Unable to init RDFT context with N=%d", AUDIO_NBITS);
+        ctx->rdft = av_rdft_init(AUDIO_NBITS, DFT_R2C);
+        if (!ctx->rdft) {
+            LOG_ERROR(ctx, "Unable to init RDFT context with N=%d", AUDIO_NBITS);
             return AVERROR(ENOMEM);
         }
 
-        f->rdft_data[0] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*f->rdft_data[0]));
-        f->rdft_data[1] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*f->rdft_data[1]));
-        if (!f->rdft_data[0] || !f->rdft_data[1])
+        ctx->rdft_data[0] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*ctx->rdft_data[0]));
+        ctx->rdft_data[1] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*ctx->rdft_data[1]));
+        if (!ctx->rdft_data[0] || !ctx->rdft_data[1])
             return AVERROR(ENOMEM);
     }
 
     return 0;
 }
 
-static int send_frame(struct filtering_ctx *f, AVFrame *frame)
+static int send_frame(struct filtering_ctx *ctx, AVFrame *frame)
 {
     int ret;
     AVFrame *out_frame = av_frame_clone(frame); // XXX
@@ -441,8 +441,8 @@ static int send_frame(struct filtering_ctx *f, AVFrame *frame)
     if (!out_frame)
         return AVERROR(ENOMEM);
 
-    TRACE(f, "sending filtered frame to the sink");
-    ret = av_thread_message_queue_send(f->out_queue, &msg, 0);
+    TRACE(ctx, "sending filtered frame to the sink");
+    ret = av_thread_message_queue_send(ctx->out_queue, &msg, 0);
     if (ret < 0)
         av_frame_free(&out_frame);
     return ret;
@@ -464,36 +464,36 @@ static int flush_frames(struct filtering_ctx *ctx)
     return ret;
 }
 
-void filtering_run(struct filtering_ctx *f)
+void filtering_run(struct filtering_ctx *ctx)
 {
     int ret;
     int in_err, out_err;
 
-    TRACE(f, "filtering packets from %p into %p", f->in_queue, f->out_queue);
+    TRACE(ctx, "filtering packets from %p into %p", ctx->in_queue, ctx->out_queue);
 
     // we want to force the reconstruction of the filtergraph
-    f->last_frame_format = AV_PIX_FMT_NONE;
+    ctx->last_frame_format = AV_PIX_FMT_NONE;
 
     for (;;) {
         AVFrame *frame;
         struct message msg;
 
-        TRACE(f, "fetching a frame from the inqueue");
-        ret = av_thread_message_queue_recv(f->in_queue, &msg, 0);
+        TRACE(ctx, "fetching a frame from the inqueue");
+        ret = av_thread_message_queue_recv(ctx->in_queue, &msg, 0);
         if (ret < 0) {
-            TRACE(f, "unable to fetch a frame from the inqueue: %s", av_err2str(ret));
+            TRACE(ctx, "unable to fetch a frame from the inqueue: %s", av_err2str(ret));
 
             // Only valid reason to flush: when there is no packet remaining in
             // the input queue
             if (ret == AVERROR_EOF)
-                ret = flush_frames(f);
+                ret = flush_frames(ctx);
             break;
         }
 
         if (msg.type == MSG_SEEK) {
-            TRACE(f, "message is a seek, forward to out queue");
-            //flush_frames(f);
-            ret = av_thread_message_queue_send(f->out_queue, &msg, 0);
+            TRACE(ctx, "message is a seek, forward to out queue");
+            //flush_frames(ctx);
+            ret = av_thread_message_queue_send(ctx->out_queue, &msg, 0);
             if (ret < 0) {
                 av_freep(&msg.data);
                 break;
@@ -503,26 +503,26 @@ void filtering_run(struct filtering_ctx *f)
 
         frame = msg.data;
 
-        TRACE(f, "filtering frame with ts=%s", PTS2TIMESTR(frame->pts));
+        TRACE(ctx, "filtering frame with ts=%s", PTS2TIMESTR(frame->pts));
 
         // TODO: replace with a trim filter in libavfilter (check if hw accelerated
         // filters work)
-        if (f->max_pts != AV_NOPTS_VALUE && frame->pts >= f->max_pts) {
+        if (ctx->max_pts != AV_NOPTS_VALUE && frame->pts >= ctx->max_pts) {
             av_frame_free(&frame);
-            TRACE(f, "reached trim duration");
+            TRACE(ctx, "reached trim duration");
             break;
         }
 
-        ret = filter_frame(f, f->filtered_frame, frame);
+        ret = filter_frame(ctx, ctx->filtered_frame, frame);
         av_frame_free(&frame);
         if (ret < 0) {
-            TRACE(f, "unable to filter frame: %s", av_err2str(ret));
+            TRACE(ctx, "unable to filter frame: %s", av_err2str(ret));
             break;
         }
 
-        ret = send_frame(f, f->filtered_frame);
+        ret = send_frame(ctx, ctx->filtered_frame);
         if (ret < 0) {
-            TRACE(f, "unable to send frame: %s", av_err2str(ret));
+            TRACE(ctx, "unable to send frame: %s", av_err2str(ret));
             break;
         }
     }
@@ -533,34 +533,34 @@ void filtering_run(struct filtering_ctx *f)
         in_err = AVERROR_EXIT;
         out_err = AVERROR_EOF;
     }
-    TRACE(f, "notify decoder with %s and sink with %s",
+    TRACE(ctx, "notify decoder with %s and sink with %s",
           av_err2str(in_err), av_err2str(out_err));
-    av_thread_message_queue_set_err_send(f->in_queue,  in_err);
-    av_thread_message_flush(f->in_queue);
-    av_thread_message_queue_set_err_recv(f->out_queue, out_err);
+    av_thread_message_queue_set_err_send(ctx->in_queue,  in_err);
+    av_thread_message_flush(ctx->in_queue);
+    av_thread_message_queue_set_err_recv(ctx->out_queue, out_err);
 }
 
 void filtering_free(struct filtering_ctx **fp)
 {
-    struct filtering_ctx *f = *fp;
+    struct filtering_ctx *ctx = *fp;
 
-    if (!f)
+    if (!ctx)
         return;
 
-    if (f->avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
-        av_frame_free(&f->audio_texture_frame);
-        av_frame_free(&f->tmp_audio_frame);
-        av_freep(&f->window_func_lut);
-        av_freep(&f->rdft_data[0]);
-        av_freep(&f->rdft_data[1]);
-        if (f->rdft) {
-            av_rdft_end(f->rdft);
-            f->rdft = NULL;
+    if (ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+        av_frame_free(&ctx->audio_texture_frame);
+        av_frame_free(&ctx->tmp_audio_frame);
+        av_freep(&ctx->window_func_lut);
+        av_freep(&ctx->rdft_data[0]);
+        av_freep(&ctx->rdft_data[1]);
+        if (ctx->rdft) {
+            av_rdft_end(ctx->rdft);
+            ctx->rdft = NULL;
         }
     }
-    av_frame_free(&f->filtered_frame);
-    avfilter_graph_free(&f->filter_graph);
-    avcodec_free_context(&f->avctx);
-    av_freep(&f->filters);
+    av_frame_free(&ctx->filtered_frame);
+    avfilter_graph_free(&ctx->filter_graph);
+    avcodec_free_context(&ctx->avctx);
+    av_freep(&ctx->filters);
     av_freep(fp);
 }
