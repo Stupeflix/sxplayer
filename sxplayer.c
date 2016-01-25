@@ -112,6 +112,7 @@ static void free_context(struct sxplayer_ctx *s)
     if (!s)
         return;
     av_freep(&s->filename);
+    av_freep(&s->log_ctx);
     av_freep(&s->logname);
     av_freep(&s);
 }
