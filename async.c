@@ -127,7 +127,6 @@ static int initialize_modules(struct async_context *actx,
     int ret;
     char *filters = av_strdup(s->filters);
 
-    // XXX filters memleak
     if (!filters && s->filters)
         return AVERROR(ENOMEM);
 
@@ -138,7 +137,7 @@ static int initialize_modules(struct async_context *actx,
                         s->filename, s->avselect,
                         s->pkt_skip_mod);
     if (ret < 0)
-        return ret;
+        goto end;
 
     /* Decoder */
     ret = decoding_init(actx->log_ctx,
@@ -148,7 +147,7 @@ static int initialize_modules(struct async_context *actx,
                         s->auto_hwaccel,
                         s->export_mvs);
     if (ret < 0)
-        return ret;
+        goto end;
 
     /* Filterer */
     if (s->autorotate) {
@@ -171,9 +170,11 @@ static int initialize_modules(struct async_context *actx,
                          decoding_get_avctx(actx->decoder),
                          filters, s->sw_pix_fmt, max_pts);
     if (ret < 0)
-        return ret;
+        goto end;
 
-    return 0;
+end:
+    av_freep(&filters);
+    return ret;
 }
 
 int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
