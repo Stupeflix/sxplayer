@@ -462,7 +462,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     int64_t diff;
     const int64_t t64 = TIME2INT64(t);
 
-    INFO(s, " >>> get frame for t=%s (user exact value:%f)", PTS2TIMESTR(t64), t);
+    INFO(s, " >>> get frame for t=%g", t);
 
 #if SYNTH_FRAME
     return ret_synth_frame(s, t);
