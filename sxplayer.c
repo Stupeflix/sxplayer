@@ -147,7 +147,11 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     if (!s)
         return NULL;
 
-    s->log_ctx = s;
+    s->log_ctx = av_mallocz(sizeof(*s->log_ctx));
+    if (!s->log_ctx)
+        goto fail;
+
+    s->log_ctx->avlog = s;
     s->filename = av_strdup(filename);
     s->logname  = av_asprintf("sxplayer:%s", av_basename(filename));
     if (!s->filename || !s->logname)

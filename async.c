@@ -131,8 +131,6 @@ static int initialize_modules(struct async_context *actx,
     if (!filters && s->filters)
         return AVERROR(ENOMEM);
 
-    actx->log_ctx = s->log_ctx;
-
     /* Demuxer */
     ret = demuxing_init(actx->log_ctx,
                         actx->demuxer,
@@ -182,6 +180,7 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
 {
     int ret;
 
+    actx->log_ctx = s->log_ctx;
     actx->thread_stack_size = s->thread_stack_size;
 
     TRACE(actx, "allocate queues");

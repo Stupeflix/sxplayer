@@ -57,9 +57,14 @@ void set_thread_name(const char *name);
 #define TIME2INT64(d) llrint((d) * av_q2d(av_inv_q(AV_TIME_BASE_Q)))
 #define PTS2TIMESTR(t64) av_ts2timestr(t64, &AV_TIME_BASE_Q)
 
+struct log_ctx {
+    void *avlog;
+    int64_t last_time;
+};
+
 struct sxplayer_ctx {
     const AVClass *class;                   // necessary for the AVOption mechanism
-    void *log_ctx;
+    struct log_ctx *log_ctx;
     char *filename;                         // input filename
     char *logname;
 

@@ -24,16 +24,22 @@
 
 void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
 {
+    struct log_ctx *ctx = log_ctx;
     char logline[512];
     va_list arg_list;
+    int64_t t = av_gettime();
+
+    if (!ctx->last_time)
+        ctx->last_time = t;
 
     va_start(arg_list, fmt);
     vsnprintf(logline, sizeof(logline), fmt, arg_list);
     va_end(arg_list);
 
 #if ENABLE_TIMINGS
-    av_log(log_ctx, log_level, "%s %f: %s\n", fn, av_gettime() / 1000000., logline);
+    av_log(ctx->avlog, log_level, "[%f] %s: %s\n", (t - ctx->last_time) / 1000000., fn, logline);
+    ctx->last_time = t;
 #else
-    av_log(log_ctx, log_level, "%s: %s\n", fn, logline);
+    av_log(ctx->avlog, log_level, "%s: %s\n", fn, logline);
 #endif
 }
