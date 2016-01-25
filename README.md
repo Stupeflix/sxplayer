@@ -11,7 +11,7 @@ amplitudes and frequencies information.
 
 ## License
 
-LGPL v2.1, see `COPYING.LGPLv2.1`.
+LGPL v2.1, see `LICENSE`.
 
 ## Compilation, installation
 
