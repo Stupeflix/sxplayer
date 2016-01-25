@@ -33,7 +33,6 @@
 // TODO: add logging user callback
 #define ENABLE_INFO 0
 #define ENABLE_DBG 0
-#define ENABLE_TIMINGS 0
 
 void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...);
 

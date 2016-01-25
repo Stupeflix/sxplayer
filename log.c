@@ -36,10 +36,6 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
     vsnprintf(logline, sizeof(logline), fmt, arg_list);
     va_end(arg_list);
 
-#if ENABLE_TIMINGS
     av_log(ctx->avlog, log_level, "[%f] %s: %s\n", (t - ctx->last_time) / 1000000., fn, logline);
     ctx->last_time = t;
-#else
-    av_log(ctx->avlog, log_level, "%s: %s\n", fn, logline);
-#endif
 }
