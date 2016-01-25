@@ -21,17 +21,11 @@
 #include "internal.h"
 #include "decoders.h"
 
-static const AVClass decoder_context_class = {
-    .class_name = "decoder",
-    .item_name  = av_default_item_name,
-};
-
 struct decoder_ctx *decoder_alloc(void)
 {
     struct decoder_ctx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
         return NULL;
-    ctx->class = &decoder_context_class;
     ctx->avctx = avcodec_alloc_context3(NULL);
     if (!ctx->avctx) {
         av_freep(&ctx);
@@ -40,12 +34,15 @@ struct decoder_ctx *decoder_alloc(void)
     return ctx;
 }
 
-int decoder_init(struct decoder_ctx *ctx,
+int decoder_init(void *log_ctx,
+                 struct decoder_ctx *ctx,
                  const struct decoder *dec,
                  const AVStream *stream,
                  struct decoding_ctx *decoding_ctx)
 {
     int ret;
+
+    ctx->log_ctx = log_ctx;
 
     TRACE(ctx, "try to initialize private decoder");
 

@@ -28,7 +28,8 @@
 
 struct decoding_ctx *decoding_alloc(void);
 
-int decoding_init(struct decoding_ctx *ctx,
+int decoding_init(void *log_ctx,
+                  struct decoding_ctx *ctx,
                   AVThreadMessageQueue *pkt_queue,
                   AVThreadMessageQueue *frames_queue,
                   const AVStream *stream,

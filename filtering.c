@@ -37,7 +37,7 @@
 #define AUDIO_NBCHANNELS 2
 
 struct filtering_ctx {
-    const AVClass *class;
+    void *log_ctx;
 
     AVThreadMessageQueue *in_queue;
     AVThreadMessageQueue *out_queue;
@@ -59,17 +59,11 @@ struct filtering_ctx {
     FFTSample *rdft_data[AUDIO_NBCHANNELS]; // real discrete fourier transform data for each channel
 };
 
-static const AVClass filtering_class = {
-    .class_name = "filtering",
-    .item_name  = av_default_item_name,
-};
-
 struct filtering_ctx *filtering_alloc(void)
 {
     struct filtering_ctx *f = av_mallocz(sizeof(*f));
     if (!f)
         return NULL;
-    f->class = &filtering_class;
     f->avctx = avcodec_alloc_context3(NULL);
     if (!f->avctx) {
         av_freep(&f);
@@ -372,7 +366,8 @@ static AVFrame *get_audio_frame(void)
     return frame;
 }
 
-int filtering_init(struct filtering_ctx *f,
+int filtering_init(void *log_ctx,
+                   struct filtering_ctx *f,
                    AVThreadMessageQueue *in_queue,
                    AVThreadMessageQueue *out_queue,
                    const AVCodecContext *avctx,
@@ -380,6 +375,7 @@ int filtering_init(struct filtering_ctx *f,
                    int sw_pix_fmt,
                    int64_t max_pts)
 {
+    f->log_ctx = log_ctx;
     f->in_queue  = in_queue;
     f->out_queue = out_queue;
     f->sw_pix_fmt = sw_pix_fmt;

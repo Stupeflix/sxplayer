@@ -29,7 +29,7 @@
 #include "internal.h"
 
 struct demuxing_ctx {
-    const AVClass *class;
+    void *log_ctx;
     pthread_mutex_t lock;
     int pkt_skip_mod;
     int64_t request_seek;
@@ -40,17 +40,11 @@ struct demuxing_ctx {
     AVThreadMessageQueue *pkt_queue;
 };
 
-static const AVClass demuxing_class = {
-    .class_name = "demuxing",
-    .item_name  = av_default_item_name,
-};
-
 struct demuxing_ctx *demuxing_alloc(void)
 {
     struct demuxing_ctx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
         return NULL;
-    ctx->class = &demuxing_class;
     return ctx;
 }
 
@@ -97,7 +91,8 @@ const AVStream *demuxing_get_stream(const struct demuxing_ctx *ctx)
     return ctx->stream;
 }
 
-int demuxing_init(struct demuxing_ctx *ctx,
+int demuxing_init(void *log_ctx,
+                  struct demuxing_ctx *ctx,
                   AVThreadMessageQueue *pkt_queue,
                   const char *filename, int avselect,
                   int pkt_skip_mod)
@@ -107,6 +102,8 @@ int demuxing_init(struct demuxing_ctx *ctx,
     int ret = pthread_mutex_init(&ctx->lock, NULL);
     if (ret < 0)
         return AVERROR(ret);
+
+    ctx->log_ctx = log_ctx;
 
     ctx->pkt_queue = pkt_queue;
     ctx->pkt_skip_mod = pkt_skip_mod;

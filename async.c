@@ -36,7 +36,7 @@
 #include "filtering.h"
 
 struct async_context {
-    const AVClass *class;
+    void *log_ctx;
 
     struct demuxing_ctx  *demuxer;
     struct decoding_ctx  *decoder;
@@ -58,17 +58,11 @@ struct async_context {
     int thread_stack_size;
 };
 
-static const AVClass async_context_class = {
-    .class_name = "async_context",
-    .item_name  = av_default_item_name,
-};
-
 struct async_context *async_alloc_context(void)
 {
     struct async_context *actx = av_mallocz(sizeof(*actx));
     if (!actx)
         return NULL;
-    actx->class = &async_context_class;
     return actx;
 }
 
@@ -137,8 +131,11 @@ static int initialize_modules(struct async_context *actx,
     if (!filters && s->filters)
         return AVERROR(ENOMEM);
 
+    actx->log_ctx = s->log_ctx;
+
     /* Demuxer */
-    ret = demuxing_init(actx->demuxer,
+    ret = demuxing_init(actx->log_ctx,
+                        actx->demuxer,
                         actx->pkt_queue,
                         s->filename, s->avselect,
                         s->pkt_skip_mod);
@@ -146,7 +143,8 @@ static int initialize_modules(struct async_context *actx,
         return ret;
 
     /* Decoder */
-    ret = decoding_init(actx->decoder,
+    ret = decoding_init(actx->log_ctx,
+                        actx->decoder,
                         actx->pkt_queue, actx->frames_queue,
                         demuxing_get_stream(actx->demuxer),
                         s->auto_hwaccel,
@@ -169,7 +167,8 @@ static int initialize_modules(struct async_context *actx,
 
     const int64_t max_pts = s->trim_duration64 >= 0 ? s->skip64 + s->trim_duration64
                                                     : AV_NOPTS_VALUE;
-    ret = filtering_init(actx->filterer,
+    ret = filtering_init(actx->log_ctx,
+                         actx->filterer,
                          actx->frames_queue, actx->sink_queue,
                          decoding_get_avctx(actx->decoder),
                          filters, s->sw_pix_fmt, max_pts);
@@ -223,10 +222,11 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
 #define MODULE_THREAD_FUNC(name, action)                                        \
 static void *name##_thread(void *arg)                                           \
 {                                                                               \
+    struct async_context *actx = arg;                                           \
     set_thread_name("sxp-" AV_STRINGIFY(name));                                 \
-    TRACE(arg, "[>] " AV_STRINGIFY(action) " thread starting");                 \
-    action##_run(arg);                                                          \
-    TRACE(arg, "[<] " AV_STRINGIFY(action) " thread ending");                   \
+    TRACE(actx, "[>] " AV_STRINGIFY(action) " thread starting");                \
+    action##_run(actx->name);                                                   \
+    TRACE(actx, "[<] " AV_STRINGIFY(action) " thread ending");                  \
     return NULL;                                                                \
 }
 
@@ -252,13 +252,12 @@ static void *name##_thread(void *arg)                                           
             }                                                                   \
             attrp = &attr;                                                      \
         }                                                                       \
-        int ret = pthread_create(&actx->name##_tid, attrp, name##_thread,       \
-                                 actx->name);                                   \
+        int ret = pthread_create(&actx->name##_tid, attrp, name##_thread, actx);\
         if (attrp)                                                              \
             pthread_attr_destroy(attrp);                                        \
         if (ret) {                                                              \
             const int err = AVERROR(ret);                                       \
-            av_log(actx, AV_LOG_ERROR, "Unable to start " AV_STRINGIFY(name)    \
+            fprintf(stderr, "Unable to start " AV_STRINGIFY(name)               \
                    " thread: %s\n", av_err2str(err));                           \
             return err;                                                         \
         }                                                                       \
@@ -273,7 +272,7 @@ static void *name##_thread(void *arg)                                           
         TRACE(actx, "joining " AV_STRINGIFY(name) " thread");                   \
         int ret = pthread_join(actx->name##_tid, NULL);                         \
         if (ret)                                                                \
-            av_log(actx, AV_LOG_ERROR, "Unable to join " AV_STRINGIFY(name)     \
+            fprintf(stderr, "Unable to join " AV_STRINGIFY(name)                \
                    ": %s\n", av_err2str(AVERROR(ret)));                         \
         TRACE(actx, AV_STRINGIFY(name) " thread joined");                       \
         actx->name##_started = 0;                                               \

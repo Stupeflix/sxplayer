@@ -27,7 +27,8 @@
 
 struct demuxing_ctx *demuxing_alloc(void);
 
-int demuxing_init(struct demuxing_ctx *ctx,
+int demuxing_init(void *log_ctx,
+                  struct demuxing_ctx *ctx,
                   AVThreadMessageQueue *pkt_queue,
                   const char *filename, int avselect,
                   int pkt_skip_mod);

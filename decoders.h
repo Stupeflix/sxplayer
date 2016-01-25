@@ -27,7 +27,7 @@
 struct decoding_ctx;
 
 struct decoder_ctx {
-    const AVClass *class;
+    void *log_ctx;
     AVCodecContext *avctx;
     const struct decoder *dec;
     void *priv_data;
@@ -44,7 +44,8 @@ struct decoder {
 };
 
 struct decoder_ctx *decoder_alloc(void);
-int decoder_init(struct decoder_ctx *ctx,
+int decoder_init(void *log_ctx,
+                 struct decoder_ctx *ctx,
                  const struct decoder *dec,
                  const AVStream *stream,
                  struct decoding_ctx *decoding_ctx);

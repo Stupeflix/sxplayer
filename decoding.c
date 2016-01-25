@@ -36,7 +36,7 @@ static const struct decoder *decoder_def_hwaccel = NULL;
 #endif
 
 struct decoding_ctx {
-    const AVClass *class;
+    void *log_ctx;
 
     AVThreadMessageQueue *pkt_queue;
     AVThreadMessageQueue *frames_queue;
@@ -48,17 +48,11 @@ struct decoding_ctx {
     int64_t seek_request;
 };
 
-static const AVClass decoding_class = {
-    .class_name = "decoding",
-    .item_name  = av_default_item_name,
-};
-
 struct decoding_ctx *decoding_alloc(void)
 {
     struct decoding_ctx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
         return NULL;
-    ctx->class = &decoding_class;
     ctx->decoder = decoder_alloc();
     if (!ctx->decoder) {
         av_freep(&ctx);
@@ -72,7 +66,8 @@ const AVCodecContext *decoding_get_avctx(struct decoding_ctx *ctx)
     return ctx->decoder->avctx;
 }
 
-int decoding_init(struct decoding_ctx *ctx,
+int decoding_init(void *log_ctx,
+                  struct decoding_ctx *ctx,
                   AVThreadMessageQueue *pkt_queue,
                   AVThreadMessageQueue *frames_queue,
                   const AVStream *stream,
@@ -83,6 +78,7 @@ int decoding_init(struct decoding_ctx *ctx,
     const struct decoder *dec_def, *dec_def_fallback;
     const AVCodecContext *avctx = stream->codec;
 
+    ctx->log_ctx = log_ctx;
     ctx->pkt_queue = pkt_queue;
     ctx->frames_queue = frames_queue;
 
@@ -101,13 +97,13 @@ int decoding_init(struct decoding_ctx *ctx,
           av_get_pix_fmt_name(avctx->pix_fmt),
           ctx->st_timebase.num, ctx->st_timebase.den);
 
-    ret = decoder_init(ctx->decoder, dec_def, stream, ctx);
+    ret = decoder_init(log_ctx, ctx->decoder, dec_def, stream, ctx);
     if (ret < 0 && dec_def_fallback) {
         TRACE(ctx, "unable to init %s decoder, fallback on %s decoder",
               dec_def->name, dec_def_fallback->name);
         if (ret != AVERROR_DECODER_NOT_FOUND)
             fprintf(stderr, "Decoder fallback\n"); // TODO: no fallback here on iOS
-        ret = decoder_init(ctx->decoder, dec_def_fallback, stream, ctx);
+        ret = decoder_init(log_ctx, ctx->decoder, dec_def_fallback, stream, ctx);
     }
     if (ret < 0)
         return ret;

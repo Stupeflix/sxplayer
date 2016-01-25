@@ -27,7 +27,8 @@
 
 struct filtering_ctx *filtering_alloc(void);
 
-int filtering_init(struct filtering_ctx *ctx,
+int filtering_init(void *log_ctx,
+                   struct filtering_ctx *ctx,
                    AVThreadMessageQueue *in_queue,
                    AVThreadMessageQueue *out_queue,
                    const AVCodecContext *avctx,
