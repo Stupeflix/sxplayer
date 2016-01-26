@@ -76,7 +76,6 @@ int decoding_init(void *log_ctx,
 {
     int ret;
     const struct decoder *dec_def, *dec_def_fallback;
-    const AVCodecContext *avctx = stream->codec;
 
     ctx->log_ctx = log_ctx;
     ctx->pkt_queue = pkt_queue;
@@ -92,10 +91,20 @@ int decoding_init(void *log_ctx,
 
     ctx->st_timebase = stream->time_base;
 
-    TRACE(ctx, "original stream: %dx%d in %s tb=%d/%d",
-          avctx->width, avctx->height,
-          av_get_pix_fmt_name(avctx->pix_fmt),
-          ctx->st_timebase.num, ctx->st_timebase.den);
+#define DUMP_INFO(avctx, name) do {                                     \
+    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO)                        \
+        TRACE(ctx, name " stream: %s @ %dHz tb=%d/%d",                  \
+              av_get_sample_fmt_name(avctx->sample_fmt),                \
+              avctx->sample_rate,                                       \
+              ctx->st_timebase.num, ctx->st_timebase.den);              \
+    else                                                                \
+        TRACE(ctx, name " stream: %dx%d in %s tb=%d/%d",                \
+              avctx->width, avctx->height,                              \
+              av_get_pix_fmt_name(avctx->pix_fmt),                      \
+              ctx->st_timebase.num, ctx->st_timebase.den);              \
+} while (0)
+
+    DUMP_INFO(stream->codec, "original");
 
     ret = decoder_init(log_ctx, ctx->decoder, dec_def, stream, ctx);
     if (ret < 0 && dec_def_fallback) {
@@ -111,10 +120,7 @@ int decoding_init(void *log_ctx,
     if (export_mvs)
         av_opt_set(ctx->decoder->avctx, "flags2", "+export_mvs", 0);
 
-    TRACE(ctx, "initialized stream: %dx%d in %s tb=%d/%d",
-          avctx->width, avctx->height,
-          av_get_pix_fmt_name(avctx->pix_fmt),
-          ctx->st_timebase.num, ctx->st_timebase.den);
+    DUMP_INFO(ctx->decoder->avctx, "initialized");
 
     return 0;
 }
