@@ -153,7 +153,8 @@ static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
 static int queue_cached_frame(struct decoding_ctx *ctx)
 {
     const int64_t cached_ts = av_rescale_q_rnd(get_best_effort_ts(ctx->tmp_frame),
-                                               ctx->st_timebase, AV_TIME_BASE_Q, 0);
+                                               ctx->st_timebase, AV_TIME_BASE_Q,
+                                               AV_ROUND_PASS_MINMAX);
     TRACE(ctx, "got a cached frame (t=%s) to push", PTS2TIMESTR(cached_ts));
     AVFrame *prev_frame = ctx->tmp_frame;
     ctx->tmp_frame = NULL;
@@ -177,7 +178,8 @@ int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
 
     /* Rescale the timestamp to a global large time base: AV_TIME_BASE_Q */
     const int64_t ts = av_rescale_q_rnd(get_best_effort_ts(frame),
-                                        ctx->st_timebase, AV_TIME_BASE_Q, 0);
+                                        ctx->st_timebase, AV_TIME_BASE_Q,
+                                        AV_ROUND_PASS_MINMAX);
     TRACE(ctx, "processing frame with ts=%s "
           "(%"PRId64", rescaled from %"PRId64" in %d/%d)",
           PTS2TIMESTR(ts), ts, get_best_effort_ts(frame),
