@@ -84,6 +84,9 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
     const int width = nb_samples / 2;
     const float scale = 1.f / sqrt(AUDIO_NBSAMPLES/2 + 1);
 
+    TRACE(ctx, "transform audio filtered frame in %s @ ts=%s into an audio texture",
+          av_get_sample_fmt_name(audio_src->format), PTS2TIMESTR(audio_src->pts));
+
     memset(dst_video->data[0], 0, dst_video->height * dst_video->linesize[0]);
 
     /* Copy waves */
@@ -285,10 +288,11 @@ static int filter_frame(struct filtering_ctx *ctx, AVFrame *outframe, AVFrame *i
      * frame to see what pixel format is getting decoded (no other way
      * with hardware acceleration apparently) */
     if (inframe) {
-        TRACE(ctx, "input %s frame @ ts=%s",
-            ctx->avctx->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(inframe->format)
-                                                       : av_get_sample_fmt_name(inframe->format),
-            PTS2TIMESTR(inframe->pts));
+        TRACE(ctx, "input %s %s frame @ ts=%s",
+              av_get_media_type_string(ctx->avctx->codec_type),
+              ctx->avctx->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(inframe->format)
+                                                           : av_get_sample_fmt_name(inframe->format),
+              PTS2TIMESTR(inframe->pts));
 
         // XXX: check width/height changes?
         if (ctx->last_frame_format != inframe->format) {
@@ -297,6 +301,9 @@ static int filter_frame(struct filtering_ctx *ctx, AVFrame *outframe, AVFrame *i
             if (ret < 0)
                 return ret;
         }
+    } else {
+        TRACE(ctx, "push null frame into %s filtergraph",
+              av_get_media_type_string(ctx->avctx->codec_type));
     }
 
     AVFrame *filtered_frame = ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO ? ctx->tmp_audio_frame : outframe;
@@ -308,14 +315,9 @@ static int filter_frame(struct filtering_ctx *ctx, AVFrame *outframe, AVFrame *i
     } else {
 
         /* Push */
-        if (inframe)
-            TRACE(ctx, "push frame with ts=%s into filtergraph", PTS2TIMESTR(inframe->pts));
-        else
-            TRACE(ctx, "push null frame into filtergraph");
-
         ret = av_buffersrc_write_frame(ctx->buffersrc_ctx, inframe);
         if (ret < 0) {
-            LOG_ERROR(ctx, "Error while feeding the filtergraph");
+            LOG_ERROR(ctx, "Error while feeding the filtergraph: %s", av_err2str(ret));
             return ret;
         }
 
@@ -324,21 +326,21 @@ static int filter_frame(struct filtering_ctx *ctx, AVFrame *outframe, AVFrame *i
 
         /* Pull */
         ret = av_buffersink_get_frame(ctx->buffersink_ctx, filtered_frame);
-        TRACE(ctx, "got frame from sink ret=[%s]", av_err2str(ret));
-        if (ret < 0) {
-            if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF && ret != AVERROR_EXIT)
-                LOG_ERROR(ctx, "Error while pulling the frame from the filtergraph");
-        }
+        if (ret < 0)
+            return ret;
     }
+
+    TRACE(ctx, "filtered %s %s frame @ ts=%s",
+          av_get_media_type_string(ctx->avctx->codec_type),
+          ctx->avctx->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(filtered_frame->format)
+                                                       : av_get_sample_fmt_name(filtered_frame->format),
+          PTS2TIMESTR(filtered_frame->pts));
 
     if (ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
         audio_frame_to_sound_texture(ctx, ctx->audio_texture_frame, filtered_frame);
         av_frame_unref(filtered_frame);
         av_frame_ref(outframe, ctx->audio_texture_frame);
     }
-
-    TRACE(ctx, "output %s frame @ ts=%s",
-          av_get_pix_fmt_name(outframe->format), PTS2TIMESTR(outframe->pts));
 
     return ret;
 }
