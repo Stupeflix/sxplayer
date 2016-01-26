@@ -87,6 +87,8 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
     TRACE(ctx, "transform audio filtered frame in %s @ ts=%s into an audio texture",
           av_get_sample_fmt_name(audio_src->format), PTS2TIMESTR(audio_src->pts));
 
+    dst_video->pts = audio_src->pts;
+
     memset(dst_video->data[0], 0, dst_video->height * dst_video->linesize[0]);
 
     /* Copy waves */
