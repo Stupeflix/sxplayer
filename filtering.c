@@ -175,6 +175,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     AVFilterInOut *outputs, *inputs;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
     const AVCodecContext *avctx = ctx->avctx;
+    const AVRational time_base = AV_TIME_BASE_Q;
 
     if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
         return 0;
@@ -205,7 +206,6 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
 
     /* create buffer filter source (where we push the frame) */
     if (avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
-        const AVRational time_base = AV_TIME_BASE_Q;
         snprintf(args, sizeof(args),
                  "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
                  avctx->width, avctx->height, av_get_pix_fmt_name(ctx->last_frame_format),
@@ -213,7 +213,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
                  avctx->sample_aspect_ratio.num, avctx->sample_aspect_ratio.den);
     } else {
         snprintf(args, sizeof(args), "time_base=%d/%d:sample_rate=%d:sample_fmt=%s",
-                 1, avctx->sample_rate, avctx->sample_rate,
+                 time_base.num, time_base.den, avctx->sample_rate,
                  av_get_sample_fmt_name(avctx->sample_fmt));
         if (avctx->channel_layout)
             av_strlcatf(args, sizeof(args), ":channel_layout=0x%"PRIx64, avctx->channel_layout);
@@ -250,9 +250,11 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
         const enum AVPixelFormat sw_pix_fmt = pix_fmts_sx2ff(ctx->sw_pix_fmt);
         const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? sw_pix_fmt : ctx->last_frame_format;
-        av_strlcatf(args, sizeof(args), "%sformat=%s", *args ? "," : "", av_get_pix_fmt_name(pix_fmt));
+        av_strlcatf(args, sizeof(args), "%sformat=%s, settb=tb=%d/%d", *args ? "," : "", av_get_pix_fmt_name(pix_fmt),
+                    time_base.num, time_base.den);
     } else {
-        av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d", AUDIO_NBSAMPLES);
+        av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d, asettb=tb=%d/%d",
+                    AUDIO_NBSAMPLES, time_base.num, time_base.den);
     }
 
     TRACE(ctx, "graph buffer sink args: %s", args);
