@@ -38,15 +38,15 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...) 
 
 #define DO_LOG(c, log_level, ...) do_log((c)->log_ctx, log_level, __FUNCTION__, __VA_ARGS__)
 
-#define INFO(c, ...)  DO_LOG(c, AV_LOG_INFO, __VA_ARGS__)
-#define LOG_ERROR(c, ...) DO_LOG(c, AV_LOG_ERROR, __VA_ARGS__)
+#define INFO(c, ...)  DO_LOG(c, SXPLAYER_LOG_INFO, __VA_ARGS__)
+#define LOG_ERROR(c, ...) DO_LOG(c, SXPLAYER_LOG_ERROR, __VA_ARGS__)
 
 #if ENABLE_DBG
-#define TRACE(c, ...) do { DO_LOG(c, AV_LOG_INFO, __VA_ARGS__); fflush(stdout); } while (0)
+#define TRACE(c, ...) do { DO_LOG(c, SXPLAYER_LOG_VERBOSE, __VA_ARGS__); fflush(stdout); } while (0)
 #else
 /* Note: this could be replaced by a "while(0)" but it wouldn't test the
  * compilation of the printf format, so we use this more complex form. */
-#define TRACE(c, ...) do { if (0) DO_LOG(c, AV_LOG_INFO, __VA_ARGS__); } while (0)
+#define TRACE(c, ...) do { if (0) DO_LOG(c, SXPLAYER_LOG_VERBOSE, __VA_ARGS__); } while (0)
 #endif
 
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
@@ -59,6 +59,8 @@ void set_thread_name(const char *name);
 struct log_ctx {
     void *avlog;
     int64_t last_time;
+    void *user_arg;
+    void (*callback)(void *arg, int level, const char *fmt, va_list vl);
 };
 
 struct sxplayer_ctx {

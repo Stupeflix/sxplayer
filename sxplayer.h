@@ -22,6 +22,7 @@
 #define SXPLAYER_H
 
 #include <stdint.h>
+#include <stdarg.h>
 
 /* Stupeflix Media Player */
 
@@ -69,6 +70,14 @@ enum sxplayer_pixel_format {
     SXPLAYER_PIXFMT_VT,        // VideoToolBox pixel format (HW accelerated, frame->data is a CVPixelBufferRef)
 };
 
+enum sxplayer_loglevel {
+    SXPLAYER_LOG_VERBOSE,
+    SXPLAYER_LOG_DEBUG,
+    SXPLAYER_LOG_INFO,
+    SXPLAYER_LOG_WARNING,
+    SXPLAYER_LOG_ERROR,
+};
+
 struct sxplayer_frame {
     uint8_t *data;      // frame data in RGBA, BGRA, ... according to pix_fmt
     double ts;          // video timestamp
@@ -93,6 +102,20 @@ struct sxplayer_info {
  * @param filename media input file name
  */
 struct sxplayer_ctx *sxplayer_create(const char *filename);
+
+/**
+ * Set user logging callback
+ *
+ * Setting the logging callback disables the local logging, and every log
+ * messages at every level are forwarded to the user through the specified
+ * callback.
+ *
+ * @param arg       opaque user argument to be sent back as first argument in
+ *                  the callback
+ * @param callback  custom user logging callback
+ */
+void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
+                               void (*callback)(void *arg, int level, const char *fmt, va_list vl));
 
 /**
  * Set an option.

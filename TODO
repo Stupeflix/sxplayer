@@ -1,8 +1,6 @@
 -> better behaviour when VT init succeed but decode fails
 -> restore drop ref feature
   `-> new API?
--> logging cleanup
-  `-> allow user callback settings
 -> add VT options:
   `-> widht/height rescaler
   `-> force vs enable hw accel so it's using VT even for sw decoding or not

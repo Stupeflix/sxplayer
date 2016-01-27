@@ -129,6 +129,13 @@ static void free_temp_context_data(struct sxplayer_ctx *s)
     s->context_configured = 0;
 }
 
+void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
+                               void (*callback)(void *arg, int level, const char *fmt, va_list vl))
+{
+    s->log_ctx->user_arg = arg;
+    s->log_ctx->callback = callback;
+}
+
 struct sxplayer_ctx *sxplayer_create(const char *filename)
 {
     int i;
@@ -160,10 +167,9 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
 
     s->class = &sxplayer_class;
 
-    if (ENABLE_INFO)
-        av_log_set_level(AV_LOG_INFO);
-    else
-        av_log_set_level(ENABLE_DBG ? AV_LOG_TRACE : AV_LOG_ERROR);
+    if      (ENABLE_DBG)  av_log_set_level(AV_LOG_VERBOSE);
+    else if (ENABLE_INFO) av_log_set_level(AV_LOG_INFO);
+    else                  av_log_set_level(AV_LOG_ERROR);
 
 #define VFMT(v) (v)>>16, (v)>>8 & 0xff, (v) & 0xff
     for (i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {

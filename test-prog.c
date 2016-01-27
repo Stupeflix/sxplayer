@@ -329,12 +329,21 @@ static int test_duration(const char *filename)
     return 0;
 }
 
+static const char *filename = "/i/do/not/exist";
+
+static void log_callback(void *arg, int level, const char *fmt, va_list vl)
+{
+    av_assert0(arg == filename);
+    printf("fmt=%s level=%d\n", fmt, level);
+}
+
 static int run_notavail_file_test(void)
 {
-    struct sxplayer_ctx *s = sxplayer_create("/i/do/not/exist");
+    struct sxplayer_ctx *s = sxplayer_create(filename);
 
     if (!s)
         return -1;
+    sxplayer_set_log_callback(s, (void*)filename, log_callback);
     sxplayer_release_frame(sxplayer_get_frame(s, -1));
     sxplayer_release_frame(sxplayer_get_frame(s, 1.0));
     sxplayer_release_frame(sxplayer_get_frame(s, 3.0));

@@ -25,8 +25,24 @@
 void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
 {
     struct log_ctx *ctx = log_ctx;
-    char logline[512];
     va_list arg_list;
+
+    if (ctx->callback) {
+        va_start(arg_list, fmt);
+        ctx->callback(ctx->user_arg, log_level, fmt, arg_list);
+        va_end(arg_list);
+    } else {
+        // TODO reindent
+        char logline[512];
+        static const int av_log_levels[] = {
+            [SXPLAYER_LOG_VERBOSE] = AV_LOG_VERBOSE,
+            [SXPLAYER_LOG_DEBUG]   = AV_LOG_DEBUG,
+            [SXPLAYER_LOG_INFO]    = AV_LOG_INFO,
+            [SXPLAYER_LOG_WARNING] = AV_LOG_WARNING,
+            [SXPLAYER_LOG_ERROR]   = AV_LOG_ERROR,
+        };
+        const int av_log_level = av_log_levels[log_level];
+
     int64_t t = av_gettime();
 
     if (!ctx->last_time)
@@ -36,6 +52,7 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
     vsnprintf(logline, sizeof(logline), fmt, arg_list);
     va_end(arg_list);
 
-    av_log(ctx->avlog, log_level, "[%f] %s: %s\n", (t - ctx->last_time) / 1000000., fn, logline);
+    av_log(ctx->avlog, av_log_level, "[%f] %s: %s\n", (t - ctx->last_time) / 1000000., fn, logline);
     ctx->last_time = t;
+    }
 }
