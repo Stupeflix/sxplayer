@@ -175,7 +175,6 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
 {
     int ret = 0;
     char args[512];
-    //AVRational framerate;
     AVFilter *buffersrc, *buffersink;
     AVFilterInOut *outputs, *inputs;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
@@ -225,12 +224,6 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
         else
             av_strlcatf(args, sizeof(args), ":channels=%d", avctx->channels);
     }
-
-#if 0
-    framerate = av_guess_frame_rate(s->fmt_ctx, s->stream, NULL);
-    if (framerate.num && framerate.den)
-        av_strlcatf(args, sizeof(args), ":frame_rate=%d/%d", framerate.num, framerate.den);
-#endif
 
     TRACE(ctx, "graph buffer source args: %s", args);
 
