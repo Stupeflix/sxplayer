@@ -34,7 +34,7 @@
 #define ENABLE_INFO 0
 #define ENABLE_DBG 0
 
-void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...);
+void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...) av_printf_format(4, 5);
 
 #define DO_LOG(c, log_level, ...) do_log((c)->log_ctx, log_level, __FUNCTION__, __VA_ARGS__)
 
