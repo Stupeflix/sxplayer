@@ -40,6 +40,7 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...) 
 
 #define INFO(c, ...)  DO_LOG(c, SXPLAYER_LOG_INFO, __VA_ARGS__)
 #define LOG_ERROR(c, ...) DO_LOG(c, SXPLAYER_LOG_ERROR, __VA_ARGS__)
+#define LOG(c, level, ...) DO_LOG(c, SXPLAYER_LOG_##level, __VA_ARGS__)
 
 #if ENABLE_DBG
 #define TRACE(c, ...) do { DO_LOG(c, SXPLAYER_LOG_VERBOSE, __VA_ARGS__); fflush(stdout); } while (0)

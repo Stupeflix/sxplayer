@@ -288,7 +288,7 @@ int async_start(struct async_context *actx)
     if (actx->threads_started)
         return 0;
 
-    TRACE(actx, "starting threads");
+    LOG(actx, INFO, "starting threads");
     START_MODULE_THREAD(demuxer);
     START_MODULE_THREAD(decoder);
     START_MODULE_THREAD(filterer);
@@ -310,6 +310,9 @@ int async_wait(struct async_context *actx)
     av_thread_message_queue_set_err_recv(actx->pkt_queue,    0);
     av_thread_message_queue_set_err_recv(actx->frames_queue, 0);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   0);
+
+    if (actx->threads_started)
+        LOG(actx, INFO, "threads ended");
 
     actx->threads_started = 0;
     return 0;

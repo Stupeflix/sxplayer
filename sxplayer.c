@@ -207,7 +207,7 @@ void sxplayer_free(struct sxplayer_ctx **ss)
     if (!s)
         return;
 
-    INFO(s, "destroying context");
+    LOG(s, DEBUG, "destroying context");
 
     async_stop(s->actx);
 
@@ -321,7 +321,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     AVFrameSideData *sd;
 
     if (!frame) {
-        INFO(s, " <<< return nothing");
+        LOG(s, DEBUG, " <<< return nothing");
         return NULL;
     }
 
@@ -332,7 +332,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
 
     /* if same frame as previously, do not raise it again */
     if (s->last_pushed_frame_ts == frame_ts) {
-        INFO(s, " <<< same frame as previously, return NULL");
+        LOG(s, DEBUG, " <<< same frame as previously, return NULL");
         return NULL;
     }
 
@@ -362,9 +362,9 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
     ret->pix_fmt  = pix_fmts_ff2sx(frame->format);
 
-    INFO(s, " <<< return %dx%d frame @ ts=%s with requested time being %s [max:%s]",
-         frame->width, frame->height, PTS2TIMESTR(frame_ts),
-         PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
+    LOG(s, DEBUG, " <<< return %dx%d frame @ ts=%s with requested time being %s [max:%s]",
+        frame->width, frame->height, PTS2TIMESTR(frame_ts),
+        PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
     return ret;
 }
 
@@ -461,7 +461,7 @@ int sxplayer_prefetch(struct sxplayer_ctx *s)
 {
     int ret;
 
-    INFO(s, "prefetch requested");
+    LOG(s, DEBUG, "prefetch requested");
     ret = configure_context(s);
     if (ret < 0)
         return ret;
@@ -474,7 +474,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     int64_t diff;
     const int64_t t64 = TIME2INT64(t);
 
-    INFO(s, " >>> get frame for t=%g", t);
+    LOG(s, DEBUG, " >>> get frame for t=%g", t);
 
 #if SYNTH_FRAME
     return ret_synth_frame(s, t);
@@ -611,7 +611,7 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 {
     int ret;
 
-    INFO(s, " >>> get next frame");
+    LOG(s, DEBUG, " >>> get next frame");
 
     ret = configure_context(s);
     if (ret < 0)
@@ -624,7 +624,7 @@ int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)
 {
     int ret;
 
-    INFO(s, "probing information");
+    LOG(s, DEBUG, "probing information");
 
     ret = configure_context(s);
     if (ret < 0)
@@ -641,7 +641,7 @@ int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration)
     int ret;
     struct sxplayer_info info;
 
-    INFO(s, "getting duration");
+    LOG(s, DEBUG, "getting duration");
 
     ret = sxplayer_get_info(s, &info);
     if (ret < 0)
