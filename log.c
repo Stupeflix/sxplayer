@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <pthread.h>
 #include <stdarg.h>
 #include <libavutil/time.h>
 #include "internal.h"
@@ -25,6 +26,7 @@
 struct log_ctx {
     void *avlog;
     int64_t last_time;
+    pthread_mutex_t lock;
     void *user_arg;
     void (*callback)(void *arg, int level, const char *fmt, va_list vl);
 };
@@ -47,7 +49,7 @@ struct log_ctx *log_alloc(void)
 int log_init(struct log_ctx *ctx, void *avlog)
 {
     ctx->avlog = avlog;
-    return 0;
+    return AVERROR(pthread_mutex_init(&ctx->lock, NULL));
 }
 
 void log_free(struct log_ctx **ctxp)
@@ -55,6 +57,7 @@ void log_free(struct log_ctx **ctxp)
     struct log_ctx *ctx = *ctxp;
     if (!ctx)
         return;
+    pthread_mutex_destroy(&ctx->lock);
     av_freep(ctxp);
 }
 
@@ -65,7 +68,9 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
 
     if (ctx->callback) {
         va_start(arg_list, fmt);
+        pthread_mutex_lock(&ctx->lock);
         ctx->callback(ctx->user_arg, log_level, fmt, arg_list);
+        pthread_mutex_unlock(&ctx->lock);
         va_end(arg_list);
     } else {
         char logline[512];
@@ -77,16 +82,18 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
             [SXPLAYER_LOG_ERROR]   = AV_LOG_ERROR,
         };
         const int av_log_level = av_log_levels[log_level];
-        const int64_t t = av_gettime();
-
-        if (!ctx->last_time)
-            ctx->last_time = t;
+        int64_t t;
 
         va_start(arg_list, fmt);
         vsnprintf(logline, sizeof(logline), fmt, arg_list);
         va_end(arg_list);
 
+        pthread_mutex_lock(&ctx->lock);
+        t = av_gettime();
+        if (!ctx->last_time)
+            ctx->last_time = t;
         av_log(ctx->avlog, av_log_level, "[%f] %s: %s\n", (t - ctx->last_time) / 1000000., fn, logline);
         ctx->last_time = t;
+        pthread_mutex_unlock(&ctx->lock);
     }
 }
