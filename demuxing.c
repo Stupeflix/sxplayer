@@ -119,7 +119,7 @@ int demuxing_init(void *log_ctx,
     TRACE(ctx, "opening %s", filename);
     ret = avformat_open_input(&ctx->fmt_ctx, filename, NULL, NULL);
     if (ret < 0) {
-        LOG_ERROR(ctx, "Unable to open input file '%s'", filename);
+        LOG(ctx, ERROR, "Unable to open input file '%s'", filename);
         return ret;
     }
 
@@ -139,15 +139,15 @@ int demuxing_init(void *log_ctx,
     TRACE(ctx, "find stream info");
     ret = avformat_find_stream_info(ctx->fmt_ctx, NULL);
     if (ret < 0) {
-        LOG_ERROR(ctx, "Unable to find input stream information");
+        LOG(ctx, ERROR, "Unable to find input stream information");
         return ret;
     }
 
     TRACE(ctx, "find best stream");
     ret = av_find_best_stream(ctx->fmt_ctx, media_type, -1, -1, NULL, 0);
     if (ret < 0) {
-        LOG_ERROR(ctx, "Unable to find a %s stream in the input file",
-                  av_get_media_type_string(media_type));
+        LOG(ctx, ERROR, "Unable to find a %s stream in the input file",
+            av_get_media_type_string(media_type));
         return ret;
     }
     ctx->stream_idx = ret;
@@ -284,7 +284,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
             av_packet_unref(&pkt);
             av_freep(&msg.data);
             if (ret != AVERROR_EOF && ret != AVERROR_EXIT)
-                LOG_ERROR(ctx, "Unable to send packet to decoder: %s", av_err2str(ret));
+                LOG(ctx, ERROR, "Unable to send packet to decoder: %s", av_err2str(ret));
             TRACE(ctx, "can't send pkt to decoder: %s", av_err2str(ret));
             av_thread_message_queue_set_err_recv(ctx->pkt_queue, ret);
             break;

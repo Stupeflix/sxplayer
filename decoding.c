@@ -111,7 +111,7 @@ int decoding_init(void *log_ctx,
         TRACE(ctx, "unable to init %s decoder, fallback on %s decoder",
               dec_def->name, dec_def_fallback->name);
         if (ret != AVERROR_DECODER_NOT_FOUND)
-            LOG_ERROR(ctx, "Decoder fallback"); // TODO: no fallback here on iOS
+            LOG(ctx, ERROR, "Decoder fallback"); // TODO: no fallback here on iOS
         ret = decoder_init(log_ctx, ctx->decoder, dec_def_fallback, stream, ctx);
     }
     if (ret < 0)
@@ -146,7 +146,7 @@ static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
     ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);
     if (ret < 0) {
         if (ret != AVERROR_EOF && ret != AVERROR_EXIT)
-            LOG_ERROR(ctx, "Unable to push frame: %s", av_err2str(ret));
+            LOG(ctx, ERROR, "Unable to push frame: %s", av_err2str(ret));
         av_thread_message_queue_set_err_recv(ctx->frames_queue, ret);
     }
     return ret;

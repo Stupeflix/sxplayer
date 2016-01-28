@@ -230,7 +230,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     ret = avfilter_graph_create_filter(&ctx->buffersrc_ctx, buffersrc,
                                        outputs->name, args, NULL, ctx->filter_graph);
     if (ret < 0) {
-        LOG_ERROR(ctx, "Unable to create buffer filter source");
+        LOG(ctx, ERROR, "Unable to create buffer filter source");
         goto end;
     }
 
@@ -238,7 +238,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     ret = avfilter_graph_create_filter(&ctx->buffersink_ctx, buffersink,
                                        inputs->name, NULL, NULL, ctx->filter_graph);
     if (ret < 0) {
-        LOG_ERROR(ctx, "Unable to create buffer filter sink");
+        LOG(ctx, ERROR, "Unable to create buffer filter sink");
         goto end;
     }
 
@@ -312,7 +312,7 @@ static int filter_frame(struct filtering_ctx *ctx, AVFrame *outframe, AVFrame *i
         /* Push */
         ret = av_buffersrc_write_frame(ctx->buffersrc_ctx, inframe);
         if (ret < 0) {
-            LOG_ERROR(ctx, "Error while feeding the filtergraph: %s", av_err2str(ret));
+            LOG(ctx, ERROR, "Error while feeding the filtergraph: %s", av_err2str(ret));
             return ret;
         }
 
@@ -414,7 +414,7 @@ int filtering_init(void *log_ctx,
         /* Real Discrete Fourier Transform context (Real to Complex) */
         ctx->rdft = av_rdft_init(AUDIO_NBITS, DFT_R2C);
         if (!ctx->rdft) {
-            LOG_ERROR(ctx, "Unable to init RDFT context with N=%d", AUDIO_NBITS);
+            LOG(ctx, ERROR, "Unable to init RDFT context with N=%d", AUDIO_NBITS);
             return AVERROR(ENOMEM);
         }
 

@@ -256,7 +256,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         if (decoder_spec)
             CFRelease(decoder_spec);
 
-        LOG_ERROR(dec_ctx, "format description creation failed");
+        LOG(dec_ctx, ERROR, "format description creation failed");
         return AVERROR_EXTERNAL;
     }
 
@@ -370,7 +370,7 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
     CFRelease(sample_buf);
 
     if (status) {
-        LOG_ERROR(dec_ctx, "Failed to decode frame (%d)", status);
+        LOG(dec_ctx, ERROR, "Failed to decode frame (%d)", status);
         return AVERROR_EXTERNAL;
     }
 
