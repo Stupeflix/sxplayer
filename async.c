@@ -284,23 +284,6 @@ MODULE_THREAD_FUNC(demuxer,  demuxing)
 MODULE_THREAD_FUNC(decoder,  decoding)
 MODULE_THREAD_FUNC(filterer, filtering)
 
-static int wait_threads(struct async_context *actx); // XXX
-
-int async_start(struct async_context *actx)
-{
-    if (actx->need_wait)
-        wait_threads(actx);
-    else if (actx->threads_started)
-        return 0;
-
-    LOG(actx, INFO, "starting threads");
-    START_MODULE_THREAD(demuxer);
-    START_MODULE_THREAD(decoder);
-    START_MODULE_THREAD(filterer);
-    actx->threads_started = 1;
-    return 0;
-}
-
 static int wait_threads(struct async_context *actx)
 {
     TRACE(actx, "waiting for threads to end");
@@ -321,6 +304,21 @@ static int wait_threads(struct async_context *actx)
 
     actx->threads_started = 0;
     actx->need_wait = 0;
+    return 0;
+}
+
+int async_start(struct async_context *actx)
+{
+    if (actx->need_wait)
+        wait_threads(actx);
+    else if (actx->threads_started)
+        return 0;
+
+    LOG(actx, INFO, "starting threads");
+    START_MODULE_THREAD(demuxer);
+    START_MODULE_THREAD(decoder);
+    START_MODULE_THREAD(filterer);
+    actx->threads_started = 1;
     return 0;
 }
 
