@@ -41,7 +41,7 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
             [SXPLAYER_LOG_ERROR]   = AV_LOG_ERROR,
         };
         const int av_log_level = av_log_levels[log_level];
-        int64_t t = av_gettime();
+        const int64_t t = av_gettime();
 
         if (!ctx->last_time)
             ctx->last_time = t;
