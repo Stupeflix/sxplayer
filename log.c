@@ -22,6 +22,42 @@
 #include <libavutil/time.h>
 #include "internal.h"
 
+struct log_ctx {
+    void *avlog;
+    int64_t last_time;
+    void *user_arg;
+    void (*callback)(void *arg, int level, const char *fmt, va_list vl);
+};
+
+void log_set_callback(struct log_ctx *ctx, void *arg,
+                      void (*callback)(void *arg, int level, const char *fmt, va_list vl))
+{
+    ctx->user_arg = arg;
+    ctx->callback = callback;
+}
+
+struct log_ctx *log_alloc(void)
+{
+    struct log_ctx *ctx = av_mallocz(sizeof(*ctx));
+    if (!ctx)
+        return NULL;
+    return ctx;
+}
+
+int log_init(struct log_ctx *ctx, void *avlog)
+{
+    ctx->avlog = avlog;
+    return 0;
+}
+
+void log_free(struct log_ctx **ctxp)
+{
+    struct log_ctx *ctx = *ctxp;
+    if (!ctx)
+        return;
+    av_freep(ctxp);
+}
+
 void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
 {
     struct log_ctx *ctx = log_ctx;

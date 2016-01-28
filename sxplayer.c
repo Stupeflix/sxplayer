@@ -112,8 +112,8 @@ static void free_context(struct sxplayer_ctx *s)
     if (!s)
         return;
     av_freep(&s->filename);
-    av_freep(&s->log_ctx);
     av_freep(&s->logname);
+    log_free(&s->log_ctx);
     av_freep(&s);
 }
 
@@ -132,8 +132,7 @@ static void free_temp_context_data(struct sxplayer_ctx *s)
 void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
                                void (*callback)(void *arg, int level, const char *fmt, va_list vl))
 {
-    s->log_ctx->user_arg = arg;
-    s->log_ctx->callback = callback;
+    log_set_callback(s->log_ctx, arg, callback);
 }
 
 struct sxplayer_ctx *sxplayer_create(const char *filename)
@@ -155,11 +154,6 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     if (!s)
         return NULL;
 
-    s->log_ctx = av_mallocz(sizeof(*s->log_ctx));
-    if (!s->log_ctx)
-        goto fail;
-
-    s->log_ctx->avlog = s;
     s->filename = av_strdup(filename);
     s->logname  = av_asprintf("sxplayer:%s", av_basename(filename));
     if (!s->filename || !s->logname)
@@ -168,6 +162,10 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     s->class = &sxplayer_class;
 
     av_log_set_level(LOG_LEVEL);
+
+    s->log_ctx = log_alloc();
+    if (!s->log_ctx || log_init(s->log_ctx, s) < 0)
+        goto fail;
 
 #define VFMT(v) (v)>>16, (v)>>8 & 0xff, (v) & 0xff
     for (i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {

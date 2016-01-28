@@ -22,41 +22,12 @@
 #define SXPLAYER_INTERNAL_H
 
 #include <stdio.h>
-#include <libavutil/log.h>
 #include <libavutil/frame.h>
 #include <libavutil/timestamp.h>
 
 #include "sxplayer.h"
+#include "log.h"
 #include "async.h"
-
-/* ENABLE_DBG can be set with the build system using TRACE=yes option. It will
- * enable the compilation of the tracing logging */
-#ifndef ENABLE_DBG
-# define ENABLE_DBG 0
-#endif
-
-#if ENABLE_DBG
-# define LOG_LEVEL AV_LOG_DEBUG
-#else
-/* The following will affect the default usage (aka no user logging callback specified) */
-# define LOG_LEVEL AV_LOG_ERROR  // will log only errors
-//# define LOG_LEVEL AV_LOG_INFO   // will log little information such as file opening and decoder in use
-//# define LOG_LEVEL AV_LOG_DEBUG  // will log most of the important actions (get/ret frame)
-#endif
-
-void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...) av_printf_format(4, 5);
-
-#define DO_LOG(c, log_level, ...) do_log((c)->log_ctx, log_level, __FUNCTION__, __VA_ARGS__)
-
-#define LOG(c, level, ...) DO_LOG(c, SXPLAYER_LOG_##level, __VA_ARGS__)
-
-#if ENABLE_DBG
-#define TRACE(c, ...) do { DO_LOG(c, SXPLAYER_LOG_VERBOSE, __VA_ARGS__); fflush(stdout); } while (0)
-#else
-/* Note: this could be replaced by a "while(0)" but it wouldn't test the
- * compilation of the printf format, so we use this more complex form. */
-#define TRACE(c, ...) do { if (0) DO_LOG(c, SXPLAYER_LOG_VERBOSE, __VA_ARGS__); } while (0)
-#endif
 
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
@@ -64,13 +35,6 @@ void set_thread_name(const char *name);
 
 #define TIME2INT64(d) llrint((d) * av_q2d(av_inv_q(AV_TIME_BASE_Q)))
 #define PTS2TIMESTR(t64) av_ts2timestr(t64, &AV_TIME_BASE_Q)
-
-struct log_ctx {
-    void *avlog;
-    int64_t last_time;
-    void *user_arg;
-    void (*callback)(void *arg, int level, const char *fmt, va_list vl);
-};
 
 struct sxplayer_ctx {
     const AVClass *class;                   // necessary for the AVOption mechanism
