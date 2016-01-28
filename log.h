@@ -38,7 +38,7 @@
 //# define LOG_LEVEL AV_LOG_DEBUG  // will log most of the important actions (get/ret frame)
 #endif
 
-#define DO_LOG(c, log_level, ...) do_log((c)->log_ctx, log_level, __FUNCTION__, __VA_ARGS__)
+#define DO_LOG(c, log_level, ...) log_print((c)->log_ctx, log_level, __FUNCTION__, __VA_ARGS__)
 
 #define LOG(c, level, ...) DO_LOG(c, SXPLAYER_LOG_##level, __VA_ARGS__)
 
@@ -59,7 +59,7 @@ int log_init(struct log_ctx *ctx, void *avlog);
 void log_set_callback(struct log_ctx *ctx, void *arg,
                       void (*callback)(void *arg, int level, const char *fmt, va_list vl));
 
-void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...) av_printf_format(4, 5);
+void log_print(void *log_ctx, int log_level, const char *fn, const char *fmt, ...) av_printf_format(4, 5);
 
 void log_free(struct log_ctx **ctxp);
 

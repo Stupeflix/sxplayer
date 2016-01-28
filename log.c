@@ -61,7 +61,7 @@ void log_free(struct log_ctx **ctxp)
     av_freep(ctxp);
 }
 
-void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
+void log_print(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
 {
     struct log_ctx *ctx = log_ctx;
     va_list arg_list;
