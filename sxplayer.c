@@ -178,7 +178,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
         INFO(s, "lib%-12s build:%3d.%3d.%3d runtime:%3d.%3d.%3d",
              fflibs[i].libname, VFMT(bversion), VFMT(rversion));
         if (bversion != rversion)
-            LOG(s, ERROR, "WARNING: build and runtime version of FFmpeg mismatch");
+            LOG(s, WARNING, "/!\\ build and runtime version of FFmpeg mismatch /!\\");
     }
 
     av_register_all();
@@ -237,7 +237,7 @@ static int set_context_fields(struct sxplayer_ctx *s)
     }
 
     if (s->auto_hwaccel && (s->filters || s->autorotate || s->export_mvs)) {
-        LOG(s, ERROR, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
+        LOG(s, WARNING, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
             "are set but hwaccel is enabled, disabling auto_hwaccel so these "
             "options are honored", s->filters, s->autorotate, s->export_mvs);
         s->auto_hwaccel = 0;
