@@ -122,7 +122,7 @@ int decoding_init(void *log_ctx,
 
     DUMP_INFO(ctx->decoder->avctx, "initialized");
 
-    INFO(ctx, "selected decoder: %s", ctx->decoder->dec->name);
+    LOG(ctx, INFO, "selected decoder: %s", ctx->decoder->dec->name);
 
     return 0;
 }

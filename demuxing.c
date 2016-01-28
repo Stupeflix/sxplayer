@@ -259,7 +259,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
 
             /* do actual seek so the following packet that will be pulled in
              * this current thread will be at the (approximate) requested time */
-            INFO(ctx, "Seek in media at ts=%s", PTS2TIMESTR(seek_to));
+            LOG(ctx, INFO, "Seek in media at ts=%s", PTS2TIMESTR(seek_to));
             ret = avformat_seek_file(ctx->fmt_ctx, -1, INT64_MIN, seek_to, seek_to, 0);
             if (ret < 0)
                 break;

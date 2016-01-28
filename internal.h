@@ -48,7 +48,6 @@ void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...) 
 
 #define DO_LOG(c, log_level, ...) do_log((c)->log_ctx, log_level, __FUNCTION__, __VA_ARGS__)
 
-#define INFO(c, ...)  DO_LOG(c, SXPLAYER_LOG_INFO, __VA_ARGS__)
 #define LOG(c, level, ...) DO_LOG(c, SXPLAYER_LOG_##level, __VA_ARGS__)
 
 #if ENABLE_DBG

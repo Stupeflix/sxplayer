@@ -173,8 +173,8 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     for (i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {
         const unsigned bversion = fflibs[i].build_version;
         const unsigned rversion = fflibs[i].runtime_version;
-        INFO(s, "lib%-12s build:%3d.%3d.%3d runtime:%3d.%3d.%3d",
-             fflibs[i].libname, VFMT(bversion), VFMT(rversion));
+        LOG(s, INFO, "lib%-12s build:%3d.%3d.%3d runtime:%3d.%3d.%3d",
+            fflibs[i].libname, VFMT(bversion), VFMT(rversion));
         if (bversion != rversion)
             LOG(s, WARNING, "/!\\ build and runtime version of FFmpeg mismatch /!\\");
     }
@@ -241,12 +241,12 @@ static int set_context_fields(struct sxplayer_ctx *s)
         s->auto_hwaccel = 0;
     }
 
-    INFO(s, "avselect:%d skip:%f trim_duration:%f "
-          "dist_time_seek_trigger:%f queues:[%d %d %d] filters:'%s'",
-          s->avselect, s->skip, s->trim_duration,
-          s->dist_time_seek_trigger,
-          s->max_nb_packets, s->max_nb_frames, s->max_nb_sink,
-          s->filters ? s->filters : "");
+    LOG(s, INFO, "avselect:%d skip:%f trim_duration:%f "
+        "dist_time_seek_trigger:%f queues:[%d %d %d] filters:'%s'",
+        s->avselect, s->skip, s->trim_duration,
+        s->dist_time_seek_trigger,
+        s->max_nb_packets, s->max_nb_frames, s->max_nb_sink,
+        s->filters ? s->filters : "");
 
     s->skip64 = TIME2INT64(s->skip);
     s->dist_time_seek_trigger64 = TIME2INT64(s->dist_time_seek_trigger);
