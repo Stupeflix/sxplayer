@@ -56,6 +56,7 @@ struct async_context {
     AVThreadMessageQueue *sink_queue;       // filterer <-> user
 
     int thread_stack_size;
+    int need_wait;
 };
 
 struct async_context *async_alloc_context(void)
@@ -283,9 +284,13 @@ MODULE_THREAD_FUNC(demuxer,  demuxing)
 MODULE_THREAD_FUNC(decoder,  decoding)
 MODULE_THREAD_FUNC(filterer, filtering)
 
+static int wait_threads(struct async_context *actx); // XXX
+
 int async_start(struct async_context *actx)
 {
-    if (actx->threads_started)
+    if (actx->need_wait)
+        wait_threads(actx);
+    else if (actx->threads_started)
         return 0;
 
     LOG(actx, INFO, "starting threads");
@@ -296,7 +301,7 @@ int async_start(struct async_context *actx)
     return 0;
 }
 
-int async_wait(struct async_context *actx)
+static int wait_threads(struct async_context *actx)
 {
     TRACE(actx, "waiting for threads to end");
     JOIN_MODULE_THREAD(filterer);
@@ -315,6 +320,7 @@ int async_wait(struct async_context *actx)
         LOG(actx, INFO, "threads ended");
 
     actx->threads_started = 0;
+    actx->need_wait = 0;
     return 0;
 }
 
@@ -335,7 +341,7 @@ int async_stop(struct async_context *actx)
     av_thread_message_queue_set_err_recv(actx->frames_queue, AVERROR_EXIT);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   AVERROR_EXIT);
 
-    return async_wait(actx);
+    return wait_threads(actx);
 }
 
 const char *async_get_msg_type_string(enum msg_type type)
@@ -350,12 +356,14 @@ const char *async_get_msg_type_string(enum msg_type type)
 
 int async_pop_msg(struct async_context *actx, struct message *msg)
 {
+    async_start(actx);
+
     TRACE(actx, "fetching a message from the sink");
-    av_assert0(actx->threads_started);
     int ret = av_thread_message_queue_recv(actx->sink_queue, msg, 0);
     if (ret < 0) {
         TRACE(actx, "couldn't fetch message from sink because %s", av_err2str(ret));
         av_thread_message_queue_set_err_send(actx->sink_queue, ret);
+        actx->need_wait = 1;
         return ret;
     }
     TRACE(actx, "got a message of type %s", async_get_msg_type_string(msg->type));

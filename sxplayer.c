@@ -390,7 +390,6 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
         frame = s->cached_frame;
         s->cached_frame = NULL;
     } else {
-        async_start(s->actx);
         for (;;) {
             int ret;
             struct message msg;
@@ -399,8 +398,7 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
             ret = async_pop_msg(s->actx, &msg);
             if (ret < 0) {
                 frame = NULL;
-                TRACE(s, "poped a message raising %s, wait for the threads to end", av_err2str(ret));
-                async_wait(s->actx);
+                TRACE(s, "poped a message raising %s", av_err2str(ret));
                 break;
             } else if (msg.type == MSG_SEEK) {
                 // probably from the initial seek
@@ -573,17 +571,14 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
                   diff, s->dist_time_seek_trigger64);
 
         async_seek(s->actx, get_media_time(s, t64));
-        async_start(s->actx);
         av_frame_free(&candidate);
         av_frame_free(&s->cached_frame);
 
         TRACE(s, "seek requested, wait for it to be effective");
         do {
             ret = async_pop_msg(s->actx, &msg);
-            if (ret < 0) {
-                async_wait(s->actx);
+            if (ret < 0)
                 return ret_frame(s, NULL, vt);
-            }
             async_free_message_data(&msg);
         } while (msg.type != MSG_SEEK);
         TRACE(s, "seek message obtained");
