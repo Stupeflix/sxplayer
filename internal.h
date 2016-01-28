@@ -29,10 +29,20 @@
 #include "sxplayer.h"
 #include "async.h"
 
-// TODO: some must be rutime configurable
-// TODO: add logging user callback
-#define ENABLE_INFO 0
-#define ENABLE_DBG 0
+/* ENABLE_DBG can be set with the build system using TRACE=yes option. It will
+ * enable the compilation of the tracing logging */
+#ifndef ENABLE_DBG
+# define ENABLE_DBG 0
+#endif
+
+#if ENABLE_DBG
+# define LOG_LEVEL AV_LOG_DEBUG
+#else
+/* The following will affect the default usage (aka no user logging callback specified) */
+# define LOG_LEVEL AV_LOG_ERROR  // will log only errors
+//# define LOG_LEVEL AV_LOG_INFO   // will log little information such as file opening and decoder in use
+//# define LOG_LEVEL AV_LOG_DEBUG  // will log most of the important actions (get/ret frame)
+#endif
 
 void do_log(void *log_ctx, int log_level, const char *fn, const char *fmt, ...) av_printf_format(4, 5);
 

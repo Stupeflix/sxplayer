@@ -17,6 +17,7 @@ PKG_CONFIG ?= pkg-config
 
 SHARED ?= no
 DEBUG  ?= no
+TRACE  ?= no
 
 TARGET_OS ?= $(shell uname -s)
 
@@ -48,6 +49,9 @@ OBJS += $(NAME).o $(PROJECT_OBJS)
 CFLAGS += -Wall -O2 -Werror=missing-prototypes -fPIC
 ifeq ($(DEBUG),yes)
 	CFLAGS += -g
+endif
+ifeq ($(TRACE),yes)
+	CFLAGS += -DENABLE_DBG=1
 endif
 CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PROJECT_PKG_CONFIG_LIBS)) $(CFLAGS)
 LDLIBS := $(shell $(PKG_CONFIG) --libs   $(PROJECT_PKG_CONFIG_LIBS)) $(LDLIBS) $(PROJECT_LIBS)

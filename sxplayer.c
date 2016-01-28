@@ -167,9 +167,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
 
     s->class = &sxplayer_class;
 
-    if      (ENABLE_DBG)  av_log_set_level(AV_LOG_VERBOSE);
-    else if (ENABLE_INFO) av_log_set_level(AV_LOG_INFO);
-    else                  av_log_set_level(AV_LOG_ERROR);
+    av_log_set_level(LOG_LEVEL);
 
 #define VFMT(v) (v)>>16, (v)>>8 & 0xff, (v) & 0xff
     for (i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {
