@@ -88,14 +88,14 @@ void log_print(void *log_ctx, int log_level, const char *fn, const char *fmt, ..
         va_end(arg_list);
 
         if (ENABLE_DBG) {
-        int64_t t;
-        pthread_mutex_lock(&ctx->lock);
-        t = av_gettime();
-        if (!ctx->last_time)
+            int64_t t;
+            pthread_mutex_lock(&ctx->lock);
+            t = av_gettime();
+            if (!ctx->last_time)
+                ctx->last_time = t;
+            av_log(ctx->avlog, av_log_level, "[%f] %s: %s\n", (t - ctx->last_time) / 1000000., fn, logline);
             ctx->last_time = t;
-        av_log(ctx->avlog, av_log_level, "[%f] %s: %s\n", (t - ctx->last_time) / 1000000., fn, logline);
-        ctx->last_time = t;
-        pthread_mutex_unlock(&ctx->lock);
+            pthread_mutex_unlock(&ctx->lock);
         } else {
             av_log(ctx->avlog, av_log_level, "%s: %s\n", fn, logline);
         }
