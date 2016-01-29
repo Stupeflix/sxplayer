@@ -260,7 +260,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         return AVERROR_EXTERNAL;
     }
 
-    buf_attr = buffer_attributes_create(avctx->width, avctx->height, REQUESTED_PIX_FMT);
+    buf_attr = buffer_attributes_create(avctx->coded_width, avctx->coded_height, REQUESTED_PIX_FMT);
 
     decoder_cb.decompressionOutputCallback = decode_callback;
     decoder_cb.decompressionOutputRefCon   = dec_ctx;
