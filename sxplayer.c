@@ -28,6 +28,7 @@
 #include <libavutil/avstring.h>
 #include <libavutil/motion_vector.h>
 #include <libavutil/opt.h>
+#include <libavutil/time.h>
 
 #include "sxplayer.h"
 #include "internal.h"
@@ -315,9 +316,13 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
 {
     struct sxplayer_frame *ret;
     AVFrameSideData *sd;
+    const float exect = LOG_LEVEL >= AV_LOG_WARNING ? (av_gettime() - s->entering_time) / 1000000. : -1;
+
+    if (exect > 1/60.)
+        LOG(s, WARNING, "getting the frame took %fs!", exect);
 
     if (!frame) {
-        LOG(s, DEBUG, " <<< return nothing");
+        LOG(s, DEBUG, " <<< return nothing in %fs", exect);
         return NULL;
     }
 
@@ -328,7 +333,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
 
     /* if same frame as previously, do not raise it again */
     if (s->last_pushed_frame_ts == frame_ts) {
-        LOG(s, DEBUG, " <<< same frame as previously, return NULL");
+        LOG(s, DEBUG, " <<< same frame as previously, return NULL in %fs", exect);
         return NULL;
     }
 
@@ -358,9 +363,10 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
     ret->pix_fmt  = pix_fmts_ff2sx(frame->format);
 
-    LOG(s, DEBUG, " <<< return %dx%d frame @ ts=%s with requested time being %s [max:%s]",
+    LOG(s, DEBUG, " <<< return %dx%d frame @ ts=%s with requested time being %s [max:%s] in %fs",
         frame->width, frame->height, PTS2TIMESTR(frame_ts),
-        PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64));
+        PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64),
+        exect);
     return ret;
 }
 
@@ -467,6 +473,9 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     int ret;
     int64_t diff;
     const int64_t t64 = TIME2INT64(t);
+
+    if (LOG_LEVEL >= AV_LOG_WARNING)
+        s->entering_time = av_gettime();
 
     LOG(s, DEBUG, " >>> get frame for t=%g", t);
 
@@ -601,6 +610,9 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 {
     int ret;
+
+    if (LOG_LEVEL >= AV_LOG_WARNING)
+        s->entering_time = av_gettime();
 
     LOG(s, DEBUG, " >>> get next frame");
 

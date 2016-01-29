@@ -69,6 +69,7 @@ struct sxplayer_ctx {
     int64_t last_frame_poped_ts;
     int64_t first_ts;
     int64_t last_ts;
+    int64_t entering_time;
 };
 
 #endif

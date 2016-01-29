@@ -34,6 +34,7 @@
 #else
 /* The following will affect the default usage (aka no user logging callback specified) */
 # define LOG_LEVEL AV_LOG_ERROR  // will log only errors
+//# define LOG_LEVEL AV_LOG_WARNING // will log errors, warnings
 //# define LOG_LEVEL AV_LOG_INFO   // will log little information such as file opening and decoder in use
 //# define LOG_LEVEL AV_LOG_DEBUG  // will log most of the important actions (get/ret frame)
 #endif
