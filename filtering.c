@@ -506,7 +506,11 @@ void filtering_run(struct filtering_ctx *ctx)
 
         // TODO: replace with a trim filter in libavfilter (check if hw accelerated
         // filters work)
-        if (ctx->max_pts != AV_NOPTS_VALUE && frame->pts >= ctx->max_pts) {
+        if (frame->pts < 0) {
+            av_frame_free(&frame);
+            TRACE(ctx, "frame ts is negative, skipping");
+            continue;
+        } else if (ctx->max_pts != AV_NOPTS_VALUE && frame->pts >= ctx->max_pts) {
             av_frame_free(&frame);
             TRACE(ctx, "reached trim duration");
             break;
