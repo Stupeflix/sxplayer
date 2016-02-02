@@ -49,6 +49,7 @@ static const AVOption sxplayer_options[] = {
     { "export_mvs",             NULL, OFFSET(export_mvs),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { "pkt_skip_mod",           NULL, OFFSET(pkt_skip_mod),           AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
     { "thread_stack_size",      NULL, OFFSET(thread_stack_size),      AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
+    { "non_blocking",           NULL, OFFSET(non_blocking),           AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { NULL }
 };
 
@@ -401,6 +402,10 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
             TRACE(s, "querying async context");
             ret = async_pop_msg(s->actx, &msg);
             if (ret < 0) {
+                if (ret == AVERROR(EAGAIN) && s->non_blocking) {
+                    LOG(s, WARNING, "no frame ready yet");
+                    return NULL;
+                }
                 frame = NULL;
                 TRACE(s, "poped a message raising %s", av_err2str(ret));
                 break;
