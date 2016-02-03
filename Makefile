@@ -67,8 +67,13 @@ else
 	$(AR) rcs $@ $^
 endif
 
-$(NAME): LDLIBS += $(shell $(PKG_CONFIG) --libs glfw3 glu)
-$(NAME): CFLAGS += $(shell $(PKG_CONFIG) --cflags glfw3 glu)
+PLAYER_LIBS =
+ifeq ($(TARGET_OS),Darwin)
+	PLAYER_LIBS += -framework OpenGL
+endif
+
+$(NAME): LDLIBS += $(shell $(PKG_CONFIG) --libs glfw3 glew) $(PLAYER_LIBS)
+$(NAME): CFLAGS += $(shell $(PKG_CONFIG) --cflags glfw3 glew)
 $(NAME): $(OBJS) $(PROGOBJS)
 
 $(TESTPROG): $(OBJS) $(TESTOBJS)
