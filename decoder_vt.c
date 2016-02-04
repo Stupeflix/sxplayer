@@ -36,6 +36,8 @@ struct async_frame {
 struct vtdec_context {
     VTDecompressionSessionRef session;
     CMVideoFormatDescriptionRef cm_fmt_desc;
+    CFDictionaryRef decoder_spec;
+    CFDictionaryRef buf_attr;
     struct async_frame *queue;
     int nb_frames;
 };
@@ -233,10 +235,6 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     AVCodecContext *avctx = dec_ctx->avctx;
     struct vtdec_context *vt = dec_ctx->priv_data;
     int cm_codec_type;
-    OSStatus status;
-    VTDecompressionOutputCallbackRecord decoder_cb;
-    CFDictionaryRef decoder_spec;
-    CFDictionaryRef buf_attr;
 
     TRACE(dec_ctx, "init");
 
@@ -249,50 +247,18 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     }
 
     TRACE(dec_ctx, "configure");
-    decoder_spec = decoder_config_create(cm_codec_type, avctx);
+    vt->decoder_spec = decoder_config_create(cm_codec_type, avctx);
 
-    vt->cm_fmt_desc = format_desc_create(cm_codec_type, decoder_spec,
+    vt->cm_fmt_desc = format_desc_create(cm_codec_type, vt->decoder_spec,
                                          avctx->width, avctx->height);
     if (!vt->cm_fmt_desc) {
-        if (decoder_spec)
-            CFRelease(decoder_spec);
-
         LOG(dec_ctx, ERROR, "format description creation failed");
         return AVERROR_EXTERNAL;
     }
 
-    buf_attr = buffer_attributes_create(avctx->coded_width, avctx->coded_height, REQUESTED_PIX_FMT);
+    vt->buf_attr = buffer_attributes_create(avctx->coded_width, avctx->coded_height, REQUESTED_PIX_FMT);
 
-    decoder_cb.decompressionOutputCallback = decode_callback;
-    decoder_cb.decompressionOutputRefCon   = dec_ctx;
-
-    TRACE(dec_ctx, "create session");
-    status = VTDecompressionSessionCreate(NULL,
-                                          vt->cm_fmt_desc,
-                                          decoder_spec,
-                                          buf_attr,
-                                          &decoder_cb,
-                                          &vt->session);
-
-    if (decoder_spec)
-        CFRelease(decoder_spec);
-    if (buf_attr)
-        CFRelease(buf_attr);
-
-    TRACE(dec_ctx, "init done (status=%d)", status);
-    switch (status) {
-    case kVTVideoDecoderNotAvailableNowErr:
-    case kVTVideoDecoderUnsupportedDataFormatErr:
-        return AVERROR(ENOSYS);
-    case kVTVideoDecoderMalfunctionErr:
-        return AVERROR(EINVAL);
-    case kVTVideoDecoderBadDataErr :
-        return AVERROR_INVALIDDATA;
-    case 0:
-        return 0;
-    default:
-        return AVERROR_UNKNOWN;
-    }
+    return 0;
 }
 
 static CMSampleBufferRef sample_buffer_create(CMFormatDescriptionRef fmt_desc,
@@ -347,6 +313,25 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
 {
     int status;
     struct vtdec_context *vt = dec_ctx->priv_data;
+
+    if (!vt->session) {
+        TRACE(dec_ctx, "create session");
+        const VTDecompressionOutputCallbackRecord decoder_cb = {
+            .decompressionOutputCallback = decode_callback,
+            .decompressionOutputRefCon   = dec_ctx,
+        };
+
+        status = VTDecompressionSessionCreate(NULL,
+                                              vt->cm_fmt_desc,
+                                              vt->decoder_spec,
+                                              vt->buf_attr,
+                                              &decoder_cb,
+                                              &vt->session);
+
+        TRACE(dec_ctx, "init done (status=%d)", status);
+        if (status)
+            return AVERROR_EXTERNAL;
+    }
 
     if (!pkt->size) {
         VTDecompressionSessionFinishDelayedFrames(vt->session);
@@ -427,6 +412,10 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
     TRACE(dec_ctx, "uninit");
     if (vt->cm_fmt_desc)
         CFRelease(vt->cm_fmt_desc);
+    if (vt->decoder_spec)
+        CFRelease(vt->decoder_spec);
+    if (vt->buf_attr)
+        CFRelease(vt->buf_attr);
 
     drop_queued_frames(dec_ctx);
 
