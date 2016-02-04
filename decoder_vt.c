@@ -248,6 +248,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         return AVERROR_DECODER_NOT_FOUND;
     }
 
+    TRACE(dec_ctx, "configure");
     decoder_spec = decoder_config_create(cm_codec_type, avctx);
 
     vt->cm_fmt_desc = format_desc_create(cm_codec_type, decoder_spec,
@@ -265,6 +266,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     decoder_cb.decompressionOutputCallback = decode_callback;
     decoder_cb.decompressionOutputRefCon   = dec_ctx;
 
+    TRACE(dec_ctx, "create session");
     status = VTDecompressionSessionCreate(NULL,
                                           vt->cm_fmt_desc,
                                           decoder_spec,
@@ -277,6 +279,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     if (buf_attr)
         CFRelease(buf_attr);
 
+    TRACE(dec_ctx, "init done (status=%d)", status);
     switch (status) {
     case kVTVideoDecoderNotAvailableNowErr:
     case kVTVideoDecoderUnsupportedDataFormatErr:
