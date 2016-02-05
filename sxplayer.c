@@ -312,7 +312,7 @@ static int configure_context(struct sxplayer_ctx *s)
 /* Return the frame only if different from previous one. We do not make a
  * simple pointer check because of the frame reference counting (and thus
  * pointer reuse, depending on many parameters)  */
-static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, int64_t req_t)
+static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 {
     struct sxplayer_frame *ret;
     AVFrameSideData *sd;
@@ -363,9 +363,9 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame, 
     ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
     ret->pix_fmt  = pix_fmts_ff2sx(frame->format);
 
-    LOG(s, DEBUG, " <<< return %dx%d frame @ ts=%s with requested time being %s [max:%s] in %fs",
+    LOG(s, DEBUG, " <<< return %dx%d frame @ ts=%s [max:%s] in %fs",
         frame->width, frame->height, PTS2TIMESTR(frame_ts),
-        PTS2TIMESTR(req_t), PTS2TIMESTR(s->skip64 + s->trim_duration64),
+        PTS2TIMESTR(s->skip64 + s->trim_duration64),
         exect);
     return ret;
 }
@@ -453,7 +453,7 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
     frame->data[0][1] = (frame_id>>4 & 0xf) * 17;
     frame->data[0][2] = (frame_id    & 0xf) * 17;
     frame->data[0][3] = 0xff;
-    return ret_frame(s, frame, t64);
+    return ret_frame(s, frame);
 }
 #endif
 
@@ -492,7 +492,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
     if (t64 < 0) {
         sxplayer_prefetch(s);
-        return ret_frame(s, NULL, vt);
+        return ret_frame(s, NULL);
     }
 
     /* If the trim duration couldn't be evaluated, it's likely an image so
@@ -501,19 +501,19 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
      * return NULL. */
     if (s->trim_duration64 < 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
         TRACE(s, "no trim duration, likely picture, and frame already returned");
-        return ret_frame(s, NULL, vt);
+        return ret_frame(s, NULL);
     }
 
     if (s->last_ts != AV_NOPTS_VALUE && vt >= s->last_ts &&
         s->last_pushed_frame_ts == s->last_ts) {
         TRACE(s, "requested the last frame again");
-        return ret_frame(s, NULL, vt);
+        return ret_frame(s, NULL);
     }
 
     if (s->first_ts != AV_NOPTS_VALUE && vt <= s->first_ts &&
         s->last_pushed_frame_ts == s->first_ts) {
         TRACE(s, "requested the first frame again");
-        return ret_frame(s, NULL, vt);
+        return ret_frame(s, NULL);
     }
 
     AVFrame *candidate = NULL;
@@ -536,7 +536,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         candidate = pop_frame(s);
         if (!candidate) {
             TRACE(s, "can not get a single frame for this media");
-            return ret_frame(s, NULL, vt);
+            return ret_frame(s, NULL);
         }
 
         diff = vt - candidate->pts;
@@ -554,7 +554,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
              * candidate if the first time requested is not actually 0 */
             if (t64 == 0)
                 s->first_ts = candidate->pts;
-            return ret_frame(s, candidate, vt);
+            return ret_frame(s, candidate);
         }
 
     } else {
@@ -564,7 +564,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     }
 
     if (!diff)
-        return ret_frame(s, candidate, vt);
+        return ret_frame(s, candidate);
 
     /* Check if a seek is needed */
     if (diff < 0 || diff > s->dist_time_seek_trigger64) {
@@ -585,7 +585,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         do {
             ret = async_pop_msg(s->actx, &msg);
             if (ret < 0)
-                return ret_frame(s, NULL, vt);
+                return ret_frame(s, NULL);
             async_free_message_data(&msg);
         } while (msg.type != MSG_SEEK);
         TRACE(s, "seek message obtained");
@@ -604,7 +604,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         candidate = next;
     }
 
-    return ret_frame(s, candidate, vt);
+    return ret_frame(s, candidate);
 }
 
 struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
@@ -620,7 +620,7 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
     if (ret < 0)
         return NULL;
 
-    return ret_frame(s, pop_frame(s), 0);
+    return ret_frame(s, pop_frame(s));
 }
 
 int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)
