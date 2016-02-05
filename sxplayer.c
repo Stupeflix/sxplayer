@@ -485,7 +485,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
     ret = configure_context(s);
     if (ret < 0)
-        return NULL;
+        return ret_frame(s, NULL);
 
     const int vt = get_media_time(s, t64);
     TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
