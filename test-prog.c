@@ -73,7 +73,7 @@ static int test_frame(struct sxplayer_ctx *s,
         printf("frame t=%f (pt=%f) -> %p color %08X => video_ts:%f, frame expected at t=%f [diff:%f]\n",
                time, playback_time, frame, c, video_ts, estimated_time_from_color, diff);
 
-        if (diff > 2./SOURCE_FPS) {
+        if (diff > 1./SOURCE_FPS) {
             fprintf(stderr, "ERROR: frame diff is too big %f>%f\n", diff, 2./SOURCE_FPS);
             sxplayer_release_frame(frame);
             return -1;
