@@ -394,6 +394,8 @@ static void *main_thread(void *arg)
 
     set_thread_name("sxp/main");
 
+    LOG(actx, INFO, "starting main thread");
+
     if (!actx->modules_initialized) {
         int ret = initialize_modules(actx, actx->s);
         if (ret < 0) {
@@ -405,7 +407,6 @@ static void *main_thread(void *arg)
     }
 
     // XXX error check
-    LOG(actx, INFO, "starting main");
     START_MODULE_THREAD(demuxer);
     START_MODULE_THREAD(decoder);
     START_MODULE_THREAD(filterer);
@@ -448,6 +449,8 @@ int async_start(struct async_context *actx)
     }
 
     START_MODULE_THREAD(main);
+
+    TRACE(actx, "async started");
     return 0;
 }
 
