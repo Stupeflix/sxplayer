@@ -487,13 +487,13 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     if (ret < 0)
         return ret_frame(s, NULL);
 
-    const int vt = get_media_time(s, t64);
-    TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
-
-    if (t64 < 0) {
+    if (t < 0) {
         sxplayer_prefetch(s);
         return ret_frame(s, NULL);
     }
+
+    const int vt = get_media_time(s, t64);
+    TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
 
     /* If the trim duration couldn't be evaluated, it's likely an image so
      * we will assume this is the case. In the case we already pushed a
