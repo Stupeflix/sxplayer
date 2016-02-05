@@ -29,11 +29,10 @@ struct demuxing_ctx *demuxing_alloc(void);
 
 int demuxing_init(void *log_ctx,
                   struct demuxing_ctx *ctx,
+                  AVThreadMessageQueue *src_queue,
                   AVThreadMessageQueue *pkt_queue,
                   const char *filename, int avselect,
                   int pkt_skip_mod);
-
-int demuxing_seek(struct demuxing_ctx *ctx, int64_t ts);
 
 int64_t demuxing_probe_duration(const struct demuxing_ctx *ctx);
 double demuxing_probe_rotation(const struct demuxing_ctx *ctx);

@@ -18,8 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <pthread.h>
-
 #include <libavformat/avformat.h>
 #include <libavutil/avassert.h>
 #include <libavutil/display.h>
@@ -30,13 +28,12 @@
 
 struct demuxing_ctx {
     void *log_ctx;
-    pthread_mutex_t lock;
     int pkt_skip_mod;
-    int64_t request_seek;
     int64_t pkt_count;
     AVFormatContext *fmt_ctx;
     AVStream *stream;
     int stream_idx;
+    AVThreadMessageQueue *src_queue;
     AVThreadMessageQueue *pkt_queue;
 };
 
@@ -93,21 +90,19 @@ const AVStream *demuxing_get_stream(const struct demuxing_ctx *ctx)
 
 int demuxing_init(void *log_ctx,
                   struct demuxing_ctx *ctx,
+                  AVThreadMessageQueue *src_queue,
                   AVThreadMessageQueue *pkt_queue,
                   const char *filename, int avselect,
                   int pkt_skip_mod)
 {
+    int ret;
     enum AVMediaType media_type;
-
-    int ret = pthread_mutex_init(&ctx->lock, NULL);
-    if (ret < 0)
-        return AVERROR(ret);
 
     ctx->log_ctx = log_ctx;
 
+    ctx->src_queue = src_queue;
     ctx->pkt_queue = pkt_queue;
     ctx->pkt_skip_mod = pkt_skip_mod;
-    ctx->request_seek = AV_NOPTS_VALUE;
 
     switch (avselect) {
     case SXPLAYER_SELECT_VIDEO: media_type = AVMEDIA_TYPE_VIDEO; break;
@@ -191,79 +186,44 @@ static int pull_packet(struct demuxing_ctx *ctx, AVPacket *pkt)
     return ret;
 }
 
-int demuxing_seek(struct demuxing_ctx *ctx, int64_t ts)
-{
-    TRACE(ctx, "request seek at ts=%s", PTS2TIMESTR(ts));
-    int ret = AVERROR(pthread_mutex_lock(&ctx->lock));
-    if (ret < 0)
-        return ret;
-    ctx->request_seek = ts;
-    ret = AVERROR(pthread_mutex_unlock(&ctx->lock));
-    if (ret < 0)
-        return ret;
-    return 0;
-}
-
-static int push_seek_message(AVThreadMessageQueue *q, int64_t ts)
-{
-    int ret;
-    struct message msg = {
-        .type = MSG_SEEK,
-        .data = av_malloc(sizeof(ts)),
-    };
-
-    if (!msg.data)
-        return AVERROR(ENOMEM);
-    *(int64_t *)msg.data = ts;
-
-    // flush the queue so the seek message is processed ASAP
-    av_thread_message_flush(q);
-
-    ret = av_thread_message_queue_send(q, &msg, 0);
-    if (ret < 0) {
-        av_thread_message_queue_set_err_recv(q, ret);
-        av_freep(&msg.data);
-    }
-    return ret;
-}
-
 void demuxing_run(struct demuxing_ctx *ctx)
 {
     int ret;
+    int in_err, out_err;
 
     TRACE(ctx, "demuxing packets in queue %p", ctx->pkt_queue);
 
     for (;;) {
-        int64_t seek_to;
         AVPacket pkt;
-        struct message msg = {.type = MSG_PACKET};
+        struct message msg;
 
-        /* get seek value and reset request */
-        ret = AVERROR(pthread_mutex_lock(&ctx->lock));
-        if (ret < 0)
-            break;
-        seek_to = ctx->request_seek;
-        ctx->request_seek = AV_NOPTS_VALUE;
-        ret = AVERROR(pthread_mutex_unlock(&ctx->lock));
-        if (ret < 0)
-            break;
-
-        if (seek_to != AV_NOPTS_VALUE) {
-
-            /* notify the decoder about the seek by using its pkt queue */
-            TRACE(ctx, "forward seek message (to %s) to decoder",
-                  PTS2TIMESTR(seek_to));
-            ret = push_seek_message(ctx->pkt_queue, seek_to);
+        ret = av_thread_message_queue_recv(ctx->src_queue, &msg, AV_THREAD_MESSAGE_NONBLOCK);
+        if (ret != AVERROR(EAGAIN)) {
             if (ret < 0)
                 break;
 
-            /* do actual seek so the following packet that will be pulled in
-             * this current thread will be at the (approximate) requested time */
-            LOG(ctx, INFO, "Seek in media at ts=%s", PTS2TIMESTR(seek_to));
-            ret = avformat_seek_file(ctx->fmt_ctx, -1, INT64_MIN, seek_to, seek_to, 0);
-            if (ret < 0)
+            if (msg.type == MSG_SEEK) {
+                /* Make later modules stop working ASAP */
+                av_thread_message_flush(ctx->pkt_queue);
+
+                /* do actual seek so the following packet that will be pulled in
+                 * this current thread will be at the (approximate) requested time */
+                const int64_t seek_to = *(int64_t *)msg.data;
+                LOG(ctx, INFO, "Seek in media at ts=%s", PTS2TIMESTR(seek_to));
+                ret = avformat_seek_file(ctx->fmt_ctx, -1, INT64_MIN, seek_to, seek_to, 0);
+                if (ret < 0)
+                    break;
+            }
+
+            /* Forward the message */
+            ret = av_thread_message_queue_send(ctx->pkt_queue, &msg, 0);
+            if (ret < 0) {
+                async_free_message_data(&msg);
                 break;
+            }
         }
+
+        msg.type = MSG_PACKET;
 
         ret = pull_packet(ctx, &pkt);
         if (ret < 0)
@@ -291,10 +251,17 @@ void demuxing_run(struct demuxing_ctx *ctx)
         }
     }
 
-    if (!ret)
-        ret = AVERROR_EOF;
-    TRACE(ctx, "notify decoder about %s", av_err2str(ret));
-    av_thread_message_queue_set_err_recv(ctx->pkt_queue, ret);
+    if (ret < 0 && ret != AVERROR_EOF) {
+        in_err = out_err = ret;
+    } else {
+        in_err = AVERROR_EXIT;
+        out_err = AVERROR_EOF;
+    }
+    TRACE(ctx, "notify user with %s and decoder with %s",
+          av_err2str(in_err), av_err2str(out_err));
+    av_thread_message_queue_set_err_send(ctx->src_queue, in_err);
+    av_thread_message_flush(ctx->src_queue);
+    av_thread_message_queue_set_err_recv(ctx->pkt_queue, out_err);
 }
 
 void demuxing_free(struct demuxing_ctx **ctxp)
@@ -302,7 +269,6 @@ void demuxing_free(struct demuxing_ctx **ctxp)
     struct demuxing_ctx *ctx = *ctxp;
     if (!ctx)
         return;
-    pthread_mutex_destroy(&ctx->lock);
     avformat_close_input(&ctx->fmt_ctx);
     av_freep(ctxp);
 }

@@ -51,12 +51,15 @@ struct async_context {
     int filterer_started;
     int threads_started;
 
+    AVThreadMessageQueue *src_queue;        // user     <-> demuxer
     AVThreadMessageQueue *pkt_queue;        // demuxer  <-> decoder
     AVThreadMessageQueue *frames_queue;     // decoder  <-> filterer
     AVThreadMessageQueue *sink_queue;       // filterer <-> user
 
     int thread_stack_size;
     int need_wait;
+
+    int64_t request_seek;
 };
 
 struct async_context *async_alloc_context(void)
@@ -104,9 +107,37 @@ int async_fetch_info(const struct async_context *actx, struct sxplayer_info *inf
     return 0;
 }
 
+static int send_seek_message(AVThreadMessageQueue *q, int64_t ts)
+{
+    int ret;
+    struct message msg = {
+        .type = MSG_SEEK,
+        .data = av_malloc(sizeof(ts)),
+    };
+
+    if (!msg.data)
+        return AVERROR(ENOMEM);
+    *(int64_t *)msg.data = ts;
+
+    // flush the queue so the seek message is processed ASAP (there might be a
+    // previous seek message present)
+    av_thread_message_flush(q);
+
+    ret = av_thread_message_queue_send(q, &msg, 0);
+    if (ret < 0) {
+        av_thread_message_queue_set_err_recv(q, ret);
+        av_freep(&msg.data);
+    }
+    return ret;
+}
+
 int async_seek(struct async_context *actx, int64_t ts)
 {
-    return demuxing_seek(actx->demuxer, ts);
+    if (!actx->threads_started || actx->need_wait)
+        actx->request_seek = ts;
+    else
+        send_seek_message(actx->src_queue, ts);
+    return 0;
 }
 
 static char *update_filters_str(char *filters, const char *append)
@@ -134,7 +165,7 @@ static int initialize_modules(struct async_context *actx,
     /* Demuxer */
     ret = demuxing_init(actx->log_ctx,
                         actx->demuxer,
-                        actx->pkt_queue,
+                        actx->src_queue, actx->pkt_queue,
                         s->filename, s->avselect,
                         s->pkt_skip_mod);
     if (ret < 0)
@@ -184,8 +215,14 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
 
     actx->log_ctx = s->log_ctx;
     actx->thread_stack_size = s->thread_stack_size;
+    actx->request_seek = AV_NOPTS_VALUE;
 
     TRACE(actx, "allocate queues");
+    ret = av_thread_message_queue_alloc(&actx->src_queue, 1,
+                                        sizeof(struct message));
+    if (ret < 0)
+        return ret;
+
     ret = av_thread_message_queue_alloc(&actx->pkt_queue, s->max_nb_packets,
                                         sizeof(struct message));
     if (ret < 0)
@@ -201,6 +238,7 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
     if (ret < 0)
         return ret;
 
+    av_thread_message_queue_set_free_func(actx->src_queue,    async_free_message_data);
     av_thread_message_queue_set_free_func(actx->pkt_queue,    async_free_message_data);
     av_thread_message_queue_set_free_func(actx->frames_queue, async_free_message_data);
     av_thread_message_queue_set_free_func(actx->sink_queue,   async_free_message_data);
@@ -292,9 +330,11 @@ static int wait_threads(struct async_context *actx)
     JOIN_MODULE_THREAD(demuxer);
 
     // every worker ended, reset queues states
+    av_thread_message_queue_set_err_send(actx->src_queue,    0);
     av_thread_message_queue_set_err_send(actx->pkt_queue,    0);
     av_thread_message_queue_set_err_send(actx->frames_queue, 0);
     av_thread_message_queue_set_err_send(actx->sink_queue,   0);
+    av_thread_message_queue_set_err_recv(actx->src_queue,    0);
     av_thread_message_queue_set_err_recv(actx->pkt_queue,    0);
     av_thread_message_queue_set_err_recv(actx->frames_queue, 0);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   0);
@@ -314,6 +354,11 @@ int async_start(struct async_context *actx)
     else if (actx->threads_started)
         return 0;
 
+    if (actx->request_seek != AV_NOPTS_VALUE) {
+        send_seek_message(actx->src_queue, actx->request_seek);
+        actx->request_seek = AV_NOPTS_VALUE;
+    }
+
     LOG(actx, INFO, "starting threads");
     START_MODULE_THREAD(demuxer);
     START_MODULE_THREAD(decoder);
@@ -330,11 +375,13 @@ int async_stop(struct async_context *actx)
     TRACE(actx, "stopping");
 
     // modules must stop feeding the queues
+    av_thread_message_queue_set_err_send(actx->src_queue,    AVERROR_EXIT);
     av_thread_message_queue_set_err_send(actx->pkt_queue,    AVERROR_EXIT);
     av_thread_message_queue_set_err_send(actx->frames_queue, AVERROR_EXIT);
     av_thread_message_queue_set_err_send(actx->sink_queue,   AVERROR_EXIT);
 
     // ...and stop reading from them
+    av_thread_message_queue_set_err_recv(actx->src_queue,    AVERROR_EXIT);
     av_thread_message_queue_set_err_recv(actx->pkt_queue,    AVERROR_EXIT);
     av_thread_message_queue_set_err_recv(actx->frames_queue, AVERROR_EXIT);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   AVERROR_EXIT);
@@ -386,6 +433,7 @@ void async_free(struct async_context **actxp)
     decoding_free(&actx->decoder);
     filtering_free(&actx->filterer);
 
+    av_thread_message_queue_free(&actx->src_queue);
     av_thread_message_queue_free(&actx->pkt_queue);
     av_thread_message_queue_free(&actx->frames_queue);
     av_thread_message_queue_free(&actx->sink_queue);
