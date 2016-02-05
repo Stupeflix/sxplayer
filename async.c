@@ -50,11 +50,12 @@ struct async_context {
     pthread_t demuxer_tid;
     pthread_t decoder_tid;
     pthread_t filterer_tid;
+    pthread_t main_tid;
 
     int demuxer_started;
     int decoder_started;
     int filterer_started;
-    int threads_started;
+    int main_started;
 
     AVThreadMessageQueue *src_queue;        // user     <-> demuxer
     AVThreadMessageQueue *pkt_queue;        // demuxer  <-> decoder
@@ -69,6 +70,9 @@ struct async_context {
     AVThreadMessageQueue *info_channel;
     struct info_message info;
     int has_info;
+
+    int modules_initialized;
+    const struct sxplayer_ctx *s;
 };
 
 static int fetch_mod_info(struct async_context *actx)
@@ -167,7 +171,7 @@ static int send_seek_message(AVThreadMessageQueue *q, int64_t ts)
 
 int async_seek(struct async_context *actx, int64_t ts)
 {
-    if (!actx->threads_started || actx->need_wait)
+    if (!actx->main_started || actx->need_wait)
         actx->request_seek = ts;
     else
         send_seek_message(actx->src_queue, ts);
@@ -293,6 +297,7 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
     int ret;
 
     actx->log_ctx = s->log_ctx;
+    actx->s = s; // :(
     actx->thread_stack_size = s->thread_stack_size;
     actx->request_seek = AV_NOPTS_VALUE;
 
@@ -311,11 +316,6 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
     if (!actx->demuxer || !actx->decoder || !actx->filterer)
         return AVERROR(ENOMEM);
 
-    ret = initialize_modules(actx, s);
-    if (ret < 0)
-        return ret;
-
-    TRACE(actx, "init sucessful");
     return 0;
 }
 
@@ -359,8 +359,7 @@ static void *name##_thread(void *arg)                                           
             const int err = AVERROR(ret);                                       \
             LOG(actx, ERROR, "Unable to start " AV_STRINGIFY(name)              \
                 " thread: %s", av_err2str(err));                                \
-            return err;                                                         \
-        }                                                                       \
+        } else                                                                  \
         actx->name##_started = 1;                                               \
     }                                                                           \
 } while (0)
@@ -383,12 +382,44 @@ MODULE_THREAD_FUNC(demuxer,  demuxing)
 MODULE_THREAD_FUNC(decoder,  decoding)
 MODULE_THREAD_FUNC(filterer, filtering)
 
-static int wait_threads(struct async_context *actx)
+/**
+ * This thread is needed because the initialization of the modules can be slow
+ * (for example, probing the information in the demuxer, or initializing the
+ * decoder, in particular VideoToolbox) and we want the prefetch operation to
+ * be as fast as possible for the user.
+ */
+static void *main_thread(void *arg)
 {
-    TRACE(actx, "waiting for threads to end");
+    struct async_context *actx = arg;
+
+    set_thread_name("sxp/main");
+
+    if (!actx->modules_initialized) {
+        int ret = initialize_modules(actx, actx->s);
+        if (ret < 0) {
+            LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
+            av_thread_message_queue_set_err_recv(actx->info_channel, ret);
+            return NULL;
+        }
+        actx->modules_initialized = 1;
+    }
+
+    // XXX error check
+    LOG(actx, INFO, "starting main");
+    START_MODULE_THREAD(demuxer);
+    START_MODULE_THREAD(decoder);
+    START_MODULE_THREAD(filterer);
+
+    TRACE(actx, "waiting for main to end");
     JOIN_MODULE_THREAD(filterer);
     JOIN_MODULE_THREAD(decoder);
     JOIN_MODULE_THREAD(demuxer);
+    return NULL;
+}
+
+static int wait_main_thread(struct async_context *actx)
+{
+    JOIN_MODULE_THREAD(main);
 
     // every worker ended, reset queues states
     av_thread_message_queue_set_err_send(actx->src_queue,    0);
@@ -400,10 +431,6 @@ static int wait_threads(struct async_context *actx)
     av_thread_message_queue_set_err_recv(actx->frames_queue, 0);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   0);
 
-    if (actx->threads_started)
-        LOG(actx, INFO, "threads ended");
-
-    actx->threads_started = 0;
     actx->need_wait = 0;
     return 0;
 }
@@ -411,8 +438,8 @@ static int wait_threads(struct async_context *actx)
 int async_start(struct async_context *actx)
 {
     if (actx->need_wait)
-        wait_threads(actx);
-    else if (actx->threads_started)
+        wait_main_thread(actx);
+    else if (actx->main_started)
         return 0;
 
     if (actx->request_seek != AV_NOPTS_VALUE) {
@@ -420,11 +447,7 @@ int async_start(struct async_context *actx)
         actx->request_seek = AV_NOPTS_VALUE;
     }
 
-    LOG(actx, INFO, "starting threads");
-    START_MODULE_THREAD(demuxer);
-    START_MODULE_THREAD(decoder);
-    START_MODULE_THREAD(filterer);
-    actx->threads_started = 1;
+    START_MODULE_THREAD(main);
     return 0;
 }
 
@@ -447,7 +470,7 @@ int async_stop(struct async_context *actx)
     av_thread_message_queue_set_err_recv(actx->frames_queue, AVERROR_EXIT);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   AVERROR_EXIT);
 
-    return wait_threads(actx);
+    return wait_main_thread(actx);
 }
 
 const char *async_get_msg_type_string(enum msg_type type)
@@ -464,8 +487,12 @@ int async_pop_msg(struct async_context *actx, struct message *msg)
 {
     async_start(actx);
 
+    int ret = fetch_mod_info(actx); // make sure they are ready
+    if (ret < 0)
+        return ret;
+
     TRACE(actx, "fetching a message from the sink");
-    int ret = av_thread_message_queue_recv(actx->sink_queue, msg, 0);
+    ret = av_thread_message_queue_recv(actx->sink_queue, msg, 0);
     if (ret < 0) {
         TRACE(actx, "couldn't fetch message from sink because %s", av_err2str(ret));
         av_thread_message_queue_set_err_send(actx->sink_queue, ret);
@@ -478,7 +505,7 @@ int async_pop_msg(struct async_context *actx, struct message *msg)
 
 int async_started(const struct async_context *actx)
 {
-    return actx->threads_started;
+    return actx->main_started;
 }
 
 void async_free(struct async_context **actxp)
