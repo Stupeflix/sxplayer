@@ -218,7 +218,7 @@ void sxplayer_free(struct sxplayer_ctx **ss)
  */
 static int64_t get_media_time(const struct sxplayer_ctx *s, int64_t t)
 {
-    if (s->trim_duration64 < 0)
+    if (!s->trim_duration64)
         return 0;
     return s->skip64 + FFMIN(t, s->trim_duration64);
 }
@@ -226,7 +226,6 @@ static int64_t get_media_time(const struct sxplayer_ctx *s, int64_t t)
 static int set_context_fields(struct sxplayer_ctx *s)
 {
     int ret;
-    int64_t probe_duration;
 
     if (pix_fmts_sx2ff(s->sw_pix_fmt) == AV_PIX_FMT_NONE) {
         LOG(s, ERROR, "Invalid software decoding pixel format specified");
@@ -270,15 +269,6 @@ static int set_context_fields(struct sxplayer_ctx *s)
         ret = async_seek(s->actx, s->skip64);
         if (ret < 0)
             return ret;
-    }
-
-    probe_duration = async_probe_duration(s->actx);
-    if (probe_duration != AV_NOPTS_VALUE && (s->trim_duration64 == AV_NOPTS_VALUE ||
-                                             probe_duration < s->trim_duration64)) {
-        const double new_duration = probe_duration * av_q2d(AV_TIME_BASE_Q);
-        TRACE(s, "fix trim_duration from %f to %f", s->trim_duration, new_duration);
-        s->trim_duration64 = probe_duration;
-        s->trim_duration = new_duration;
     }
 
     s->context_configured = 1;
@@ -492,6 +482,14 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         return ret_frame(s, NULL);
     }
 
+    /* In this case, the decoding thread wasn't ever started once but we need
+     * this information at least once, so we probe [async] (which will start
+     * the demuxing/decoding/filtering machinery). If we're not at our first
+     * sxplayer_get_frame() call then we will not enter in this block again and
+     * the next checks preventing a restart will work as expected. */
+    if (s->trim_duration64 == AV_NOPTS_VALUE)
+        s->trim_duration64 = async_probe_duration(s->actx);
+
     const int vt = get_media_time(s, t64);
     TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
 
@@ -499,7 +497,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
      * we will assume this is the case. In the case we already pushed a
      * picture we don't want to restart the decoding thread again so we
      * return NULL. */
-    if (s->trim_duration64 < 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
+    if (!s->trim_duration64 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
         TRACE(s, "no trim duration, likely picture, and frame already returned");
         return ret_frame(s, NULL);
     }

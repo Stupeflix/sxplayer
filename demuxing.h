@@ -31,6 +31,7 @@ int demuxing_init(void *log_ctx,
                   struct demuxing_ctx *ctx,
                   AVThreadMessageQueue *src_queue,
                   AVThreadMessageQueue *pkt_queue,
+                  AVThreadMessageQueue *info_queue,
                   const char *filename, int avselect,
                   int pkt_skip_mod);
 

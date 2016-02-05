@@ -31,6 +31,7 @@ enum msg_type {
     MSG_FRAME,
     MSG_PACKET,
     MSG_SEEK,
+    MSG_INFO,
 };
 
 struct message {
@@ -48,9 +49,9 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s);
 
 int async_start(struct async_context *actx);
 
-int64_t async_probe_duration(const struct async_context *actx);
+int64_t async_probe_duration(struct async_context *actx);
 
-int async_fetch_info(const struct async_context *actx, struct sxplayer_info *info);
+int async_fetch_info(struct async_context *actx, struct sxplayer_info *info);
 
 int async_seek(struct async_context *actx, int64_t ts);
 
