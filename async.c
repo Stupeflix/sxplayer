@@ -209,6 +209,15 @@ end:
     return ret;
 }
 
+static int alloc_msg_queue(AVThreadMessageQueue **q, int n)
+{
+    int ret = av_thread_message_queue_alloc(q, n, sizeof(struct message));
+    if (ret < 0)
+        return ret;
+    av_thread_message_queue_set_free_func(*q, async_free_message_data);
+    return 0;
+}
+
 int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
 {
     int ret;
@@ -218,30 +227,11 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
     actx->request_seek = AV_NOPTS_VALUE;
 
     TRACE(actx, "allocate queues");
-    ret = av_thread_message_queue_alloc(&actx->src_queue, 1,
-                                        sizeof(struct message));
-    if (ret < 0)
+    if ((ret = alloc_msg_queue(&actx->src_queue,    1))                 < 0 ||
+        (ret = alloc_msg_queue(&actx->pkt_queue,    s->max_nb_packets)) < 0 ||
+        (ret = alloc_msg_queue(&actx->frames_queue, s->max_nb_frames))  < 0 ||
+        (ret = alloc_msg_queue(&actx->sink_queue,   s->max_nb_sink))    < 0)
         return ret;
-
-    ret = av_thread_message_queue_alloc(&actx->pkt_queue, s->max_nb_packets,
-                                        sizeof(struct message));
-    if (ret < 0)
-        return ret;
-
-    ret = av_thread_message_queue_alloc(&actx->frames_queue, s->max_nb_frames,
-                                        sizeof(struct message));
-    if (ret < 0)
-        return ret;
-
-    ret = av_thread_message_queue_alloc(&actx->sink_queue, s->max_nb_sink,
-                                        sizeof(struct message));
-    if (ret < 0)
-        return ret;
-
-    av_thread_message_queue_set_free_func(actx->src_queue,    async_free_message_data);
-    av_thread_message_queue_set_free_func(actx->pkt_queue,    async_free_message_data);
-    av_thread_message_queue_set_free_func(actx->frames_queue, async_free_message_data);
-    av_thread_message_queue_set_free_func(actx->sink_queue,   async_free_message_data);
 
     TRACE(actx, "create modules");
     actx->demuxer  = demuxing_alloc();
