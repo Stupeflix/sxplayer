@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <pthread.h>
 #include <VideoToolbox/VideoToolbox.h>
 
 #include "decoding.h"
@@ -38,6 +39,9 @@ struct vtdec_context {
     CMVideoFormatDescriptionRef cm_fmt_desc;
     struct async_frame *queue;
     int nb_frames;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    int nb_queued;
 };
 
 static CMVideoFormatDescriptionRef format_desc_create(CMVideoCodecType codec_type,
@@ -169,6 +173,17 @@ static int push_async_frame(struct decoder_ctx *dec_ctx,
     return ret;
 }
 
+static void update_nb_queue(struct decoder_ctx *dec_ctx,
+                            struct vtdec_context *vt, int diff)
+{
+    pthread_mutex_lock(&vt->lock);
+    TRACE(dec_ctx, "frame counter %d: %d -> %d",
+          diff, vt->nb_queued, vt->nb_queued + diff);
+    vt->nb_queued += diff;
+    pthread_cond_signal(&vt->cond);
+    pthread_mutex_unlock(&vt->lock);
+}
+
 static void decode_callback(void *opaque,
                             void *sourceFrameRefCon,
                             OSStatus status,
@@ -186,6 +201,7 @@ static void decode_callback(void *opaque,
 
     if (!image_buffer) {
         TRACE(dec_ctx, "decode cb received NULL output image buffer");
+        update_nb_queue(dec_ctx, vt, -1);
         return;
     }
 
@@ -226,6 +242,8 @@ static void decode_callback(void *opaque,
             vt->queue = queue_walker = next_frame;
         }
     }
+
+    update_nb_queue(dec_ctx, vt, -1);
 }
 
 static int vtdec_init(struct decoder_ctx *dec_ctx)
@@ -241,6 +259,9 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     TRACE(dec_ctx, "init");
 
     avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
+
+    pthread_mutex_init(&vt->lock, NULL);
+    pthread_cond_init(&vt->cond, NULL);
 
     switch (avctx->codec_id) {
     case AV_CODEC_ID_H264:       cm_codec_type = kCMVideoCodecType_H264;       break;
@@ -356,6 +377,7 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
     if (!sample_buf)
         return AVERROR_EXTERNAL;
 
+    update_nb_queue(dec_ctx, vt, 1);
     status = VTDecompressionSessionDecodeFrame(vt->session,
                                                sample_buf,
                                                decodeFlags,
@@ -411,6 +433,15 @@ static void vtdec_flush(struct decoder_ctx *dec_ctx)
         VTDecompressionSessionFinishDelayedFrames(vt->session);
         VTDecompressionSessionWaitForAsynchronousFrames(vt->session);
     }
+
+    // The decode callback can actually be called after
+    // VTDecompressionSessionWaitForAsynchronousFrames(), so we need this kind
+    // of shit. Yes, fuck you Apple. Fuck you hard.
+    pthread_mutex_lock(&vt->lock);
+    while (vt->nb_queued)
+        pthread_cond_wait(&vt->cond, &vt->lock);
+    pthread_mutex_unlock(&vt->lock);
+
     TRACE(dec_ctx, "decompression session finished delaying frames");
     send_queued_frames(dec_ctx);
     decoding_queue_frame(dec_ctx->decoding_ctx, NULL);
@@ -422,6 +453,10 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
     struct vtdec_context *vt = dec_ctx->priv_data;
 
     TRACE(dec_ctx, "uninit");
+
+    pthread_mutex_destroy(&vt->lock);
+    pthread_cond_destroy(&vt->cond);
+
     if (vt->cm_fmt_desc)
         CFRelease(vt->cm_fmt_desc);
 
