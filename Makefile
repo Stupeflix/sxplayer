@@ -108,7 +108,7 @@ uninstall:
 	$(RM) $(DESTDIR)$(PREFIX)/include/$(NAME).hpp
 
 test: $(TESTPROG)
-	./$(TESTPROG) media.mkv
+	./$(TESTPROG) media.mkv image.jpg
 testmem: $(TESTPROG)
 	valgrind --leak-check=full ./$(TESTPROG) media.mkv
 

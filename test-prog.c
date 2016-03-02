@@ -20,270 +20,309 @@
 
 #include <libavutil/avassert.h>
 #include <libavutil/common.h>
-#include <libavutil/time.h>
 #include <float.h> // for DBL_MAX
 
 #include "sxplayer.h"
 
+#define BITS_PER_ACTION 4
+
+enum action {
+    EOA,                    // end of actions
+    ACTION_PREFETCH,        // request a prefetch
+    ACTION_FETCH_INFO,      // fetch the media info
+    ACTION_START,           // request a frame at t=0
+    ACTION_MIDDLE,          // request a few frames in the middle
+    ACTION_END,             // request the last frame post end
+    NB_ACTIONS
+};
+
+static int action_prefetch(struct sxplayer_ctx *s, int opt_test_flags)
+{
+    return sxplayer_prefetch(s);
+}
+
+static int action_fetch_info(struct sxplayer_ctx *s, int opt_test_flags)
+{
+    struct sxplayer_info info;
+    int ret = sxplayer_get_info(s, &info);
+    if (ret < 0)
+        return ret;
+    if (info.width != 16 || info.height != 16)
+        return -1;
+    return 0;
+}
+
 #define N 4
-#define NB_FRAMES (1<<(3*N))
 #define SOURCE_FPS 25
 
-#define PRE_FILL_TIME 3     /* try to pre fetch starting 3 seconds earlier */
-#define POST_REQUEST_TIME 2 /* attempt to fetch the last frame for 2 more seconds */
+#define FLAG_SKIP          (1<<0)
+#define FLAG_TRIM_DURATION (1<<1)
+#define FLAG_AUDIO         (1<<2)
 
-static int test_frame(struct sxplayer_ctx *s,
-                      double time, int *prev_frame_id, double *prev_time,
-                      double skip, double trim_duration, int avselect)
+#define TESTVAL_SKIP           7.12
+#define TESTVAL_TRIM_DURATION 53.43
+
+static int check_frame(struct sxplayer_frame *f, double t, int opt_test_flags)
 {
-    struct sxplayer_frame *frame = sxplayer_get_frame(s, time);
+    const double skip          = (opt_test_flags & FLAG_SKIP)          ? TESTVAL_SKIP          :  0;
+    const double trim_duration = (opt_test_flags & FLAG_TRIM_DURATION) ? TESTVAL_TRIM_DURATION : -1;
+    const double playback_time = av_clipd(t, 0, trim_duration < 0 ? DBL_MAX : trim_duration);
 
-    if (time < 0) {
-        if (frame) {
-            fprintf(stderr, "Time requested < 0 but got frame\n");
-            sxplayer_release_frame(frame);
-            return -1;
-        }
-        return 0;
-    }
+    const double frame_ts = f->ts;
+    const double estimated_time_from_ts = frame_ts - skip;
+    const double diff_ts = fabs(playback_time - estimated_time_from_ts);
 
-    if (avselect == SXPLAYER_SELECT_AUDIO) {
-        // TODO
-        if (frame) {
-            const double playback_time = av_clipd(time, 0, trim_duration < 0 ? DBL_MAX : trim_duration);
-            const double diff = FFABS(playback_time - frame->ts);
-            printf("AUDIO TEST FRAME %dx%d pt:%f ft:%f diff:%f\n", frame->width, frame->height, playback_time, frame->ts, diff);
-        }
-        sxplayer_release_frame(frame);
-        return 0;
-    }
-
-    if (frame) {
-        const uint32_t c = *(const uint32_t *)frame->data;
+    if (!(opt_test_flags & FLAG_AUDIO)) {
+        const uint32_t c = *(const uint32_t *)f->data;
         const int r = c >> (N+16) & 0xf;
         const int g = c >> (N+ 8) & 0xf;
         const int b = c >> (N+ 0) & 0xf;
-
         const int frame_id = r<<(N*2) | g<<N | b;
+
         const double video_ts = frame_id * 1. / SOURCE_FPS;
         const double estimated_time_from_color = video_ts - skip;
-        const double playback_time = av_clipd(time, 0, trim_duration < 0 ? DBL_MAX : trim_duration);
-        const double diff = FFABS(playback_time - estimated_time_from_color);
+        const double diff_color = fabs(playback_time - estimated_time_from_color);
 
-        printf("frame t=%f (pt=%f) -> %p color %08X => video_ts:%f, frame expected at t=%f [diff:%f]\n",
-               time, playback_time, frame, c, video_ts, estimated_time_from_color, diff);
-
-        if (diff > 1./SOURCE_FPS) {
-            fprintf(stderr, "ERROR: frame diff is too big %f>%f\n", diff, 2./SOURCE_FPS);
-            sxplayer_release_frame(frame);
+        if (diff_color > 1./SOURCE_FPS) {
+            fprintf(stderr, "requested t=%f (clipped to %f with trim_duration=%f),\n"
+                    "got video_ts=%f (frame id #%d), corresponding to t=%f (with skip=%f)\n"
+                    "diff_color: %f\n",
+                    t, playback_time, trim_duration,
+                    video_ts, frame_id, estimated_time_from_color, skip,
+                    diff_color);
             return -1;
         }
-
-        if (frame_id == *prev_frame_id) {
-            fprintf(stderr, "ERROR: Got a frame, but it has the same content as the previous one\n");
-            sxplayer_release_frame(frame);
-            return -1;
-        }
-
-        *prev_frame_id = frame_id;
-    } else {
-
-        if (time < *prev_time) {
-            fprintf(stderr, "ERROR: time went backward but got no frame update\n");
-            sxplayer_release_frame(frame);
-            return -1;
-        }
-
-        if (time - *prev_time > 1.5/SOURCE_FPS) {
-            if (time > 0 && time < trim_duration) {
-                fprintf(stderr, "ERROR: the difference between current and previous time (%f) "
-                        "is large enough to get a new frame, but got none\n", time - *prev_time);
-                sxplayer_release_frame(frame);
-                return -1;
-            }
-        }
-
-        printf("frame t=%f: no frame\n", time);
     }
-    *prev_time = time;
+    if (diff_ts > 1./SOURCE_FPS) {
+        fprintf(stderr, "requested t=%f (clipped to %f with trim_duration=%f),\n"
+                "got frame_ts=%f, corresponding to t=%f (with skip=%f)\n"
+                "diff_ts: %f\n",
+                t, playback_time, trim_duration,
+                frame_ts, estimated_time_from_ts, skip,
+                diff_ts);
+        return -1;
+    }
+    return 0;
+}
+
+static int action_start(struct sxplayer_ctx *s, int opt_test_flags)
+{
+    int ret;
+    struct sxplayer_frame *frame = sxplayer_get_frame(s, 0);
+
+    if ((ret = check_frame(frame, 0, opt_test_flags)) < 0)
+        return ret;
     sxplayer_release_frame(frame);
     return 0;
 }
 
-static int test_instant_gets(const char *filename, int avselect)
+static int action_middle(struct sxplayer_ctx *s, int opt_test_flags)
 {
-    int i, ret = 0;
-    const double skip          = 27.2;
-    const double trim_duration = 67.1;
+    int ret;
+    struct sxplayer_frame *f0 = sxplayer_get_frame(s, 30.0);
+    struct sxplayer_frame *f1 = sxplayer_get_frame(s, 30.1);
+    struct sxplayer_frame *f2 = sxplayer_get_frame(s, 30.2);
+    struct sxplayer_frame *f3 = sxplayer_get_frame(s, 15.0);
+    struct sxplayer_frame *f4 = sxplayer_get_next_frame(s);
+    struct sxplayer_frame *f5 = sxplayer_get_next_frame(s);
 
-    const double instant_gets[] = {-1, 0.5, 17.2, 26.2, 38.4, 89.7, 97.6, 102.4};
+    if ((ret = check_frame(f0, 30.0,               opt_test_flags)) < 0 ||
+        (ret = check_frame(f1, 30.1,               opt_test_flags)) < 0 ||
+        (ret = check_frame(f2, 30.2,               opt_test_flags)) < 0 ||
+        (ret = check_frame(f3, 15.0,               opt_test_flags)) < 0 ||
+        (ret = check_frame(f4, 15.0+1./SOURCE_FPS, opt_test_flags)) < 0 ||
+        (ret = check_frame(f5, 15.0+2./SOURCE_FPS, opt_test_flags)) < 0)
+        return ret;
 
-    printf("Test: %s\n", __FUNCTION__);
+    sxplayer_release_frame(f0);
+    sxplayer_release_frame(f5);
+    sxplayer_release_frame(f1);
+    sxplayer_release_frame(f4);
+    sxplayer_release_frame(f2);
+    sxplayer_release_frame(f3);
 
-    for (i = 0; i < FF_ARRAY_ELEMS(instant_gets); i++) {
-        int prev_frame_id = -1;
-        double prev_time = -DBL_MAX;
+    f0 = sxplayer_get_next_frame(s);
+    f1 = sxplayer_get_frame(s, 16.0);
+    f2 = sxplayer_get_frame(s, 16.001);
 
-        struct sxplayer_ctx *s = sxplayer_create(filename);
+    if ((ret = check_frame(f0, 15.0+3./SOURCE_FPS, opt_test_flags)) < 0 ||
+        (ret = check_frame(f1, 16.0,               opt_test_flags)) < 0)
+        return ret;
 
-        printf("Test instant get @ t=%f\n", instant_gets[i]);
-
-        sxplayer_set_option(s, "avselect", avselect);
-        sxplayer_set_option(s, "skip", skip);
-        sxplayer_set_option(s, "trim_duration", trim_duration);
-        sxplayer_set_option(s, "auto_hwaccel", 0);
-
-        if (!s)
-            return -1;
-
-        ret = test_frame(s, instant_gets[i], &prev_frame_id, &prev_time,
-                         skip, trim_duration, avselect);
-
-        sxplayer_free(&s);
-
-        if (ret < 0)
-            break;
-    }
-    return ret;
-}
-
-static int test_seeks(const char *filename, int avselect)
-{
-    int i, ret = 0;
-    const double skip          = 45.;
-    const double trim_duration = 120.;
-
-    const double instant_gets[] = {32., 31., 31.2, 60.};
-
-    struct sxplayer_ctx *s = sxplayer_create(filename);
-
-    printf("Test: %s\n", __FUNCTION__);
-
-    sxplayer_set_option(s, "avselect", avselect);
-    sxplayer_set_option(s, "skip", skip);
-    sxplayer_set_option(s, "trim_duration", trim_duration);
-    sxplayer_set_option(s, "auto_hwaccel", 0);
-
-    if (!s)
+    if (f2) {
+        fprintf(stderr, "got f2\n");
         return -1;
-
-    for (i = 0; i < FF_ARRAY_ELEMS(instant_gets); i++) {
-        int prev_frame_id = -1;
-        double prev_time = -DBL_MAX;
-
-        ret = test_frame(s, instant_gets[i], &prev_frame_id, &prev_time,
-                         skip, trim_duration, avselect);
-
-        if (ret < 0)
-            break;
     }
 
-    sxplayer_free(&s);
-    return ret;
-}
-
-static int test_full_run(const char *filename, int refresh_rate,
-                         double skip, double trim_duration,
-                         int avselect)
-{
-    int i, ret = 0, prev_frame_id = -1;
-    double prev_time = -DBL_MAX;
-    const double request_end_time   = trim_duration + POST_REQUEST_TIME;
-    const double request_duration   = request_end_time;
-    const int nb_calls = request_duration * refresh_rate;
-
-    struct sxplayer_ctx *s = sxplayer_create(filename);
-
-    printf("Test: %s\n", __FUNCTION__);
-
-    sxplayer_set_option(s, "avselect", avselect);
-    sxplayer_set_option(s, "skip", skip);
-    sxplayer_set_option(s, "trim_duration", trim_duration);
-    sxplayer_set_option(s, "auto_hwaccel", 0);
-
-    if (!s)
-        return -1;
-
-    if (!filename)
-        goto end;
-
-    printf("test full run of %s [%dFPS]\n",
-           filename, SOURCE_FPS /* FIXME: probe from file */);
-
-    printf("    skip:%f trim_duration:%f\n", skip, trim_duration);
-
-    printf("    request: %f @ %dHz => nb_calls:%d\n",
-           request_end_time, refresh_rate, nb_calls);
-
-    for (i = 0; i < nb_calls; i++) {
-        const double time = i / (double)refresh_rate;
-
-        printf("TEST %d/%d with time=%f\n", i + 1, nb_calls, time);
-
-        ret = test_frame(s, time, &prev_frame_id, &prev_time,
-                         skip, trim_duration,
-                         avselect);
-        if (ret < 0)
-            break;
-    }
-
-end:
-    sxplayer_free(&s);
-    return ret;
-}
-
-static int run_tests(const char *filename, int avselect)
-{
-    if (test_seeks(filename, avselect) < 0)
-        return -1;
-
-    if (test_full_run("dummy", 0, 0, 0, avselect) < 0 ||
-        test_full_run(filename, 30, 0, -1, avselect) < 0 ||
-        test_full_run(filename, 10, 1.1, 18.6, avselect) < 0 ||
-        test_full_run(filename, 10, 1.1, 18.6, avselect) < 0 ||
-        test_full_run(filename, 60, 3.7, 12.2, avselect) < 0)
-        return -1;
-
-    if (test_instant_gets(filename, avselect) < 0)
-        return -1;
+    sxplayer_release_frame(f1);
+    sxplayer_release_frame(f0);
 
     return 0;
 }
 
-static int simple_pass_through(const char *filename)
+static int action_end(struct sxplayer_ctx *s, int opt_test_flags)
 {
-    int i = 0, ret = 0;
-    struct sxplayer_ctx *s = sxplayer_create(filename);
+    struct sxplayer_frame *f;
 
-    sxplayer_set_option(s, "auto_hwaccel", 0);
+    f = sxplayer_get_frame(s, 999999.0);
+    if (!f)
+        return -1;
+    sxplayer_release_frame(f);
+
+    f = sxplayer_get_frame(s, 99999.0);
+    if (f) {
+        sxplayer_release_frame(f);
+        return -1;
+    }
+
+    return 0;
+}
+
+static const struct {
+    const char *name;
+    int (*func)(struct sxplayer_ctx *s, int opt_test_flags);
+} actions_desc[] = {
+    [ACTION_PREFETCH]   = {"prefetch",  action_prefetch},
+    [ACTION_FETCH_INFO] = {"fetchinfo", action_fetch_info},
+    [ACTION_START]      = {"start",     action_start},
+    [ACTION_MIDDLE]     = {"middle",    action_middle},
+    [ACTION_END]        = {"end",       action_end},
+};
+
+#define GET_ACTION(c, id) ((c) >> ((id)*BITS_PER_ACTION) & ((1<<BITS_PER_ACTION)-1))
+
+static void print_comb_name(uint64_t comb, int opt_test_flags)
+{
+    int i;
+
+    printf(":: test-%s-", (opt_test_flags & FLAG_AUDIO) ? "audio" : "video");
+    if (opt_test_flags & FLAG_SKIP)          printf("skip-");
+    if (opt_test_flags & FLAG_TRIM_DURATION) printf("trimdur-");
+    for (i = 0; i < NB_ACTIONS; i++) {
+        const int action = GET_ACTION(comb, i);
+        if (!action)
+            break;
+        printf("%s%s", i ? "-" : "", actions_desc[action].name);
+    }
+    printf("\n");
+}
+
+static int exec_comb(struct sxplayer_ctx *s, uint64_t comb, int opt_test_flags)
+{
+    int i;
+
+    print_comb_name(comb, opt_test_flags);
+    for (i = 0; i < NB_ACTIONS; i++) {
+        int ret;
+        const int action = GET_ACTION(comb, i);
+        if (!action)
+            break;
+        ret = actions_desc[action].func(s, opt_test_flags);
+        if (ret < 0)
+            return ret;
+    }
+    return 0;
+}
+
+static int has_dup(uint64_t comb)
+{
+    int i;
+    uint64_t actions = 0;
+
+    for (i = 0; i < NB_ACTIONS; i++) {
+        const int action = GET_ACTION(comb, i);
+        if (!action)
+            break;
+        if (actions & (1<<action))
+            return 1;
+        actions |= 1 << action;
+    }
+    return 0;
+}
+
+static uint64_t get_next_comb(uint64_t comb)
+{
+    int i = 0, need_inc = 1;
+    uint64_t ret = 0;
 
     for (;;) {
-        const double t = av_gettime();
-        struct sxplayer_frame *frame = sxplayer_get_next_frame(s);
-        const double diff = (av_gettime() - t) / 1000000.;
+        int action = GET_ACTION(comb, i);
+        if (i == NB_ACTIONS)
+            return EOA;
+        if (!action && !need_inc)
+            break;
+        if (need_inc) {
+            action++;
+            if (action == NB_ACTIONS)
+                action = 1; // back to first action
+            else
+                need_inc = 0;
+        }
+        ret |= action << (i*BITS_PER_ACTION);
+        i++;
+    }
+    if (has_dup(ret))
+        return get_next_comb(ret);
+    return ret;
+}
 
-        if (!frame) {
-            printf("null frame\n");
+static int run_tests_all_combs(const char *filename, int opt_test_flags)
+{
+    int ret;
+    uint64_t comb = 0;
+    struct sxplayer_ctx *s = NULL;
+
+    for (;;) {
+        s = sxplayer_create(filename);
+        if (!s)
+            return -1;
+
+        sxplayer_set_option(s, "auto_hwaccel", 0);
+
+        if (opt_test_flags & FLAG_SKIP)          sxplayer_set_option(s, "skip",          TESTVAL_SKIP);
+        if (opt_test_flags & FLAG_TRIM_DURATION) sxplayer_set_option(s, "trim_duration", TESTVAL_TRIM_DURATION);
+        if (opt_test_flags & FLAG_AUDIO)         sxplayer_set_option(s, "avselect",      SXPLAYER_SELECT_AUDIO);
+
+        comb = get_next_comb(comb);
+        if (comb == EOA)
+            break;
+        ret = exec_comb(s, comb, opt_test_flags);
+        if (ret < 0) {
+            fprintf(stderr, "test failed\n");
             break;
         }
-        printf("[%f] frame #%d / data:%p ts:%f %dx%d lz:%d sfxpixfmt:%d\n",
-               diff, i++, frame->data, frame->ts, frame->width, frame->height,
-               frame->linesize, frame->pix_fmt);
+        sxplayer_free(&s);
+    }
+    sxplayer_free(&s);
+    return ret;
+}
 
-        sxplayer_release_frame(frame);
+static int run_image_test(const char *filename)
+{
+    int ret;
+    struct sxplayer_info info;
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+    struct sxplayer_frame *f;
 
-        /* test code to make sure a NULL is returned even when a decoding
-         * thread is restarted */
-#if 0
-        if (i % 4096 == 0) {
-            usleep(1000000);
-            av_assert0(!sxplayer_get_next_frame(s));
-        }
-#endif
+    if (!s)
+        return -1;
+    f = sxplayer_get_frame(s, 53.0);
+    if (!f) {
+        fprintf(stderr, "didn't get an image\n");
+        return -1;
+    }
+
+    if (sxplayer_get_info(s, &info) < 0) {
+        fprintf(stderr, "can not fetch image info\n");
+    }
+    if (info.width != 480 || info.height != 640) {
+        fprintf(stderr, "image isn't the expected size\n");
+        return -1;
     }
 
     sxplayer_free(&s);
-    return ret;
+    sxplayer_release_frame(f);
+    return 0;
 }
 
 static int test_next_frame(const char *filename)
@@ -314,21 +353,6 @@ static int test_next_frame(const char *filename)
     return ret;
 }
 
-static int test_duration(const char *filename)
-{
-    int ret;
-    double duration;
-    struct sxplayer_ctx *s = sxplayer_create(filename);
-
-    ret = sxplayer_get_duration(s, &duration);
-    if (ret < 0)
-        return ret;
-    printf("%s: duration=%f\n", filename, duration);
-    sxplayer_release_frame(sxplayer_get_next_frame(s));
-    sxplayer_free(&s);
-    return 0;
-}
-
 static const char *filename = "/i/do/not/exist";
 
 static void log_callback(void *arg, int level, const char *fmt, va_list vl)
@@ -353,26 +377,33 @@ static int run_notavail_file_test(void)
 
 int main(int ac, char **av)
 {
-    if (ac != 2 && ac != 3) {
-        fprintf(stderr, "Usage: %s [-notest] <file>\n", av[0]);
+    if (ac != 3) {
+        fprintf(stderr, "Usage: %s <media.mkv> <image.jpg>\n", av[0]);
         return -1;
     }
 
-    if (test_duration(av[1 + (ac == 3)]) < 0)
+    if (run_image_test(av[2]) < 0)
+        return -1;
+
+    if (run_notavail_file_test() < 0)
         return -1;
 
     if (test_next_frame(av[1]) < 0)
         return -1;
 
-    if (ac == 3 && !strcmp(av[1], "-notest"))
-        return simple_pass_through(av[2]);
-
-    if (run_notavail_file_test() < 0)
+    if (run_tests_all_combs(av[1],                            0) < 0 ||
+        run_tests_all_combs(av[1], FLAG_SKIP                   ) < 0 ||
+        run_tests_all_combs(av[1],           FLAG_TRIM_DURATION) < 0 ||
+        run_tests_all_combs(av[1], FLAG_SKIP|FLAG_TRIM_DURATION) < 0)
         return -1;
 
-    if (run_tests(av[1], SXPLAYER_SELECT_VIDEO) < 0 ||
-        run_tests(av[1], SXPLAYER_SELECT_AUDIO) < 0)
+#if 0
+    if (run_tests_all_combs(av[1], FLAG_AUDIO                             ) < 0 ||
+        run_tests_all_combs(av[1], FLAG_AUDIO|FLAG_SKIP                   ) < 0 ||
+        run_tests_all_combs(av[1], FLAG_AUDIO|          FLAG_TRIM_DURATION) < 0 ||
+        run_tests_all_combs(av[1], FLAG_AUDIO|FLAG_SKIP|FLAG_TRIM_DURATION) < 0)
         return -1;
+#endif
 
     printf("All tests OK\n");
 
