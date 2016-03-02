@@ -465,6 +465,38 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 }
 #endif
 
+int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
+{
+    int ret;
+    struct message msg;
+
+    LOG(s, DEBUG, "seek requested at t=%f", reqt);
+    ret = configure_context(s);
+    if (ret < 0)
+        return ret;
+
+    av_frame_free(&s->cached_frame);
+    s->last_pushed_frame_ts = AV_NOPTS_VALUE;
+
+    if (s->trim_duration64 == AV_NOPTS_VALUE)
+        s->trim_duration64 = async_probe_duration(s->actx);
+
+    ret = async_seek(s->actx, get_media_time(s, TIME2INT64(reqt)));
+    if (ret < 0)
+        return ret;
+
+    do {
+        ret = async_pop_msg(s->actx, &msg);
+        if (ret < 0)
+            return ret;
+        async_free_message_data(&msg);
+    } while (msg.type != MSG_SEEK);
+    TRACE(s, "seek message obtained");
+
+    async_free_message_data(&msg);
+    return ret;
+}
+
 int sxplayer_prefetch(struct sxplayer_ctx *s)
 {
     int ret;
