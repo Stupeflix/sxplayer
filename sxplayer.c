@@ -456,7 +456,7 @@ int sxplayer_prefetch_at_time(struct sxplayer_ctx *s, double reqt)
     ret = configure_context(s);
     if (ret < 0)
         return ret;
-    ret = async_seek(s->actx, TIME2INT64(reqt));
+    ret = async_seek(s->actx, get_media_time(s, TIME2INT64(reqt)));
     if (ret < 0)
         return ret;
     ret = async_start(s->actx);
