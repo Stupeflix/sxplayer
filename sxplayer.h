@@ -179,6 +179,16 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
 int sxplayer_prefetch(struct sxplayer_ctx *s);
 
 /**
+ * Seek at a requested time.
+ *
+ * This function is meant to be used in conjonction with sxplayer_get_next_frame()
+ * but not with sxplayer_get_frame() as it does not fit its call model.
+ *
+ * Return 0 on success, a negative value on error.
+ */
+int sxplayer_seek(struct sxplayer_ctx *s, double t);
+
+/**
  * Get the next frame.
  *
  * The returned frame needs to be released using sxplayer_release_frame().
