@@ -447,6 +447,23 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 }
 #endif
 
+int sxplayer_prefetch_at_time(struct sxplayer_ctx *s, double reqt)
+{
+    int ret;
+    const int64_t t = av_gettime();
+
+    LOG(s, DEBUG, "prefetch requested at t=%f", reqt);
+    ret = configure_context(s);
+    if (ret < 0)
+        return ret;
+    ret = async_seek(s->actx, TIME2INT64(reqt));
+    if (ret < 0)
+        return ret;
+    ret = async_start(s->actx);
+    LOG(s, DEBUG, "prefetched in %fs (ret=%s)", (av_gettime() - t) / 1000000., av_err2str(ret));
+    return ret;
+}
+
 int sxplayer_prefetch(struct sxplayer_ctx *s)
 {
     int ret;

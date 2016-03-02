@@ -175,6 +175,8 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
  */
 int sxplayer_prefetch(struct sxplayer_ctx *s);
 
+int sxplayer_prefetch_at_time(struct sxplayer_ctx *s, double t);
+
 /**
  * Get the next frame.
  *
