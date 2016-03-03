@@ -25,14 +25,15 @@
 #include "decoders.h"
 #include "internal.h"
 
-extern const struct decoder decoder_ffmpeg;
-static const struct decoder *decoder_def_software = &decoder_ffmpeg;
+extern const struct decoder decoder_ffmpeg_sw;
+extern const struct decoder decoder_ffmpeg_hw;
+static const struct decoder *decoder_def_software = &decoder_ffmpeg_sw;
 
 #if __APPLE__
 extern const struct decoder decoder_vt;
 static const struct decoder *decoder_def_hwaccel = &decoder_vt;
 #else
-static const struct decoder *decoder_def_hwaccel = NULL;
+static const struct decoder *decoder_def_hwaccel = &decoder_ffmpeg_hw;
 #endif
 
 struct decoding_ctx {

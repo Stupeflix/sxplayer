@@ -26,7 +26,7 @@
 #include "decoders.h"
 #include "internal.h"
 
-static int ffdec_init(struct decoder_ctx *ctx)
+static int ffdec_init(struct decoder_ctx *ctx, int hw)
 {
     int ret;
     AVCodecContext *avctx = ctx->avctx;
@@ -36,10 +36,11 @@ static int ffdec_init(struct decoder_ctx *ctx)
 
     av_opt_set_int(avctx, "refcounted_frames", 1, 0);
 
-    if (avctx->codec_id == AV_CODEC_ID_H264) {
+    if (hw && avctx->codec_id == AV_CODEC_ID_H264) {
         AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
-        if (codec)
-            dec = codec;
+        if (!codec)
+            return AVERROR_DECODER_NOT_FOUND;
+        dec = codec;
     }
 
     TRACE(ctx, "codec open");
@@ -51,6 +52,16 @@ static int ffdec_init(struct decoder_ctx *ctx)
     ctx->avctx = avctx;
 
     return ret;
+}
+
+static int ffdec_init_sw(struct decoder_ctx *ctx)
+{
+    return ffdec_init(ctx, 0);
+}
+
+static int ffdec_init_hw(struct decoder_ctx *ctx)
+{
+    return ffdec_init(ctx, 1);
 }
 
 static int decode_packet(struct decoder_ctx *ctx, const AVPacket *pkt, int *got_frame)
@@ -127,9 +138,16 @@ static void ffdec_flush(struct decoder_ctx *ctx)
     avcodec_flush_buffers(avctx);
 }
 
-const struct decoder decoder_ffmpeg = {
-    .name        = "ffmpeg",
-    .init        = ffdec_init,
+const struct decoder decoder_ffmpeg_sw = {
+    .name        = "ffmpeg_sw",
+    .init        = ffdec_init_sw,
+    .push_packet = ffdec_push_packet,
+    .flush       = ffdec_flush,
+};
+
+const struct decoder decoder_ffmpeg_hw = {
+    .name        = "ffmpeg_hw",
+    .init        = ffdec_init_hw,
     .push_packet = ffdec_push_packet,
     .flush       = ffdec_flush,
 };
