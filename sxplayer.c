@@ -286,7 +286,7 @@ static int configure_context(struct sxplayer_ctx *s)
     int ret;
 
     if (s->context_configured)
-        return 0;
+        return 1;
 
     TRACE(s, "set context fields");
     ret = set_context_fields(s);
@@ -456,6 +456,17 @@ int sxplayer_prefetch(struct sxplayer_ctx *s)
     ret = configure_context(s);
     if (ret < 0)
         return ret;
+
+    /* If the media reached EOF, then we need to seek back to the beginning of
+     * the presentation for the next playback (the initial seek is usually
+     * performed at the end of configure_context(), at its first init). */
+    if (ret > 0 && s->skip64) {
+        TRACE(s, "context already configured, request initial skip");
+        ret = async_seek(s->actx, s->skip64);
+        if (ret < 0)
+            return ret;
+    }
+
     ret = async_start(s->actx);
     LOG(s, DEBUG, "prefetched in %fs (ret=%s)", (av_gettime() - t) / 1000000., av_err2str(ret));
     return ret;
