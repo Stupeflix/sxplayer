@@ -299,7 +299,6 @@ static int run_tests_all_combs(const char *filename, int opt_test_flags)
 
 static int run_image_test(const char *filename)
 {
-    int ret;
     struct sxplayer_info info;
     struct sxplayer_ctx *s = sxplayer_create(filename);
     struct sxplayer_frame *f;
