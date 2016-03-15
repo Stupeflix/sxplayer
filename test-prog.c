@@ -41,23 +41,30 @@ static int action_prefetch(struct sxplayer_ctx *s, int opt_test_flags)
     return sxplayer_prefetch(s);
 }
 
+#define FLAG_SKIP          (1<<0)
+#define FLAG_TRIM_DURATION (1<<1)
+#define FLAG_AUDIO         (1<<2)
+
 static int action_fetch_info(struct sxplayer_ctx *s, int opt_test_flags)
 {
     struct sxplayer_info info;
     int ret = sxplayer_get_info(s, &info);
     if (ret < 0)
         return ret;
-    if (info.width != 16 || info.height != 16)
-        return -1;
+    if (opt_test_flags & FLAG_AUDIO) {
+        if (info.width || info.height)
+            return -1;
+    } else {
+        if (info.width != 16 || info.height != 16)
+            return -1;
+    }
     return 0;
 }
 
 #define N 4
 #define SOURCE_FPS 25
-
-#define FLAG_SKIP          (1<<0)
-#define FLAG_TRIM_DURATION (1<<1)
-#define FLAG_AUDIO         (1<<2)
+#define SOURCE_SPF  1024    /* samples per frame, must match AUDIO_NBSAMPLES */
+#define SOURCE_FREQ 44100
 
 #define TESTVAL_SKIP           7.12
 #define TESTVAL_TRIM_DURATION 53.43
@@ -68,9 +75,14 @@ static int check_frame(struct sxplayer_frame *f, double t, int opt_test_flags)
     const double trim_duration = (opt_test_flags & FLAG_TRIM_DURATION) ? TESTVAL_TRIM_DURATION : -1;
     const double playback_time = av_clipd(t, 0, trim_duration < 0 ? DBL_MAX : trim_duration);
 
-    const double frame_ts = f->ts;
+    const double frame_ts = f ? f->ts : -1;
     const double estimated_time_from_ts = frame_ts - skip;
     const double diff_ts = fabs(playback_time - estimated_time_from_ts);
+
+    if (!f) {
+        fprintf(stderr, "no frame obtained for t=%f\n", t);
+        return -1;
+    }
 
     if (!(opt_test_flags & FLAG_AUDIO)) {
         const uint32_t c = *(const uint32_t *)f->data;
@@ -125,13 +137,15 @@ static int action_middle(struct sxplayer_ctx *s, int opt_test_flags)
     struct sxplayer_frame *f3 = sxplayer_get_frame(s, 15.0);
     struct sxplayer_frame *f4 = sxplayer_get_next_frame(s);
     struct sxplayer_frame *f5 = sxplayer_get_next_frame(s);
+    const double increment = opt_test_flags & FLAG_AUDIO ? SOURCE_SPF/(float)SOURCE_FREQ
+                                                         : 1./SOURCE_FPS;
 
     if ((ret = check_frame(f0, 30.0,               opt_test_flags)) < 0 ||
         (ret = check_frame(f1, 30.1,               opt_test_flags)) < 0 ||
         (ret = check_frame(f2, 30.2,               opt_test_flags)) < 0 ||
         (ret = check_frame(f3, 15.0,               opt_test_flags)) < 0 ||
-        (ret = check_frame(f4, 15.0+1./SOURCE_FPS, opt_test_flags)) < 0 ||
-        (ret = check_frame(f5, 15.0+2./SOURCE_FPS, opt_test_flags)) < 0)
+        (ret = check_frame(f4, 15.0 + 1*increment, opt_test_flags)) < 0 ||
+        (ret = check_frame(f5, 15.0 + 2*increment, opt_test_flags)) < 0)
         return ret;
 
     sxplayer_release_frame(f0);
@@ -145,7 +159,7 @@ static int action_middle(struct sxplayer_ctx *s, int opt_test_flags)
     f1 = sxplayer_get_frame(s, 16.0);
     f2 = sxplayer_get_frame(s, 16.001);
 
-    if ((ret = check_frame(f0, 15.0+3./SOURCE_FPS, opt_test_flags)) < 0 ||
+    if ((ret = check_frame(f0, 15.0 + 3*increment, opt_test_flags)) < 0 ||
         (ret = check_frame(f1, 16.0,               opt_test_flags)) < 0)
         return ret;
 
@@ -402,13 +416,11 @@ int main(int ac, char **av)
         run_tests_all_combs(av[1], FLAG_SKIP|FLAG_TRIM_DURATION) < 0)
         return -1;
 
-#if 0
     if (run_tests_all_combs(av[1], FLAG_AUDIO                             ) < 0 ||
         run_tests_all_combs(av[1], FLAG_AUDIO|FLAG_SKIP                   ) < 0 ||
         run_tests_all_combs(av[1], FLAG_AUDIO|          FLAG_TRIM_DURATION) < 0 ||
         run_tests_all_combs(av[1], FLAG_AUDIO|FLAG_SKIP|FLAG_TRIM_DURATION) < 0)
         return -1;
-#endif
 
     printf("All tests OK\n");
 
