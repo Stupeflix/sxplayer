@@ -634,6 +634,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 {
     int ret;
+    struct sxplayer_frame *frame;
 
     if (LOG_LEVEL >= AV_LOG_WARNING)
         s->entering_time = av_gettime();
@@ -644,7 +645,17 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
     if (ret < 0)
         return NULL;
 
-    return ret_frame(s, pop_frame(s));
+    frame = pop_frame(s);
+
+    /* If the media reached EOF, then we need to seek back to the beginning of
+     * the presentation for the next playback (the initial seek is usually
+     * performed at the end of configure_context(), at its first init). */
+    if (!frame) {
+        TRACE(s, "query a seek back to 0 for the next demux");
+        async_seek(s->actx, s->skip64);
+    }
+
+    return ret_frame(s, frame);
 }
 
 int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)

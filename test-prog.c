@@ -349,6 +349,12 @@ static int test_next_frame(const char *filename)
     }
 
     sxplayer_free(&s);
+
+    if (i != 8192) {
+        fprintf(stderr, "decoded %d/8192 expected frames\n", i);
+        ret = -1;
+    }
+
     return ret;
 }
 
