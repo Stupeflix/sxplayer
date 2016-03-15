@@ -634,7 +634,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 {
     int ret;
-    struct sxplayer_frame *frame;
+    AVFrame *frame;
 
     if (LOG_LEVEL >= AV_LOG_WARNING)
         s->entering_time = av_gettime();
