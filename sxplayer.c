@@ -471,7 +471,7 @@ int sxplayer_prefetch(struct sxplayer_ctx *s)
     /* If the media reached EOF, then we need to seek back to the beginning of
      * the presentation for the next playback (the initial seek is usually
      * performed at the end of configure_context(), at its first init). */
-    if (ret > 0 && s->skip64) {
+    if (ret > 0) {
         TRACE(s, "context already configured, request initial skip");
         ret = async_seek(s->actx, s->skip64);
         if (ret < 0)
