@@ -355,7 +355,15 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     }
 
     ret->internal = frame;
-    ret->data     = frame->data[frame->format == AV_PIX_FMT_VIDEOTOOLBOX ? 3 : 0];
+    if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
+        ret->data = frame->data[3];
+#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+    } else if (frame->format == AV_PIX_FMT_MEDIACODEC) {
+        ret->data = frame->data[3];
+#endif
+    } else {
+        ret->data = frame->data[0];
+    }
     ret->linesize = frame->linesize[0];
     ret->width    = frame->width;
     ret->height   = frame->height;

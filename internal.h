@@ -24,10 +24,13 @@
 #include <stdio.h>
 #include <libavutil/frame.h>
 #include <libavutil/timestamp.h>
+#include <libavcodec/version.h>
 
 #include "sxplayer.h"
 #include "log.h"
 #include "async.h"
+
+#define MEDIACODEC_HWACCEL_VERSION_INT AV_VERSION_INT(57, 28, 200)
 
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);

@@ -19,12 +19,54 @@
  */
 
 #include <libavcodec/avcodec.h>
-#include <libavutil/opt.h>
 #include <libavutil/avassert.h>
+#include <libavutil/avstring.h>
+#include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
+#include <libavutil/pixfmt.h>
 
 #include "decoding.h"
 #include "decoders.h"
 #include "internal.h"
+
+#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+
+#include <libavcodec/mediacodec.h>
+
+static enum AVPixelFormat mediacodec_hwaccel_get_format(AVCodecContext *avctx, const enum AVPixelFormat *pix_fmts)
+{
+    struct decoder_ctx *ctx = avctx->opaque;
+    const enum AVPixelFormat *p = NULL;
+
+    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+        AVMediaCodecContext *mediacodec_ctx = NULL;
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(*p);
+
+        if (!(desc->flags & AV_PIX_FMT_FLAG_HWACCEL))
+            break;
+
+        if (*p != AV_PIX_FMT_MEDIACODEC)
+            continue;
+
+        if (ctx->opaque) {
+            mediacodec_ctx = av_mediacodec_alloc_context();
+            if (!mediacodec_ctx) {
+                fprintf(stderr, "Failed to allocate hwaccel ctx\n");
+                continue;
+            }
+
+            if (av_mediacodec_default_init(avctx, mediacodec_ctx, ctx->opaque) < 0) {
+                fprintf(stderr, "Failed to init hwaccel ctx\n");
+                continue;
+            }
+        }
+        break;
+    }
+
+    return *p;
+}
+
+#endif
 
 static int ffdec_init(struct decoder_ctx *ctx, int hw)
 {
@@ -40,6 +82,12 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
         AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
         if (!codec)
             return AVERROR_DECODER_NOT_FOUND;
+
+#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+        avctx->opaque = ctx;
+        avctx->get_format = mediacodec_hwaccel_get_format;
+        avctx->thread_count = 1;
+#endif
         dec = codec;
     }
 
@@ -138,6 +186,19 @@ static void ffdec_flush(struct decoder_ctx *ctx)
     avcodec_flush_buffers(avctx);
 }
 
+
+static void ffdec_uninit_hw(struct decoder_ctx *ctx)
+{
+#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+    AVCodecContext *avctx = ctx->avctx;
+    const struct AVCodec *codec = avctx->codec;
+
+    av_assert0(!av_strcasecmp(codec->name, "h264_mediacodec"));
+
+    av_mediacodec_default_free(avctx);
+#endif
+}
+
 const struct decoder decoder_ffmpeg_sw = {
     .name        = "ffmpeg_sw",
     .init        = ffdec_init_sw,
@@ -150,4 +211,5 @@ const struct decoder decoder_ffmpeg_hw = {
     .init        = ffdec_init_hw,
     .push_packet = ffdec_push_packet,
     .flush       = ffdec_flush,
+    .uninit      = ffdec_uninit_hw,
 };

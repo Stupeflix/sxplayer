@@ -28,6 +28,11 @@ static const struct {
     enum AVPixelFormat ff;
     enum sxplayer_pixel_format sx;
 } pix_fmts_mapping[] = {
+#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+    {AV_PIX_FMT_MEDIACODEC,   SXPLAYER_PIXFMT_MEDIACODEC},
+#else
+    {AV_PIX_FMT_RGBA,         SXPLAYER_PIXFMT_MEDIACODEC},
+#endif
     {AV_PIX_FMT_VIDEOTOOLBOX, SXPLAYER_PIXFMT_VT},
     {AV_PIX_FMT_BGRA,         SXPLAYER_PIXFMT_BGRA},
     {AV_PIX_FMT_RGBA,         SXPLAYER_PIXFMT_RGBA},
