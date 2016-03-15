@@ -49,6 +49,7 @@ static const AVOption sxplayer_options[] = {
     { "export_mvs",             NULL, OFFSET(export_mvs),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { "pkt_skip_mod",           NULL, OFFSET(pkt_skip_mod),           AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
     { "thread_stack_size",      NULL, OFFSET(thread_stack_size),      AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
+    { "opaque",                 NULL, OFFSET(opaque),                 AV_OPT_TYPE_BINARY,    {.str=NULL},    0, UINT64_MAX },
     { NULL }
 };
 
@@ -70,6 +71,7 @@ int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...)
     int n, ret = 0;
     double d;
     char *str;
+    void *ptr;
     const AVOption *o = av_opt_find(s, key, NULL, 0, 0);
 
     va_start(ap, key);
@@ -99,6 +101,10 @@ int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...)
         str = va_arg(ap, char *);
         ret = av_opt_set(s, key, str, 0);
         break;
+    case AV_OPT_TYPE_BINARY:
+        ptr = va_arg(ap, void *);
+        ret = av_opt_set_bin(s, key, ptr, sizeof(ptr), 0);
+        break;
     default:
         av_assert0(0);
     }
@@ -115,6 +121,7 @@ static void free_context(struct sxplayer_ctx *s)
     av_freep(&s->filename);
     av_freep(&s->logname);
     log_free(&s->log_ctx);
+    av_opt_free(s);
     av_freep(&s);
 }
 

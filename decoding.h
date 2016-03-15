@@ -34,7 +34,8 @@ int decoding_init(void *log_ctx,
                   AVThreadMessageQueue *frames_queue,
                   const AVStream *stream,
                   int auto_hwaccel,
-                  int export_mvs);
+                  int export_mvs,
+                  void *opaque);
 
 const AVCodecContext *decoding_get_avctx(struct decoding_ctx *ctx);
 

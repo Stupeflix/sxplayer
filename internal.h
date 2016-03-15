@@ -57,6 +57,8 @@ struct sxplayer_ctx {
     int export_mvs;                         // export motion vectors into frame->mvs
     int pkt_skip_mod;                       // skip packet if module pkt_skip_mod (and not a key pkt)
     int thread_stack_size;
+    void *opaque;                           // pointer to an opaque pointer forwarded to the decoder
+    int opaque_size;                        // opaque pointer size
 
     struct async_context *actx;
     int64_t skip64;
