@@ -93,16 +93,20 @@ int decoding_init(void *log_ctx,
     ctx->st_timebase = stream->time_base;
 
 #define DUMP_INFO(avctx, name) do {                                     \
-    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO)                        \
-        TRACE(ctx, name " stream: %s @ %dHz tb=%d/%d",                  \
-              av_get_sample_fmt_name(avctx->sample_fmt),                \
+    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO) {                      \
+        char chl[1024];                                                 \
+        av_get_channel_layout_string(chl, sizeof(chl), 0,               \
+                                     avctx->channel_layout);            \
+        TRACE(ctx, name " stream: %s %s @ %dHz tb=%d/%d",               \
+              chl, av_get_sample_fmt_name(avctx->sample_fmt),           \
               avctx->sample_rate,                                       \
               ctx->st_timebase.num, ctx->st_timebase.den);              \
-    else                                                                \
+    } else {                                                            \
         TRACE(ctx, name " stream: %dx%d in %s tb=%d/%d",                \
               avctx->width, avctx->height,                              \
               av_get_pix_fmt_name(avctx->pix_fmt),                      \
               ctx->st_timebase.num, ctx->st_timebase.den);              \
+    }                                                                   \
 } while (0)
 
     DUMP_INFO(stream->codec, "original");
