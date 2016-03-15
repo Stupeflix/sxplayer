@@ -643,7 +643,7 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 
     ret = configure_context(s);
     if (ret < 0)
-        return NULL;
+        return ret_frame(s, NULL);
 
     frame = pop_frame(s);
 
