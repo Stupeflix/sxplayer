@@ -394,8 +394,21 @@ static int run_notavail_file_test(void)
     return 0;
 }
 
+static const int tests_flags[] = {
+    0,
+               FLAG_SKIP,
+                         FLAG_TRIM_DURATION,
+               FLAG_SKIP|FLAG_TRIM_DURATION,
+    FLAG_AUDIO,
+    FLAG_AUDIO|FLAG_SKIP,
+    FLAG_AUDIO|          FLAG_TRIM_DURATION,
+    FLAG_AUDIO|FLAG_SKIP|FLAG_TRIM_DURATION,
+};
+
 int main(int ac, char **av)
 {
+    int i;
+
     if (ac != 3) {
         fprintf(stderr, "Usage: %s <media.mkv> <image.jpg>\n", av[0]);
         return -1;
@@ -410,17 +423,9 @@ int main(int ac, char **av)
     if (test_next_frame(av[1]) < 0)
         return -1;
 
-    if (run_tests_all_combs(av[1],                            0) < 0 ||
-        run_tests_all_combs(av[1], FLAG_SKIP                   ) < 0 ||
-        run_tests_all_combs(av[1],           FLAG_TRIM_DURATION) < 0 ||
-        run_tests_all_combs(av[1], FLAG_SKIP|FLAG_TRIM_DURATION) < 0)
-        return -1;
-
-    if (run_tests_all_combs(av[1], FLAG_AUDIO                             ) < 0 ||
-        run_tests_all_combs(av[1], FLAG_AUDIO|FLAG_SKIP                   ) < 0 ||
-        run_tests_all_combs(av[1], FLAG_AUDIO|          FLAG_TRIM_DURATION) < 0 ||
-        run_tests_all_combs(av[1], FLAG_AUDIO|FLAG_SKIP|FLAG_TRIM_DURATION) < 0)
-        return -1;
+    for (i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)
+        if (run_tests_all_combs(av[1], tests_flags) < 0)
+            return -1;
 
     printf("All tests OK\n");
 
