@@ -285,6 +285,8 @@ static int configure_context(struct sxplayer_ctx *s)
 {
     int ret;
 
+    s->last_op_was_prefetch = 0;
+
     if (s->context_configured)
         return 1;
 
@@ -453,6 +455,15 @@ int sxplayer_prefetch(struct sxplayer_ctx *s)
     const int64_t t = av_gettime();
 
     LOG(s, DEBUG, "prefetch requested");
+
+    /* We don't want prefetch to seek everytime it's called. This is to
+     * typically handle if the user constantly calling prefetch before
+     * requesting t=0. */
+    if (s->last_op_was_prefetch) {
+        LOG(s, DEBUG, "prefetch already done, noop");
+        return 0;
+    }
+
     ret = configure_context(s);
     if (ret < 0)
         return ret;
@@ -468,6 +479,7 @@ int sxplayer_prefetch(struct sxplayer_ctx *s)
     }
 
     ret = async_start(s->actx);
+    s->last_op_was_prefetch = 1;
     LOG(s, DEBUG, "prefetched in %fs (ret=%s)", (av_gettime() - t) / 1000000., av_err2str(ret));
     return ret;
 }
