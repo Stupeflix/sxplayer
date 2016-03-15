@@ -268,7 +268,7 @@ static uint64_t get_next_comb(uint64_t comb)
 
 static int run_tests_all_combs(const char *filename, int opt_test_flags)
 {
-    int ret;
+    int ret = 0;
     uint64_t comb = 0;
     struct sxplayer_ctx *s = NULL;
 
