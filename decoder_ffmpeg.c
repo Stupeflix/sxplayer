@@ -193,9 +193,9 @@ static void ffdec_uninit_hw(struct decoder_ctx *ctx)
     AVCodecContext *avctx = ctx->avctx;
     const struct AVCodec *codec = avctx->codec;
 
-    av_assert0(!av_strcasecmp(codec->name, "h264_mediacodec"));
-
-    av_mediacodec_default_free(avctx);
+    if(!av_strcasecmp(codec->name, "h264_mediacodec")) {
+        av_mediacodec_default_free(avctx);
+    }
 #endif
 }
 
