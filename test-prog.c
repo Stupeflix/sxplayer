@@ -424,7 +424,7 @@ int main(int ac, char **av)
         return -1;
 
     for (i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)
-        if (run_tests_all_combs(av[1], tests_flags) < 0)
+        if (run_tests_all_combs(av[1], tests_flags[i]) < 0)
             return -1;
 
     printf("All tests OK\n");
