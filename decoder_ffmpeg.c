@@ -57,8 +57,11 @@ static enum AVPixelFormat mediacodec_hwaccel_get_format(AVCodecContext *avctx, c
 
             if (av_mediacodec_default_init(avctx, mediacodec_ctx, ctx->opaque) < 0) {
                 fprintf(stderr, "Failed to init hwaccel ctx\n");
+                av_freep(&mediacodec_ctx);
                 continue;
             }
+
+            ctx->use_hwaccel = 1;
         }
         break;
     }
@@ -76,6 +79,7 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
 
     TRACE(ctx, "initialize context");
 
+    ctx->use_hwaccel = 0;
     av_opt_set_int(avctx, "refcounted_frames", 1, 0);
 
     if (hw && avctx->codec_id == AV_CODEC_ID_H264) {
@@ -94,8 +98,15 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
     TRACE(ctx, "codec open");
 
     ret = avcodec_open2(avctx, dec, NULL);
-    if (ret < 0)
+    if (ret < 0) {
+#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+        if (ctx->use_hwaccel) {
+            av_mediacodec_default_free(avctx);
+            ctx->use_hwaccel = 0;
+        }
+#endif
         return ret;
+    }
 
     ctx->avctx = avctx;
 
@@ -189,14 +200,12 @@ static void ffdec_flush(struct decoder_ctx *ctx)
 
 static void ffdec_uninit_hw(struct decoder_ctx *ctx)
 {
+    if (ctx->use_hwaccel) {
 #if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
-    AVCodecContext *avctx = ctx->avctx;
-    const struct AVCodec *codec = avctx->codec;
-
-    if(!av_strcasecmp(codec->name, "h264_mediacodec")) {
+        AVCodecContext *avctx = ctx->avctx;
         av_mediacodec_default_free(avctx);
-    }
 #endif
+    }
 }
 
 const struct decoder decoder_ffmpeg_sw = {
