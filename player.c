@@ -3,6 +3,14 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#include <IOSurface/IOSurface.h>
+#include <CoreVideo/CoreVideo.h>
+#include <OpenGL/OpenGL.h>
+#include <OpenGL/CGLIOSurface.h>
+#endif
+
 #include "sxplayer.h"
 
 static const char *g_vertex_shader_data =
@@ -219,12 +227,50 @@ static void render_frame(GLFWwindow *window, struct sxplayer_frame *frame)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_texture_id);
     if (frame) {
+        if (frame->pix_fmt == SXPLAYER_PIXFMT_VT) {
+#if defined(__APPLE__)
+#if 1
+            CVPixelBufferRef pixbuf = (CVPixelBufferRef)frame->data;
+            CVReturn err = CVPixelBufferLockBaseAddress(pixbuf, kCVPixelBufferLock_ReadOnly);
+            if (err)
+                fprintf(stderr, "CVPixelBufferGetBaseAddress err=%d\n", err);
+            uint8_t *data = CVPixelBufferGetBaseAddress(pixbuf);
+            int linesize = CVPixelBufferGetBytesPerRow(pixbuf);
+
+            if (frame->width != linesize >> 2) {
+                float padding = frame->width / (float)(linesize >> 2);
+                update_texture_padding(padding);
+            }
+
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, linesize >> 2, frame->height, 0, GL_BGRA, GL_UNSIGNED_BYTE, data);
+            CVPixelBufferUnlockBaseAddress(pixbuf, kCVPixelBufferLock_ReadOnly);
+#else
+            IOSurfaceRef surface = CVPixelBufferGetIOSurface((CVPixelBufferRef)frame->data);
+            if (surface) {
+                printf("context:%p [%zdx%zd]\n", CGLGetCurrentContext(),
+                       IOSurfaceGetWidthOfPlane(surface, 0),
+                       IOSurfaceGetHeightOfPlane(surface, 0));
+                int ret = CGLTexImageIOSurface2D(CGLGetCurrentContext(),
+                                                 GL_TEXTURE_2D,
+                                                 GL_RGBA,
+                                                 IOSurfaceGetWidthOfPlane(surface, 0),
+                                                 IOSurfaceGetHeightOfPlane(surface, 0),
+                                                 GL_BGRA,
+                                                 GL_UNSIGNED_BYTE,
+                                                 surface, 0);
+                printf("ret = %d\n", ret);
+            }
+#endif
+#endif
+        } else {
         if (frame->width != (frame->linesize >> 2)) {
             float padding = frame->width / (float)(frame->linesize >> 2);
             update_texture_padding(padding);
         }
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame->linesize >> 2, frame->height, 0, GL_RGBA,  GL_UNSIGNED_BYTE, frame->data);
+        }
+
         g_last_rendered_frame_ts = frame->ts;
     }
     glUniform1i(g_sampler_id, 0);
@@ -324,7 +370,6 @@ int main(int ac, char **av)
         return -1;
 
     sxplayer_set_option(g_s, "sw_pix_fmt", SXPLAYER_PIXFMT_RGBA);
-    sxplayer_set_option(g_s, "auto_hwaccel", 0);
 
     ret = sxplayer_get_info(g_s, &g_info);
     if (ret < 0)

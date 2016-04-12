@@ -69,7 +69,7 @@ endif
 
 PLAYER_LIBS =
 ifeq ($(TARGET_OS),Darwin)
-	PLAYER_LIBS += -framework OpenGL
+	PLAYER_LIBS += -framework OpenGL -framework CoreFoundation -framework VideoToolbox -framework CoreMedia -framework QuartzCore -framework IOSurface
 endif
 
 $(NAME): LDLIBS += $(shell $(PKG_CONFIG) --libs glfw3 glew) $(PLAYER_LIBS)
