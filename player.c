@@ -242,7 +242,7 @@ static void render_frame(GLFWwindow *window, struct sxplayer_frame *frame)
                 update_texture_padding(padding);
             }
 
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, linesize >> 2, frame->height, 0, GL_BGRA, GL_UNSIGNED_BYTE, data);
+            //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, linesize >> 2, frame->height, 0, GL_BGRA, GL_UNSIGNED_BYTE, data);
             CVPixelBufferUnlockBaseAddress(pixbuf, kCVPixelBufferLock_ReadOnly);
 #else
             IOSurfaceRef surface = CVPixelBufferGetIOSurface((CVPixelBufferRef)frame->data);
@@ -412,6 +412,7 @@ int main(int ac, char **av)
     }
     reset();
 
+    fprintf(stderr, "yes\n");
     sxplayer_free(&g_s);
     glfwDestroyWindow(window);
     glfwTerminate();
