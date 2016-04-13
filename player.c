@@ -230,20 +230,20 @@ static void render_frame(GLFWwindow *window, struct sxplayer_frame *frame)
         if (frame->pix_fmt == SXPLAYER_PIXFMT_VT) {
 #if defined(__APPLE__)
 #if 1
-            CVPixelBufferRef pixbuf = (CVPixelBufferRef)frame->data;
-            CVReturn err = CVPixelBufferLockBaseAddress(pixbuf, kCVPixelBufferLock_ReadOnly);
-            if (err)
-                fprintf(stderr, "CVPixelBufferGetBaseAddress err=%d\n", err);
-            uint8_t *data = CVPixelBufferGetBaseAddress(pixbuf);
-            int linesize = CVPixelBufferGetBytesPerRow(pixbuf);
+            //CVPixelBufferRef pixbuf = (CVPixelBufferRef)frame->data;
+            //CVReturn err = CVPixelBufferLockBaseAddress(pixbuf, kCVPixelBufferLock_ReadOnly);
+            //if (err)
+            //    fprintf(stderr, "CVPixelBufferGetBaseAddress err=%d\n", err);
+            //uint8_t *data = CVPixelBufferGetBaseAddress(pixbuf);
+            //int linesize = CVPixelBufferGetBytesPerRow(pixbuf);
 
-            if (frame->width != linesize >> 2) {
-                float padding = frame->width / (float)(linesize >> 2);
-                update_texture_padding(padding);
-            }
+            //if (frame->width != linesize >> 2) {
+            //    float padding = frame->width / (float)(linesize >> 2);
+            //    update_texture_padding(padding);
+            //}
 
             //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, linesize >> 2, frame->height, 0, GL_BGRA, GL_UNSIGNED_BYTE, data);
-            CVPixelBufferUnlockBaseAddress(pixbuf, kCVPixelBufferLock_ReadOnly);
+            //CVPixelBufferUnlockBaseAddress(pixbuf, kCVPixelBufferLock_ReadOnly);
 #else
             IOSurfaceRef surface = CVPixelBufferGetIOSurface((CVPixelBufferRef)frame->data);
             if (surface) {
