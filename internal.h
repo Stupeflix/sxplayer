@@ -35,6 +35,7 @@
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
 void set_thread_name(const char *name);
+void update_dimensions(int *width, int *height, int max_pixels);
 
 #define TIME2INT64(d) llrint((d) * av_q2d(av_inv_q(AV_TIME_BASE_Q)))
 #define PTS2TIMESTR(t64) av_ts2timestr(t64, &AV_TIME_BASE_Q)
@@ -62,6 +63,7 @@ struct sxplayer_ctx {
     int thread_stack_size;
     void *opaque;                           // pointer to an opaque pointer forwarded to the decoder
     int opaque_size;                        // opaque pointer size
+    int max_pixels;                         // maximum number of pixels per frame
 
     struct async_context *actx;
     int64_t skip64;

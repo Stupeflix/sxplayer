@@ -217,7 +217,8 @@ static int initialize_modules(struct async_context *actx,
                         demuxing_get_stream(actx->demuxer),
                         s->auto_hwaccel,
                         s->export_mvs,
-                        s->opaque ? *(void **)s->opaque : NULL);
+                        s->opaque ? *(void **)s->opaque : NULL,
+                        s->max_pixels);
     if (ret < 0)
         goto end;
 

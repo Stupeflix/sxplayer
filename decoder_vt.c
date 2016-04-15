@@ -42,6 +42,7 @@ struct vtdec_context {
     pthread_mutex_t lock;
     pthread_cond_t cond;
     int nb_queued;
+    int out_w, out_h;
 };
 
 static CMVideoFormatDescriptionRef format_desc_create(CMVideoCodecType codec_type,
@@ -148,12 +149,13 @@ static int push_async_frame(struct decoder_ctx *dec_ctx,
 {
     int ret;
     const AVCodecContext *avctx = dec_ctx->avctx;
+    const struct vtdec_context *vt = dec_ctx->priv_data;
     AVFrame *frame = av_frame_alloc();
     if (!frame)
         return AVERROR(ENOMEM);
 
-    frame->width   = avctx->width;
-    frame->height  = avctx->height;
+    frame->width   = vt->out_w;
+    frame->height  = vt->out_h;
     frame->format  = avctx->pix_fmt;
     frame->pts     = async_frame->pts;
     frame->data[3] = (uint8_t *)async_frame->cv_buffer;
@@ -281,7 +283,14 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         return AVERROR_EXTERNAL;
     }
 
-    buf_attr = buffer_attributes_create(avctx->coded_width, avctx->coded_height, REQUESTED_PIX_FMT);
+    vt->out_w = avctx->coded_width;
+    vt->out_h = avctx->coded_height;
+    update_dimensions(&vt->out_w, &vt->out_h, dec_ctx->max_pixels);
+    TRACE(dec_ctx, "dimensions: %dx%d -> %dx%d (nb pixels: %d -> %d for a max of %d)\n",
+          avctx->coded_width, avctx->coded_height, vt->out_w, vt->out_h,
+          avctx->coded_width * avctx->coded_height, vt->out_w * vt->out_h,
+          dec_ctx->max_pixels);
+    buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, REQUESTED_PIX_FMT);
 
     decoder_cb.decompressionOutputCallback = decode_callback;
     decoder_cb.decompressionOutputRefCon   = dec_ctx;

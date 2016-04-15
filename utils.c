@@ -64,3 +64,17 @@ void set_thread_name(const char *name)
     pthread_setname_np(pthread_self(), name);
 #endif
 }
+
+void update_dimensions(int *width, int *height, int max_pixels)
+{
+    if (max_pixels) {
+        const int w = *width;
+        const int h = *height;
+        const int t = w * h;
+        if (t > max_pixels) {
+            const double f = sqrt((double)max_pixels / t);
+            *width  = (int)(w * f) & ~1;
+            *height = (int)(h * f) & ~1;
+        }
+    }
+}

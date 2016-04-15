@@ -137,6 +137,7 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
  *   export_mvs               integer   export motion vectors into frame->mvs
  *   pkt_skip_mod             integer   skip packet if module pkt_skip_mod (and not a key pkt)
  *   opaque                   binary    pointer to an opaque pointer forwarded to the decoder (for example, a pointer to an android/view/Surface to use in conjonction with the mediacodec decoder)
+ *   max_pixels               int       maximum number of pixels per frame
  */
 int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
 
