@@ -34,7 +34,8 @@ int filtering_init(void *log_ctx,
                    const AVCodecContext *avctx,
                    const char *filters,
                    int sw_pix_fmt,
-                   int64_t max_pts);
+                   int64_t max_pts,
+                   int max_pixels);
 
 void filtering_run(struct filtering_ctx *ctx);
 

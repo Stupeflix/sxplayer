@@ -46,6 +46,7 @@ struct filtering_ctx {
     char *filters;
     int64_t max_pts;
     int sw_pix_fmt;
+    int max_pixels;
 
     AVFilterGraph *filter_graph;
     AVFrame *audio_texture_frame;
@@ -247,6 +248,15 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
         const enum AVPixelFormat sw_pix_fmt = pix_fmts_sx2ff(ctx->sw_pix_fmt);
         const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? sw_pix_fmt : ctx->last_frame_format;
+
+        if (ctx->max_pixels) {
+            int w = avctx->width, h = avctx->height;
+            update_dimensions(&w, &h, ctx->max_pixels);
+            av_strlcatf(args, sizeof(args),
+                        "%sscale=%d:%d:force_original_aspect_ratio=decrease",
+                        *args ? "," : "", w, h);
+        }
+
         av_strlcatf(args, sizeof(args), "%sformat=%s, settb=tb=%d/%d", *args ? "," : "", av_get_pix_fmt_name(pix_fmt),
                     time_base.num, time_base.den);
     } else {
@@ -306,13 +316,15 @@ int filtering_init(void *log_ctx,
                    const AVCodecContext *avctx,
                    const char *filters,
                    int sw_pix_fmt,
-                   int64_t max_pts)
+                   int64_t max_pts,
+                   int max_pixels)
 {
     ctx->log_ctx = log_ctx;
     ctx->in_queue  = in_queue;
     ctx->out_queue = out_queue;
     ctx->sw_pix_fmt = sw_pix_fmt;
     ctx->max_pts = max_pts;
+    ctx->max_pixels = max_pixels;
 
     if (filters) {
         ctx->filters = av_strdup(filters);

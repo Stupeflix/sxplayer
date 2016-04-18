@@ -3,7 +3,6 @@
   `-> new API?
 -> add VT options:
   `-> force vs enable hw accel so it's using VT even for sw decoding or not
--> honor max_pixels in sw decoding
 -> VT
   `-> kCFAllocatorDefault == NULL?
   `-> play with advanced flags?

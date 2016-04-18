@@ -241,7 +241,8 @@ static int initialize_modules(struct async_context *actx,
     ret = filtering_init(actx->log_ctx,
                          actx->filterer,
                          actx->frames_queue, actx->sink_queue,
-                         avctx, filters, s->sw_pix_fmt, max_pts);
+                         avctx, filters, s->sw_pix_fmt,
+                         max_pts, s->max_pixels);
     if (ret < 0)
         goto end;
 
