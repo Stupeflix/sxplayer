@@ -532,7 +532,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     if (s->trim_duration64 == AV_NOPTS_VALUE)
         s->trim_duration64 = async_probe_duration(s->actx);
 
-    const int vt = get_media_time(s, t64);
+    const int64_t vt = get_media_time(s, t64);
     TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
 
     /* If the trim duration couldn't be evaluated, it's likely an image so
