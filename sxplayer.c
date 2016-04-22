@@ -214,6 +214,12 @@ void sxplayer_free(struct sxplayer_ctx **ss)
 
     LOG(s, DEBUG, "destroying context");
 
+    /* XXX
+     * make sure we don't hold a cached frame to avoid dead lock in GL contexts
+     * [EXPERIMENT]
+     */
+    av_frame_free(&s->cached_frame);
+
     async_stop(s->actx);
 
     free_temp_context_data(s);

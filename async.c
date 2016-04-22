@@ -476,6 +476,9 @@ int async_stop(struct async_context *actx)
     av_thread_message_queue_set_err_recv(actx->frames_queue, AVERROR_EXIT);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   AVERROR_EXIT);
 
+    if (actx->decoder)
+        decoding_free_cache(actx->decoder);
+
     return wait_main_thread(actx);
 }
 

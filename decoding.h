@@ -44,6 +44,8 @@ int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame);
 
 void decoding_run(struct decoding_ctx *ctx);
 
+void decoding_free_cache(struct decoding_ctx *ctx);
+
 void decoding_free(struct decoding_ctx **ctxp);
 
 #endif /* DECODING_H */

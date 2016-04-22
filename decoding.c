@@ -20,6 +20,7 @@
 
 #include <libavutil/pixdesc.h>
 #include <libavutil/opt.h>
+#include <pthread.h>
 
 #include "decoding.h"
 #include "decoders.h"
@@ -46,6 +47,7 @@ struct decoding_ctx {
 
     AVRational st_timebase;
     AVFrame *tmp_frame;
+    pthread_mutex_t tmp_frame_mutex;
     int64_t seek_request;
 };
 
@@ -83,6 +85,8 @@ int decoding_init(void *log_ctx,
     ctx->log_ctx = log_ctx;
     ctx->pkt_queue = pkt_queue;
     ctx->frames_queue = frames_queue;
+
+    pthread_mutex_init(&ctx->tmp_frame_mutex, NULL);
 
     if (auto_hwaccel && decoder_def_hwaccel) {
         dec_def          = decoder_def_hwaccel;
@@ -176,11 +180,15 @@ int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
     int ret;
 
     if (!frame) {
+        pthread_mutex_lock(&ctx->tmp_frame_mutex);
         TRACE(ctx, "async_queue_frame() called for flushing");
         if (ctx->tmp_frame) {
             ret = queue_cached_frame(ctx);
+            pthread_mutex_unlock(&ctx->tmp_frame_mutex);
             if (ret < 0)
                 return ret;
+        } else {
+            pthread_mutex_unlock(&ctx->tmp_frame_mutex);
         }
         return AVERROR_EOF;
     }
@@ -197,18 +205,23 @@ int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
     if (ctx->seek_request != AV_NOPTS_VALUE && ts < ctx->seek_request) {
         TRACE(ctx, "frame ts:%s (%"PRId64"), skipping because before %s (%"PRId64")",
               PTS2TIMESTR(ts), ts, PTS2TIMESTR(ctx->seek_request), ctx->seek_request);
+        pthread_mutex_lock(&ctx->tmp_frame_mutex);
         av_frame_free(&ctx->tmp_frame);
         ctx->tmp_frame = frame;
+        pthread_mutex_unlock(&ctx->tmp_frame_mutex);
         return 0;
     }
 
     frame->pts = ts;
 
+    pthread_mutex_lock(&ctx->tmp_frame_mutex);
     if (ctx->tmp_frame) {
         ret = queue_cached_frame(ctx);
+        pthread_mutex_unlock(&ctx->tmp_frame_mutex);
         if (ret < 0)
             return ret;
     } else {
+        pthread_mutex_unlock(&ctx->tmp_frame_mutex);
         if (ctx->seek_request != AV_NOPTS_VALUE && ctx->seek_request > 0 && frame->pts > ctx->seek_request) {
             TRACE(ctx, "first frame obtained is after requested time, fixup its ts from %s to %s",
                   PTS2TIMESTR(frame->pts), PTS2TIMESTR(ctx->seek_request));
@@ -294,7 +307,9 @@ void decoding_run(struct decoding_ctx *ctx)
      * queuing callback won't be called anymore */
     decoder_flush(ctx->decoder);
 
+    pthread_mutex_lock(&ctx->tmp_frame_mutex);
     av_frame_free(&ctx->tmp_frame);
+    pthread_mutex_unlock(&ctx->tmp_frame_mutex);
 
     if (ret < 0 && ret != AVERROR_EOF) {
         in_err = out_err = ret;
@@ -309,11 +324,20 @@ void decoding_run(struct decoding_ctx *ctx)
     av_thread_message_queue_set_err_recv(ctx->frames_queue, out_err);
 }
 
+void decoding_free_cache(struct decoding_ctx *ctx)
+{
+    pthread_mutex_lock(&ctx->tmp_frame_mutex);
+    TRACE(ctx, "free tmp frame %p\n", ctx->tmp_frame);
+    av_frame_free(&ctx->tmp_frame);
+    pthread_mutex_unlock(&ctx->tmp_frame_mutex);
+}
+
 void decoding_free(struct decoding_ctx **ctxp)
 {
     struct decoding_ctx *ctx = *ctxp;
     if (!ctx)
         return;
     decoder_free(&ctx->decoder);
+    pthread_mutex_destroy(&ctx->tmp_frame_mutex);
     av_freep(ctxp);
 }
