@@ -478,17 +478,11 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
     }
 }
 
-static void vtdec_free_cache(struct decoder_ctx *dec_ctx)
-{
-    drop_queued_frames(dec_ctx);
-}
-
 const struct decoder decoder_vt = {
     .name             = "videotoolbox",
     .init             = vtdec_init,
     .push_packet      = vtdec_push_packet,
     .flush            = vtdec_flush,
     .uninit           = vtdec_uninit,
-    .free_cache       = vtdec_free_cache,
     .priv_data_size   = sizeof(struct vtdec_context),
 };

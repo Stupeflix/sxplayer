@@ -84,14 +84,6 @@ void decoder_flush(struct decoder_ctx *ctx)
     ctx->dec->flush(ctx);
 }
 
-void decoder_free_cache(struct decoder_ctx *ctx)
-{
-    if (ctx->dec->free_cache) {
-        TRACE(ctx, "free cache");
-        ctx->dec->free_cache(ctx);
-    }
-}
-
 void decoder_free(struct decoder_ctx **ctxp)
 {
     struct decoder_ctx *ctx = *ctxp;

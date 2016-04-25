@@ -329,7 +329,6 @@ void decoding_free_cache(struct decoding_ctx *ctx)
     pthread_mutex_lock(&ctx->tmp_frame_mutex);
     TRACE(ctx, "free tmp frame %p\n", ctx->tmp_frame);
     av_frame_free(&ctx->tmp_frame);
-    decoder_free_cache(ctx->decoder);
     pthread_mutex_unlock(&ctx->tmp_frame_mutex);
 }
 
