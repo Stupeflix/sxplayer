@@ -77,7 +77,7 @@ static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
                                              const AVCodecContext *avctx)
 {
     CFMutableDictionaryRef config_info = CFDictionaryCreateMutable(kCFAllocatorDefault,
-                                                                   1,
+                                                                   2,
                                                                    &kCFTypeDictionaryKeyCallBacks,
                                                                    &kCFTypeDictionaryValueCallBacks);
 
