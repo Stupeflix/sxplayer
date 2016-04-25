@@ -43,6 +43,7 @@ struct decoder {
     void (*uninit)(struct decoder_ctx *ctx);
     int (*push_packet)(struct decoder_ctx *ctx, const AVPacket *pkt);
     void (*flush)(struct decoder_ctx *ctx);
+    void (*free_cache)(struct decoder_ctx *ctx);
     int priv_data_size;
 };
 
@@ -56,6 +57,7 @@ int decoder_init(void *log_ctx,
                  int max_pixels);
 int decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt);
 void decoder_flush(struct decoder_ctx *ctx);
+void decoder_free_cache(struct decoder_ctx *ctx);
 void decoder_free(struct decoder_ctx **ctxp);
 
 #endif
