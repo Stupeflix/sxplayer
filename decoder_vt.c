@@ -286,6 +286,12 @@ static int do_init(struct decoder_ctx *dec_ctx)
 
     TRACE(dec_ctx, "do init");
 
+    switch (avctx->codec_id) {
+    case AV_CODEC_ID_H264:       cm_codec_type = kCMVideoCodecType_H264;       break;
+    default:
+        return AVERROR_DECODER_NOT_FOUND;
+    }
+
     decoder_spec = decoder_config_create(cm_codec_type, avctx);
 
     vt->cm_fmt_desc = format_desc_create(cm_codec_type, decoder_spec,
