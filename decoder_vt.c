@@ -395,7 +395,7 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
         return AVERROR_EOF;
     }
 
-    if (!dec_ctx->session) {
+    if (!vt->session) {
         int ret = do_init(dec_ctx);
         if (ret < 0)
             return ret;
