@@ -271,6 +271,21 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         return AVERROR_DECODER_NOT_FOUND;
     }
 
+    return 0;
+}
+
+static int do_init(struct decoder_ctx *dec_ctx)
+{
+    AVCodecContext *avctx = dec_ctx->avctx;
+    struct vtdec_context *vt = dec_ctx->priv_data;
+    int cm_codec_type;
+    OSStatus status;
+    VTDecompressionOutputCallbackRecord decoder_cb;
+    CFDictionaryRef decoder_spec;
+    CFDictionaryRef buf_attr;
+
+    TRACE(dec_ctx, "do init");
+
     decoder_spec = decoder_config_create(cm_codec_type, avctx);
 
     vt->cm_fmt_desc = format_desc_create(cm_codec_type, decoder_spec,
@@ -378,6 +393,12 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
     if (!pkt->size) {
         VTDecompressionSessionFinishDelayedFrames(vt->session);
         return AVERROR_EOF;
+    }
+
+    if (!dec_ctx->session) {
+        int ret = do_init(dec_ctx);
+        if (ret < 0)
+            return ret;
     }
 
     VTDecodeFrameFlags decodeFlags = kVTDecodeFrame_EnableAsynchronousDecompression;
