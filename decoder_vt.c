@@ -396,15 +396,15 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
     int status;
     struct vtdec_context *vt = dec_ctx->priv_data;
 
-    if (!pkt->size) {
-        VTDecompressionSessionFinishDelayedFrames(vt->session);
-        return AVERROR_EOF;
-    }
-
     if (!vt->session) {
         int ret = do_init(dec_ctx);
         if (ret < 0)
             return ret;
+    }
+
+    if (!pkt->size) {
+        VTDecompressionSessionFinishDelayedFrames(vt->session);
+        return AVERROR_EOF;
     }
 
     VTDecodeFrameFlags decodeFlags = kVTDecodeFrame_EnableAsynchronousDecompression;
