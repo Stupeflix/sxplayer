@@ -47,6 +47,7 @@ struct filtering_ctx {
     int64_t max_pts;
     int sw_pix_fmt;
     int max_pixels;
+    int audio_texture;
 
     AVFilterGraph *filter_graph;
     AVFrame *audio_texture_frame;
@@ -259,9 +260,12 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
 
         av_strlcatf(args, sizeof(args), "%sformat=%s, settb=tb=%d/%d", *args ? "," : "", av_get_pix_fmt_name(pix_fmt),
                     time_base.num, time_base.den);
-    } else {
+    } else if (ctx->audio_texture) {
         av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d, asettb=tb=%d/%d",
                     AUDIO_NBSAMPLES, time_base.num, time_base.den);
+    } else {
+        av_strlcatf(args, sizeof(args), "%saformat=sample_fmts=flt:channel_layouts=stereo, asettb=tb=%d/%d",
+                    *args ? "," : "", time_base.num, time_base.den);
     }
 
     TRACE(ctx, "graph buffer sink args: %s", args);
@@ -317,7 +321,8 @@ int filtering_init(void *log_ctx,
                    const char *filters,
                    int sw_pix_fmt,
                    int64_t max_pts,
-                   int max_pixels)
+                   int max_pixels,
+                   int audio_texture)
 {
     ctx->log_ctx = log_ctx;
     ctx->in_queue  = in_queue;
@@ -325,6 +330,7 @@ int filtering_init(void *log_ctx,
     ctx->sw_pix_fmt = sw_pix_fmt;
     ctx->max_pts = max_pts;
     ctx->max_pixels = max_pixels;
+    ctx->audio_texture = audio_texture;
 
     if (filters) {
         ctx->filters = av_strdup(filters);
@@ -334,7 +340,7 @@ int filtering_init(void *log_ctx,
 
     avcodec_copy_context(ctx->avctx, avctx);
 
-    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
         ctx->audio_texture_frame = get_audio_frame();
         if (!ctx->audio_texture_frame)
             return AVERROR(ENOMEM);
@@ -343,7 +349,7 @@ int filtering_init(void *log_ctx,
             return AVERROR(ENOMEM);
     }
 
-    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
         int i;
 
         /* Pre-calc windowing function */
@@ -405,7 +411,8 @@ static int push_frame(struct filtering_ctx *ctx, AVFrame *inframe)
 static int pull_frame(struct filtering_ctx *ctx, AVFrame *outframe)
 {
     int ret;
-    AVFrame *filtered_frame = ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO ? ctx->tmp_audio_frame : outframe;
+    const int do_audio_texture = ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture;
+    AVFrame *filtered_frame = do_audio_texture ? ctx->tmp_audio_frame : outframe;
 
     TRACE(ctx, "pulling frame from filtergraph");
 
@@ -422,7 +429,7 @@ static int pull_frame(struct filtering_ctx *ctx, AVFrame *outframe)
                                                        : av_get_sample_fmt_name(filtered_frame->format),
           PTS2TIMESTR(filtered_frame->pts));
 
-    if (ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+    if (do_audio_texture) {
         audio_frame_to_sound_texture(ctx, ctx->audio_texture_frame, filtered_frame);
         av_frame_unref(filtered_frame);
         av_frame_ref(outframe, ctx->audio_texture_frame);
@@ -581,7 +588,7 @@ void filtering_free(struct filtering_ctx **fp)
     if (!ctx)
         return;
 
-    if (ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+    if (ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
         av_frame_free(&ctx->audio_texture_frame);
         av_frame_free(&ctx->tmp_audio_frame);
         av_freep(&ctx->window_func_lut);

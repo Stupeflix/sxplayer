@@ -34,6 +34,7 @@
 
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
+enum sxplayer_pixel_format smp_fmts_ff2sx(enum AVSampleFormat smp_fmt);
 void set_thread_name(const char *name);
 void update_dimensions(int *width, int *height, int max_pixels);
 
@@ -64,6 +65,7 @@ struct sxplayer_ctx {
     void *opaque;                           // pointer to an opaque pointer forwarded to the decoder
     int opaque_size;                        // opaque pointer size
     int max_pixels;                         // maximum number of pixels per frame
+    int audio_texture;                      // output audio as a video texture
 
     struct async_context *actx;
     int64_t skip64;

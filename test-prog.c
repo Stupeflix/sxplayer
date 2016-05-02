@@ -372,6 +372,85 @@ static int test_next_frame(const char *filename)
     return ret;
 }
 
+static int run_audio_test(const char *filename)
+{
+    int i = 0, ret = 0, r, smp = 0;
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+
+    sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "avselect", SXPLAYER_SELECT_AUDIO);
+    sxplayer_set_option(s, "audio_texture", 0);
+
+    for (r = 0; r < 2; r++) {
+        printf("Test: %s run #%d\n", __FUNCTION__, r+1);
+        for (;;) {
+            struct sxplayer_frame *frame = sxplayer_get_next_frame(s);
+
+            if (!frame) {
+                printf("null frame\n");
+                break;
+            }
+            printf("frame #%d / data:%p ts:%f nb_samples:%d sfxsmpfmt:%d\n",
+                   i++, frame->data, frame->ts, frame->nb_samples, frame->pix_fmt);
+            smp += frame->nb_samples;
+
+            sxplayer_release_frame(frame);
+        }
+    }
+
+    sxplayer_free(&s);
+
+    if (smp != 15876000) {
+        fprintf(stderr, "decoded %d/15876000 expected samples\n", smp);
+        ret = -1;
+    }
+
+    return ret;
+}
+
+static int run_audio_seek_test(const char *filename)
+{
+    int i = 0, ret = 0;
+    double last_ts = 0.0;
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+    struct sxplayer_frame *frame = NULL;
+
+    sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "avselect", SXPLAYER_SELECT_AUDIO);
+    sxplayer_set_option(s, "audio_texture", 0);
+
+    printf("Test: %s run #1\n", __FUNCTION__);
+    for (i = 0; i < 10; i++) {
+        frame = sxplayer_get_next_frame(s);
+
+        if (!frame) {
+            fprintf(stderr, "got unexpected null frame\n");
+            sxplayer_free(&s);
+            return -1;
+        }
+        printf("frame #%d / data:%p ts:%f nb_samples:%d sfxsmpfmt:%d\n",
+                i, frame->data, frame->ts, frame->nb_samples, frame->pix_fmt);
+        last_ts = frame->ts;
+
+        sxplayer_release_frame(frame);
+    }
+
+    sxplayer_seek(s, last_ts);
+
+    frame = sxplayer_get_next_frame(s);
+    if (!frame) {
+        fprintf(stderr, "expected frame->ts=%f got null frame\n", last_ts);
+        ret = -1;
+    } else if (frame->ts != last_ts) {
+        fprintf(stderr, "expected frame->ts=%f got frame->ts=%f\n", last_ts, frame->ts);
+        ret = -1;
+    }
+    sxplayer_release_frame(frame);
+    sxplayer_free(&s);
+
+    return ret;
+}
+
 static const char *filename = "/i/do/not/exist";
 
 static void log_callback(void *arg, int level, const char *fmt, va_list vl)
@@ -421,6 +500,12 @@ int main(int ac, char **av)
         return -1;
 
     if (test_next_frame(av[1]) < 0)
+        return -1;
+
+    if (run_audio_test(av[1]) < 0)
+        return -1;
+
+    if (run_audio_seek_test(av[1]) < 0)
         return -1;
 
     for (i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)

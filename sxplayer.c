@@ -51,6 +51,7 @@ static const AVOption sxplayer_options[] = {
     { "thread_stack_size",      NULL, OFFSET(thread_stack_size),      AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
     { "opaque",                 NULL, OFFSET(opaque),                 AV_OPT_TYPE_BINARY,    {.str=NULL},    0, UINT64_MAX },
     { "max_pixels",             NULL, OFFSET(max_pixels),             AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
+    { "audio_texture",          NULL, OFFSET(audio_texture),          AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { NULL }
 };
 
@@ -356,20 +357,25 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     }
 
     ret->internal = frame;
-    if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
-        ret->data = frame->data[3];
-#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
-    } else if (frame->format == AV_PIX_FMT_MEDIACODEC) {
-        ret->data = frame->data[3];
-#endif
-    } else {
-        ret->data = frame->data[0];
-    }
+    ret->data = frame->data[0];
     ret->linesize = frame->linesize[0];
-    ret->width    = frame->width;
-    ret->height   = frame->height;
     ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
-    ret->pix_fmt  = pix_fmts_ff2sx(frame->format);
+    if (s->avselect == SXPLAYER_SELECT_VIDEO ||
+        (s->avselect == SXPLAYER_SELECT_AUDIO && s->audio_texture)) {
+        if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
+            ret->data = frame->data[3];
+#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+        } else if (frame->format == AV_PIX_FMT_MEDIACODEC) {
+            ret->data = frame->data[3];
+#endif
+        }
+        ret->width   = frame->width;
+        ret->height  = frame->height;
+        ret->pix_fmt = pix_fmts_ff2sx(frame->format);
+    } else {
+        ret->nb_samples = frame->nb_samples;
+        ret->pix_fmt = smp_fmts_ff2sx(frame->format);
+    }
 
     LOG(s, DEBUG, " <<< return %dx%d frame @ ts=%s [max:%s] in %fs",
         frame->width, frame->height, PTS2TIMESTR(frame_ts),

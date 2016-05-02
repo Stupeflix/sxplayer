@@ -242,7 +242,7 @@ static int initialize_modules(struct async_context *actx,
                          actx->filterer,
                          actx->frames_queue, actx->sink_queue,
                          avctx, filters, s->sw_pix_fmt,
-                         max_pts, s->max_pixels);
+                         max_pts, s->max_pixels, s->audio_texture);
     if (ret < 0)
         goto end;
 

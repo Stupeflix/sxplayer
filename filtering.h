@@ -35,7 +35,8 @@ int filtering_init(void *log_ctx,
                    const char *filters,
                    int sw_pix_fmt,
                    int64_t max_pts,
-                   int max_pixels);
+                   int max_pixels,
+                   int audio_texture);
 
 void filtering_run(struct filtering_ctx *ctx);
 
