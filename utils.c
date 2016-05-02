@@ -38,6 +38,13 @@ static const struct {
     {AV_PIX_FMT_RGBA,         SXPLAYER_PIXFMT_RGBA},
 };
 
+static const struct {
+    enum AVSampleFormat ff;
+    enum sxplayer_pixel_format sx;
+} smp_fmts_mapping[] = {
+    {AV_SAMPLE_FMT_FLT,       SXPLAYER_SMPFMT_FLT},
+};
+
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt)
 {
     int i;
@@ -53,6 +60,15 @@ enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
     for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
         if (pix_fmts_mapping[i].ff == pix_fmt)
             return pix_fmts_mapping[i].sx;
+    return -1;
+}
+
+enum sxplayer_pixel_format smp_fmts_ff2sx(enum AVSampleFormat smp_fmt)
+{
+    int i;
+    for (i = 0; i < FF_ARRAY_ELEMS(smp_fmts_mapping); i++)
+        if (smp_fmts_mapping[i].ff == smp_fmt)
+            return smp_fmts_mapping[i].sx;
     return -1;
 }
 
