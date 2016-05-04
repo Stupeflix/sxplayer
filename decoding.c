@@ -205,9 +205,13 @@ int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
     frame->pts = ts;
 
     if (ctx->tmp_frame) {
-        ret = queue_cached_frame(ctx);
-        if (ret < 0)
-            return ret;
+        if (ctx->seek_request != AV_NOPTS_VALUE && ts == ctx->seek_request) {
+            av_frame_free(&ctx->tmp_frame);
+        } else {
+            ret = queue_cached_frame(ctx);
+            if (ret < 0)
+                return ret;
+        }
     } else {
         if (ctx->seek_request != AV_NOPTS_VALUE && ctx->seek_request > 0 && frame->pts > ctx->seek_request) {
             TRACE(ctx, "first frame obtained is after requested time, fixup its ts from %s to %s",
