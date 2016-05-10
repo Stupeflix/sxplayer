@@ -401,6 +401,10 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
 
     if (status) {
         LOG(dec_ctx, ERROR, "Failed to decode frame (%d)", status);
+        pthread_mutex_lock(&vt->lock);
+        vt->nb_queued = 0;
+        pthread_cond_signal(&vt->cond);
+        pthread_mutex_unlock(&vt->lock);
         return AVERROR_EXTERNAL;
     }
 
@@ -446,7 +450,7 @@ static void vtdec_flush(struct decoder_ctx *dec_ctx)
     // VTDecompressionSessionWaitForAsynchronousFrames(), so we need this kind
     // of shit. Yes, fuck you Apple. Fuck you hard.
     pthread_mutex_lock(&vt->lock);
-    while (vt->nb_queued)
+    while (vt->nb_queued > 0)
         pthread_cond_wait(&vt->cond, &vt->lock);
     pthread_mutex_unlock(&vt->lock);
 
