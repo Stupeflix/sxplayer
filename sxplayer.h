@@ -129,7 +129,7 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
  *
  *   key                      type      description
  *   ----------------------------------------------
- *   avselect                 int       select audio or video stream (see SXPLAYER_SELECT_*)
+ *   avselect                 integer   select audio or video stream (see SXPLAYER_SELECT_*)
  *   skip                     double    time to skip in the specified input
  *   trim_duration            double    duration of the video (starting at skip)
  *   dist_time_seek_trigger   double    how much time forward will trigger a seek
@@ -141,7 +141,7 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
  *   export_mvs               integer   export motion vectors into frame->mvs
  *   pkt_skip_mod             integer   skip packet if module pkt_skip_mod (and not a key pkt)
  *   opaque                   binary    pointer to an opaque pointer forwarded to the decoder (for example, a pointer to an android/view/Surface to use in conjonction with the mediacodec decoder)
- *   max_pixels               int       maximum number of pixels per frame
+ *   max_pixels               integer   maximum number of pixels per frame
  *   audio_texture            integer   output audio as a video texture
  */
 int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
