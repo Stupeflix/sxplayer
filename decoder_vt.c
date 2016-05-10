@@ -330,11 +330,10 @@ static CMSampleBufferRef sample_buffer_create(CMFormatDescriptionRef fmt_desc,
     OSStatus status;
     CMBlockBufferRef  block_buf;
     CMSampleBufferRef sample_buf;
-    CMSampleTimingInfo timeInfo;
-    CMSampleTimingInfo timeInfoArray[1];
+    CMSampleTimingInfo timeInfoArray[1] = {0};
 
-    timeInfo.presentationTimeStamp = CMTimeMake(frame_pts, 1);
-    timeInfoArray[0] = timeInfo;
+    timeInfoArray[0].presentationTimeStamp = CMTimeMake(frame_pts, 1);
+    timeInfoArray[0].decodeTimeStamp = kCMTimeInvalid;
 
     block_buf  = NULL;
     sample_buf = NULL;
