@@ -374,6 +374,13 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
     int status;
     struct vtdec_context *vt = dec_ctx->priv_data;
 
+    /* For some insane reason, pushing more than 3 packets to VT will cause a
+     * fatal deadlock when the application is going in background on iOS. */
+    pthread_mutex_lock(&vt->lock);
+    while (vt->nb_queued >= 3)
+        pthread_cond_wait(&vt->cond, &vt->lock);
+    pthread_mutex_unlock(&vt->lock);
+
     if (!pkt->size) {
         VTDecompressionSessionFinishDelayedFrames(vt->session);
         return AVERROR_EOF;
