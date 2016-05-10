@@ -341,16 +341,14 @@ int filtering_init(void *log_ctx,
     avcodec_copy_context(ctx->avctx, avctx);
 
     if (avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
+        int i;
+
         ctx->audio_texture_frame = get_audio_frame();
         if (!ctx->audio_texture_frame)
             return AVERROR(ENOMEM);
         ctx->tmp_audio_frame = av_frame_alloc();
         if (!ctx->tmp_audio_frame)
             return AVERROR(ENOMEM);
-    }
-
-    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
-        int i;
 
         /* Pre-calc windowing function */
         ctx->window_func_lut = av_malloc_array(AUDIO_NBSAMPLES, sizeof(*ctx->window_func_lut));
