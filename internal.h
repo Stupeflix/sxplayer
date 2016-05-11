@@ -30,7 +30,7 @@
 #include "log.h"
 #include "async.h"
 
-#define MEDIACODEC_HWACCEL_VERSION_INT AV_VERSION_INT(57, 28, 200)
+#define HAVE_MEDIACODEC_HWACCEL LIBAVCODEC_VERSION_MICRO >= 200
 
 enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);

@@ -364,7 +364,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
         (s->avselect == SXPLAYER_SELECT_AUDIO && s->audio_texture)) {
         if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
             ret->data = frame->data[3];
-#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+#if HAVE_MEDIACODEC_HWACCEL
         } else if (frame->format == AV_PIX_FMT_MEDIACODEC) {
             ret->data = frame->data[3];
 #endif

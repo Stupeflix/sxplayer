@@ -29,7 +29,7 @@
 #include "decoders.h"
 #include "internal.h"
 
-#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+#if HAVE_MEDIACODEC_HWACCEL
 
 #include <libavcodec/mediacodec.h>
 
@@ -87,7 +87,7 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
         if (!codec)
             return AVERROR_DECODER_NOT_FOUND;
 
-#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+#if HAVE_MEDIACODEC_HWACCEL
         avctx->opaque = ctx;
         avctx->get_format = mediacodec_hwaccel_get_format;
         avctx->thread_count = 1;
@@ -99,7 +99,7 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
 
     ret = avcodec_open2(avctx, dec, NULL);
     if (ret < 0) {
-#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+#if HAVE_MEDIACODEC_HWACCEL
         if (ctx->use_hwaccel) {
             av_mediacodec_default_free(avctx);
             ctx->use_hwaccel = 0;
@@ -201,7 +201,7 @@ static void ffdec_flush(struct decoder_ctx *ctx)
 static void ffdec_uninit_hw(struct decoder_ctx *ctx)
 {
     if (ctx->use_hwaccel) {
-#if LIBAVCODEC_VERSION_INT >= MEDIACODEC_HWACCEL_VERSION_INT
+#if HAVE_MEDIACODEC_HWACCEL
         AVCodecContext *avctx = ctx->avctx;
         av_mediacodec_default_free(avctx);
 #endif
