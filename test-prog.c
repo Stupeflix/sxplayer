@@ -324,6 +324,7 @@ static int run_image_test(const char *filename)
         fprintf(stderr, "didn't get an image\n");
         return -1;
     }
+    sxplayer_release_frame(f);
 
     if (sxplayer_get_info(s, &info) < 0) {
         fprintf(stderr, "can not fetch image info\n");
@@ -333,8 +334,14 @@ static int run_image_test(const char *filename)
         return -1;
     }
 
+    f = sxplayer_get_frame(s, 12.3);
+    if (f) {
+        sxplayer_release_frame(f);
+        fprintf(stderr, "we got a new frame even though the source is an image\n");
+        return -1;
+    }
+
     sxplayer_free(&s);
-    sxplayer_release_frame(f);
     return 0;
 }
 
