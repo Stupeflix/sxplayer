@@ -132,6 +132,7 @@ int demuxing_init(void *log_ctx,
      * writing this code 0 (which is the default value) means "auto", which
      * will be then set to something like 5 seconds for video. */
     ctx->fmt_ctx->max_analyze_duration = -1;
+    ctx->fmt_ctx->probesize = 0;
 
     TRACE(ctx, "find stream info");
     ret = avformat_find_stream_info(ctx->fmt_ctx, NULL);
