@@ -173,8 +173,14 @@ int async_seek(struct async_context *actx, int64_t ts)
 {
     if (!actx->main_started || actx->need_wait)
         actx->request_seek = ts;
-    else
-        send_seek_message(actx->src_queue, ts);
+    else {
+        int ret;
+
+        ret = send_seek_message(actx->src_queue, ts);
+        if (ret < 0) {
+            actx->request_seek = ts;
+        }
+    }
     return 0;
 }
 
