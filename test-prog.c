@@ -458,6 +458,85 @@ static int run_audio_seek_test(const char *filename)
     return ret;
 }
 
+static int run_seek_test_after_eos(const char *filename, int avselect, double skip, double duration)
+{
+    int i = 0, j = 0, k = 0, ret = 0, nb_frames = 0;
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+    struct sxplayer_frame *frame = NULL;
+    static const float ts[] = { 0.0, 0.5, 7.65 };
+
+    sxplayer_set_option(s, "avselect", avselect);
+    sxplayer_set_option(s, "audio_texture", 0);
+    sxplayer_set_option(s, "skip", skip);
+    sxplayer_set_option(s, "trim_duration", duration);
+
+    printf("Test: %s run #1 (avselect=%d duration=%f)\n", __FUNCTION__, avselect, duration);
+    for (;;) {
+        frame = sxplayer_get_next_frame(s);
+        if (!frame) {
+            break;
+        }
+        sxplayer_release_frame(frame);
+        nb_frames++;
+    }
+
+    sxplayer_free(&s);
+
+    for (k = 0; k < 4; k++) {
+        for (j = 0; j < sizeof(ts)/sizeof(*ts); j++) {
+            s = sxplayer_create(filename);
+            sxplayer_set_option(s, "avselect", avselect);
+            sxplayer_set_option(s, "audio_texture", 0);
+            sxplayer_set_option(s, "skip", skip);
+            sxplayer_set_option(s, "trim_duration", duration);
+
+            for (i = 0; i < nb_frames; i++) {
+                frame = sxplayer_get_next_frame(s);
+                if (!frame) {
+                    fprintf(stderr, "unexpected null frame before EOS\n");
+                    ret = -1;
+                    goto done;
+                }
+                sxplayer_release_frame(frame);
+            }
+
+            if (k == 0) {
+                sxplayer_seek(s, ts[j]);
+                frame = sxplayer_get_next_frame(s);
+                if (!frame) {
+                    fprintf(stderr, "unexpected null frame from sxplayer_get_next_frame() after seeking at %f\n", ts[j]);
+                    ret = -1;
+                    goto done;
+                }
+            } else if (k == 1) {
+                frame = sxplayer_get_frame(s, ts[j]);
+                if (!frame) {
+                    fprintf(stderr, "unexpected null frame from sxplayer_get_frame() after seeking at %f\n", ts[j]);
+                    ret = -1;
+                    goto done;
+                }
+            } else if (k == 2) {
+                frame = sxplayer_get_frame(s, 1000.0);
+                if (frame) {
+                    fprintf(stderr, "unexpected frame at %f with ts=%f\n", 1000.0f, frame->ts);
+                    ret = -1;
+                    sxplayer_release_frame(frame);
+                    goto done;
+                }
+            } else if (k == 3) {
+                frame = NULL;
+            }
+            sxplayer_release_frame(frame);
+            sxplayer_free(&s);
+        }
+    }
+
+done:
+    sxplayer_free(&s);
+
+    return ret;
+}
+
 static const char *filename = "/i/do/not/exist";
 
 static void log_callback(void *arg, int level, const char *fmt, va_list vl)
@@ -514,6 +593,17 @@ int main(int ac, char **av)
 
     if (run_audio_seek_test(av[1]) < 0)
         return -1;
+
+    if (run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO,  0.0, -1.0) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO,  0.0, 10.0) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO, 60.0, -1.0) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO, 60.0, 10.0) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO,  0.0, -1.0) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO,  0.0, 10.0) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO, 60.0, -1.0) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO, 60.0, 10.0))
+        return -1;
+
 
     for (i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)
         if (run_tests_all_combs(av[1], tests_flags[i]) < 0)
