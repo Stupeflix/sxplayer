@@ -213,8 +213,10 @@ void demuxing_run(struct demuxing_ctx *ctx)
                 const int64_t seek_to = *(int64_t *)msg.data;
                 LOG(ctx, INFO, "Seek in media at ts=%s", PTS2TIMESTR(seek_to));
                 ret = avformat_seek_file(ctx->fmt_ctx, -1, INT64_MIN, seek_to, seek_to, 0);
-                if (ret < 0)
+                if (ret < 0) {
+                    async_free_message_data(&msg);
                     break;
+                }
             }
 
             /* Forward the message */
