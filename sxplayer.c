@@ -335,12 +335,15 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     /* if same frame as previously, do not raise it again */
     if (s->last_pushed_frame_ts == frame_ts) {
         LOG(s, DEBUG, " <<< same frame as previously, return NULL in %fs", exect);
+        av_frame_free(&frame);
         return NULL;
     }
 
     ret = av_mallocz(sizeof(*ret));
-    if (!ret)
+    if (!ret) {
+        av_frame_free(&frame);
         return NULL;
+    }
 
     s->last_pushed_frame_ts = frame_ts;
 
@@ -349,6 +352,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
         ret->mvs = av_memdup(sd->data, sd->size);
         if (!ret->mvs) {
             LOG(s, ERROR, "Unable to memdup motion vectors side data");
+            av_frame_free(&frame);
             av_free(ret);
             return NULL;
         }
