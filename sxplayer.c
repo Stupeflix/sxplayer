@@ -475,11 +475,34 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 }
 #endif
 
+static int do_seek(struct sxplayer_ctx *s, int64_t t64)
+{
+    struct message msg;
+    int ret, retried = -1;
+
+retry:
+    retried++;
+    ret = async_seek(s->actx, get_media_time(s, t64));
+    if (ret < 0)
+        return ret;
+
+    TRACE(s, "seek requested, wait for it to be effective");
+    do {
+        ret = async_pop_msg(s->actx, &msg);
+        if (!retried && (ret == AVERROR_EOF || ret == AVERROR_EXIT))
+            goto retry;
+        if (ret < 0)
+            return ret;
+        async_free_message_data(&msg);
+    } while (msg.type != MSG_SEEK);
+    TRACE(s, "seek message obtained");
+
+    return 0;
+}
+
 int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
 {
     int ret;
-    int retried = -1;
-    struct message msg;
 
     LOG(s, DEBUG, "seek requested at t=%f", reqt);
     ret = configure_context(s);
@@ -492,24 +515,7 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
     if (s->trim_duration64 == AV_NOPTS_VALUE)
         s->trim_duration64 = async_probe_duration(s->actx);
 
-retry:
-    retried++;
-    ret = async_seek(s->actx, get_media_time(s, TIME2INT64(reqt)));
-    if (ret < 0)
-        return ret;
-
-    do {
-        ret = async_pop_msg(s->actx, &msg);
-        if (!retried && (ret == AVERROR_EOF || ret == AVERROR_EXIT))
-            goto retry;
-        if (ret < 0)
-            return ret;
-        async_free_message_data(&msg);
-    } while (msg.type != MSG_SEEK);
-    TRACE(s, "seek message obtained");
-
-    async_free_message_data(&msg);
-    return ret;
+    return do_seek(s, TIME2INT64(reqt));
 }
 
 int sxplayer_prefetch(struct sxplayer_ctx *s)
@@ -655,9 +661,6 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
     /* Check if a seek is needed */
     if (diff < 0 || diff > s->dist_time_seek_trigger64) {
-        int retried = -1;
-        struct message msg;
-
         if (diff < 0)
             TRACE(s, "diff %s [%"PRId64"] < 0 request backward seek", PTS2TIMESTR(diff), diff);
         else
@@ -668,20 +671,9 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         av_frame_free(&candidate);
         av_frame_free(&s->cached_frame);
 
-retry:
-        retried++;
-        async_seek(s->actx, get_media_time(s, t64));
-
-        TRACE(s, "seek requested, wait for it to be effective");
-        do {
-            ret = async_pop_msg(s->actx, &msg);
-            if (!retried && (ret == AVERROR_EOF || ret == AVERROR_EXIT))
-                goto retry;
-            if (ret < 0)
-                return ret_frame(s, NULL);
-            async_free_message_data(&msg);
-        } while (msg.type != MSG_SEEK);
-        TRACE(s, "seek message obtained");
+        ret = do_seek(s, t64);
+        if (ret < 0)
+            return ret_frame(s, NULL);
     }
 
     /* Consume frames until we get a frame as accurate as possible */
