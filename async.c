@@ -258,7 +258,7 @@ static int initialize_modules(struct async_context *actx,
     av_assert0(AV_NOPTS_VALUE < 0);
     if (probe_duration != AV_NOPTS_VALUE && (duration <= 0 ||
                                              probe_duration < duration)) {
-        LOG(s, WARNING, "fix trim_duration from %f to %f",
+        LOG(s, INFO, "fix trim_duration from %f to %f",
               duration       * av_q2d(AV_TIME_BASE_Q),
               probe_duration * av_q2d(AV_TIME_BASE_Q));
         duration = probe_duration;
