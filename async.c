@@ -254,14 +254,17 @@ static int initialize_modules(struct async_context *actx,
 
     int64_t duration = max_pts;
     const int64_t probe_duration = demuxing_probe_duration(actx->demuxer);
-    if (probe_duration != AV_NOPTS_VALUE && (s->trim_duration64 == AV_NOPTS_VALUE ||
-                                             probe_duration < s->trim_duration64)) {
-        TRACE(s, "fix trim_duration from %f to %f",
-              s->trim_duration, probe_duration * av_q2d(AV_TIME_BASE_Q));
+
+    av_assert0(AV_NOPTS_VALUE < 0);
+    if (probe_duration != AV_NOPTS_VALUE && (duration <= 0 ||
+                                             probe_duration < duration)) {
+        LOG(s, WARNING, "fix trim_duration from %f to %f",
+              duration       * av_q2d(AV_TIME_BASE_Q),
+              probe_duration * av_q2d(AV_TIME_BASE_Q));
         duration = probe_duration;
-        if (duration == AV_NOPTS_VALUE)
-            duration = 0;
     }
+    if (duration == AV_NOPTS_VALUE)
+        duration = 0;
     struct info_message info = {
         .width    = avctx->width,
         .height   = avctx->height,
