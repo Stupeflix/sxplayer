@@ -149,9 +149,11 @@ static int decode_packet(struct decoder_ctx *ctx, const AVPacket *pkt, int *got_
     }
 
     if (ret < 0) {
-        LOG(ctx, ERROR, "Error decoding packet: %s", av_err2str(ret));
+        LOG(ctx, ERROR, "Error decoding %s packet: %s",
+            av_get_media_type_string(avctx->codec_type),
+            av_err2str(ret));
         av_frame_free(&dec_frame);
-        return ret;
+        return pkt->size;
     }
 
     TRACE(ctx, "decoded %d/%d bytes from packet -> got_frame=%d", ret, pkt->size, *got_frame);
