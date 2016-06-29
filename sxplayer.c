@@ -678,11 +678,18 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
     /* Consume frames until we get a frame as accurate as possible */
     for (;;) {
+        const int next_is_cached_frame = !!s->cached_frame;
+
         TRACE(s, "grab another frame");
         AVFrame *next = pop_frame(s);
-        if (!next || next->pts > vt) {
-            av_frame_free(&s->cached_frame);
-            s->cached_frame = next;
+        av_assert0(!s->cached_frame);
+        if (!next)
+            break;
+        if (next->pts > vt) {
+            if (!candidate && !next_is_cached_frame)
+                candidate = next;
+            else
+                s->cached_frame = next;
             break;
         }
         av_frame_free(&candidate);
