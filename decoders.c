@@ -58,7 +58,7 @@ int decoder_init(void *log_ctx,
 
     // We need to copy the stream information because the stream (and its codec
     // context) can be destroyed any time after the decoder_init() returns
-    avcodec_copy_context(ctx->avctx, stream->codec);
+    avcodec_parameters_to_context(ctx->avctx, stream->codecpar);
 
     ret = dec->init(ctx);
     if (ret < 0) {

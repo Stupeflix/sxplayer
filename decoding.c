@@ -80,6 +80,10 @@ int decoding_init(void *log_ctx,
     int ret;
     const struct decoder *dec_def, *dec_def_fallback;
 
+    AVCodecParameters *par = avcodec_parameters_alloc();
+    if (!par)
+        return AVERROR(ENOMEM);
+
     ctx->log_ctx = log_ctx;
     ctx->pkt_queue = pkt_queue;
     ctx->frames_queue = frames_queue;
@@ -94,24 +98,24 @@ int decoding_init(void *log_ctx,
 
     ctx->st_timebase = stream->time_base;
 
-#define DUMP_INFO(avctx, name) do {                                     \
-    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO) {                      \
+#define DUMP_INFO(par, name) do {                                       \
+    if ((par)->codec_type == AVMEDIA_TYPE_AUDIO) {                      \
         char chl[1024];                                                 \
         av_get_channel_layout_string(chl, sizeof(chl), 0,               \
-                                     avctx->channel_layout);            \
+                                     (par)->channel_layout);            \
         TRACE(ctx, name " stream: %s %s @ %dHz tb=%d/%d",               \
-              chl, av_get_sample_fmt_name(avctx->sample_fmt),           \
-              avctx->sample_rate,                                       \
+              chl, av_get_sample_fmt_name((par)->format),               \
+              (par)->sample_rate,                                       \
               ctx->st_timebase.num, ctx->st_timebase.den);              \
     } else {                                                            \
         TRACE(ctx, name " stream: %dx%d in %s tb=%d/%d",                \
-              avctx->width, avctx->height,                              \
-              av_get_pix_fmt_name(avctx->pix_fmt),                      \
+              (par)->width, (par)->height,                              \
+              av_get_pix_fmt_name((par)->format),                       \
               ctx->st_timebase.num, ctx->st_timebase.den);              \
     }                                                                   \
 } while (0)
 
-    DUMP_INFO(stream->codec, "original");
+    DUMP_INFO(stream->codecpar, "original");
 
     ret = decoder_init(log_ctx, ctx->decoder, dec_def, stream, ctx, opaque, max_pixels);
     if (ret < 0 && dec_def_fallback) {
@@ -127,9 +131,12 @@ int decoding_init(void *log_ctx,
     if (export_mvs)
         av_opt_set(ctx->decoder->avctx, "flags2", "+export_mvs", 0);
 
-    DUMP_INFO(ctx->decoder->avctx, "initialized");
+    avcodec_parameters_from_context(par, ctx->decoder->avctx);
+    DUMP_INFO(par, "initialized");
 
     LOG(ctx, INFO, "selected decoder: %s", ctx->decoder->dec->name);
+
+    avcodec_parameters_free(&par);
 
     return 0;
 }
