@@ -42,7 +42,7 @@ struct filtering_ctx {
     AVThreadMessageQueue *in_queue;
     AVThreadMessageQueue *out_queue;
 
-    AVCodecContext *avctx;
+    AVCodecParameters *codecpar;
     char *filters;
     int64_t max_pts;
     int sw_pix_fmt;
@@ -65,8 +65,8 @@ struct filtering_ctx *filtering_alloc(void)
     struct filtering_ctx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
         return NULL;
-    ctx->avctx = avcodec_alloc_context3(NULL);
-    if (!ctx->avctx) {
+    ctx->codecpar = avcodec_parameters_alloc();
+    if (!ctx->codecpar) {
         av_freep(&ctx);
         return NULL;
     }
@@ -179,7 +179,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     AVFilter *buffersrc, *buffersink;
     AVFilterInOut *outputs, *inputs;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
-    const AVCodecContext *avctx = ctx->avctx;
+    const AVCodecParameters *codecpar = ctx->codecpar;
     const AVRational time_base = AV_TIME_BASE_Q;
 
     if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
@@ -190,8 +190,8 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     outputs = avfilter_inout_alloc();
     inputs  = avfilter_inout_alloc();
 
-    buffersrc  = avfilter_get_by_name(avctx->codec_type == AVMEDIA_TYPE_VIDEO ? "buffer" : "abuffer");
-    buffersink = avfilter_get_by_name(avctx->codec_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
+    buffersrc  = avfilter_get_by_name(codecpar->codec_type == AVMEDIA_TYPE_VIDEO ? "buffer" : "abuffer");
+    buffersink = avfilter_get_by_name(codecpar->codec_type == AVMEDIA_TYPE_VIDEO ? "buffersink" : "abuffersink");
 
     ctx->filter_graph = avfilter_graph_alloc();
 
@@ -210,20 +210,20 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     }
 
     /* create buffer filter source (where we push the frame) */
-    if (avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+    if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         snprintf(args, sizeof(args),
                  "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
-                 avctx->width, avctx->height, av_get_pix_fmt_name(ctx->last_frame_format),
+                 codecpar->width, codecpar->height, av_get_pix_fmt_name(ctx->last_frame_format),
                  time_base.num, time_base.den,
-                 avctx->sample_aspect_ratio.num, avctx->sample_aspect_ratio.den);
+                 codecpar->sample_aspect_ratio.num, codecpar->sample_aspect_ratio.den);
     } else {
         snprintf(args, sizeof(args), "time_base=%d/%d:sample_rate=%d:sample_fmt=%s",
-                 time_base.num, time_base.den, avctx->sample_rate,
-                 av_get_sample_fmt_name(avctx->sample_fmt));
-        if (avctx->channel_layout)
-            av_strlcatf(args, sizeof(args), ":channel_layout=0x%"PRIx64, avctx->channel_layout);
+                 time_base.num, time_base.den, codecpar->sample_rate,
+                 av_get_sample_fmt_name(codecpar->format));
+        if (codecpar->channel_layout)
+            av_strlcatf(args, sizeof(args), ":channel_layout=0x%"PRIx64, codecpar->channel_layout);
         else
-            av_strlcatf(args, sizeof(args), ":channels=%d", avctx->channels);
+            av_strlcatf(args, sizeof(args), ":channels=%d", codecpar->channels);
     }
 
     TRACE(ctx, "graph buffer source args: %s", args);
@@ -245,13 +245,13 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
 
     /* define the output of the graph */
     snprintf(args, sizeof(args), "%s", ctx->filters ? ctx->filters : "");
-    if (avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+    if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
         const enum AVPixelFormat sw_pix_fmt = pix_fmts_sx2ff(ctx->sw_pix_fmt);
         const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? sw_pix_fmt : ctx->last_frame_format;
 
         if (ctx->max_pixels) {
-            int w = avctx->width, h = avctx->height;
+            int w = codecpar->width, h = codecpar->height;
             update_dimensions(&w, &h, ctx->max_pixels);
             av_strlcatf(args, sizeof(args),
                         "%sscale=%d:%d:force_original_aspect_ratio=decrease",
@@ -317,13 +317,15 @@ int filtering_init(void *log_ctx,
                    struct filtering_ctx *ctx,
                    AVThreadMessageQueue *in_queue,
                    AVThreadMessageQueue *out_queue,
-                   const AVCodecContext *avctx,
+                   const AVCodecParameters *codecpar,
                    const char *filters,
                    int sw_pix_fmt,
                    int64_t max_pts,
                    int max_pixels,
                    int audio_texture)
 {
+    int ret;
+
     ctx->log_ctx = log_ctx;
     ctx->in_queue  = in_queue;
     ctx->out_queue = out_queue;
@@ -338,9 +340,11 @@ int filtering_init(void *log_ctx,
             return AVERROR(ENOMEM);
     }
 
-    avcodec_copy_context(ctx->avctx, avctx);
+    ret = avcodec_parameters_copy(ctx->codecpar, codecpar);
+    if (ret < 0)
+        return ret;
 
-    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
+    if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
         int i;
 
         ctx->audio_texture_frame = get_audio_frame();
@@ -409,7 +413,7 @@ static int push_frame(struct filtering_ctx *ctx, AVFrame *inframe)
 static int pull_frame(struct filtering_ctx *ctx, AVFrame *outframe)
 {
     int ret;
-    const int do_audio_texture = ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture;
+    const int do_audio_texture = ctx->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture;
     AVFrame *filtered_frame = do_audio_texture ? ctx->tmp_audio_frame : outframe;
 
     TRACE(ctx, "pulling frame from filtergraph");
@@ -422,9 +426,9 @@ static int pull_frame(struct filtering_ctx *ctx, AVFrame *outframe)
     }
 
     TRACE(ctx, "filtered %s %s frame @ ts=%s",
-          av_get_media_type_string(ctx->avctx->codec_type),
-          ctx->avctx->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(filtered_frame->format)
-                                                       : av_get_sample_fmt_name(filtered_frame->format),
+          av_get_media_type_string(ctx->codecpar->codec_type),
+          ctx->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(filtered_frame->format)
+                                                          : av_get_sample_fmt_name(filtered_frame->format),
           PTS2TIMESTR(filtered_frame->pts));
 
     if (do_audio_texture) {
@@ -468,7 +472,7 @@ static int flush_frames(struct filtering_ctx *ctx)
         return 0;
 
     TRACE(ctx, "push null frame into %s filtergraph to trigger flushing",
-          av_get_media_type_string(ctx->avctx->codec_type));
+          av_get_media_type_string(ctx->codecpar->codec_type));
 
     ret = push_frame(ctx, NULL);
     if (ret < 0)
@@ -518,9 +522,9 @@ void filtering_run(struct filtering_ctx *ctx)
         frame = msg.data;
 
         TRACE(ctx, "filtering %s %s frame @ ts=%s",
-              av_get_media_type_string(ctx->avctx->codec_type),
-              ctx->avctx->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(frame->format)
-                                                           : av_get_sample_fmt_name(frame->format),
+              av_get_media_type_string(ctx->codecpar->codec_type),
+              ctx->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(frame->format)
+                                                              : av_get_sample_fmt_name(frame->format),
               PTS2TIMESTR(frame->pts));
 
         /* lazy filtergraph configuration */
@@ -586,7 +590,7 @@ void filtering_free(struct filtering_ctx **fp)
     if (!ctx)
         return;
 
-    if (ctx->avctx->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
+    if (ctx->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
         av_frame_free(&ctx->audio_texture_frame);
         av_frame_free(&ctx->tmp_audio_frame);
         av_freep(&ctx->window_func_lut);
@@ -598,7 +602,7 @@ void filtering_free(struct filtering_ctx **fp)
         }
     }
     avfilter_graph_free(&ctx->filter_graph);
-    avcodec_free_context(&ctx->avctx);
+    avcodec_parameters_free(&ctx->codecpar);
     av_freep(&ctx->filters);
     av_freep(fp);
 }

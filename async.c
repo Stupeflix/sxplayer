@@ -202,9 +202,12 @@ static int initialize_modules(struct async_context *actx,
 {
     int ret;
     char *filters = av_strdup(s->filters);
+    AVCodecParameters *par = avcodec_parameters_alloc();
 
-    if (!filters && s->filters)
-        return AVERROR(ENOMEM);
+    if ((s->filters && !filters) || !par) {
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
 
     /* Demuxer */
     ret = demuxing_init(actx->log_ctx,
@@ -244,10 +247,15 @@ static int initialize_modules(struct async_context *actx,
     const int64_t max_pts = s->trim_duration64 >= 0 ? s->skip64 + s->trim_duration64
                                                     : AV_NOPTS_VALUE;
     const AVCodecContext *avctx = decoding_get_avctx(actx->decoder);
+
+    ret = avcodec_parameters_from_context(par, avctx);
+    if (ret < 0)
+        goto end;
+
     ret = filtering_init(actx->log_ctx,
                          actx->filterer,
                          actx->frames_queue, actx->sink_queue,
-                         avctx, filters, s->sw_pix_fmt,
+                         par, filters, s->sw_pix_fmt,
                          max_pts, s->max_pixels, s->audio_texture);
     if (ret < 0)
         goto end;
@@ -292,6 +300,7 @@ end:
     if (ret < 0)
         av_thread_message_queue_set_err_recv(actx->info_channel, ret);
     av_freep(&filters);
+    avcodec_parameters_free(&par);
     return ret;
 }
 
