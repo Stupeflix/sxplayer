@@ -381,7 +381,7 @@ static void *name##_thread(void *arg)                                           
             LOG(actx, ERROR, "Unable to start " AV_STRINGIFY(name)              \
                 " thread: %s", av_err2str(err));                                \
         } else                                                                  \
-        actx->name##_started = 1;                                               \
+            actx->name##_started = 1;                                           \
     }                                                                           \
 } while (0)
 
