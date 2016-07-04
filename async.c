@@ -498,10 +498,11 @@ int async_stop(struct async_context *actx)
 
 const char *async_get_msg_type_string(enum msg_type type)
 {
-    static const char * const s[] = {
+    static const char * const s[NB_MSG] = {
         [MSG_FRAME]  = "frame",
         [MSG_PACKET] = "packet",
-        [MSG_SEEK]   = "seek"
+        [MSG_SEEK]   = "seek",
+        [MSG_INFO]   = "info",
     };
     return s[type];
 }

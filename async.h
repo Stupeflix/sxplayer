@@ -32,6 +32,7 @@ enum msg_type {
     MSG_PACKET,
     MSG_SEEK,
     MSG_INFO,
+    NB_MSG
 };
 
 struct message {
