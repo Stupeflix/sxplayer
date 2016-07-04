@@ -427,7 +427,6 @@ static void *main_thread(void *arg)
         actx->modules_initialized = 1;
     }
 
-    // XXX error check
     START_MODULE_THREAD(demuxer);
     START_MODULE_THREAD(decoder);
     START_MODULE_THREAD(filterer);
