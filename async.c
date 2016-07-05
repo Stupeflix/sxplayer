@@ -213,7 +213,6 @@ static int initialize_modules(struct async_context *actx,
     ret = demuxing_init(actx->log_ctx,
                         actx->demuxer,
                         actx->src_queue, actx->pkt_queue,
-                        actx->info_channel,
                         s->filename, s->avselect,
                         s->pkt_skip_mod);
     if (ret < 0)
