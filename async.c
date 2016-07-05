@@ -496,6 +496,12 @@ int async_stop(struct async_context *actx)
     av_thread_message_queue_set_err_recv(actx->frames_queue, AVERROR_EXIT);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   AVERROR_EXIT);
 
+    // ...and flush them
+    av_thread_message_flush(actx->src_queue);
+    av_thread_message_flush(actx->pkt_queue);
+    av_thread_message_flush(actx->frames_queue);
+    av_thread_message_flush(actx->sink_queue);
+
     return wait_main_thread(actx);
 }
 
