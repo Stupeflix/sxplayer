@@ -58,8 +58,6 @@ int async_seek(struct async_context *actx, int64_t ts);
 
 int async_pop_msg(struct async_context *actx, struct message *msg);
 
-int async_wait(struct async_context *actx);
-
 int async_stop(struct async_context *actx);
 
 int async_started(const struct async_context *actx);
