@@ -197,13 +197,18 @@ static char *update_filters_str(char *filters, const char *append)
     return str;
 }
 
-static int initialize_modules(struct async_context *actx,
-                              const struct sxplayer_ctx *s)
+static int initialize_modules_once(struct async_context *actx,
+                                   const struct sxplayer_ctx *s)
 {
     int ret;
-    char *filters = av_strdup(s->filters);
-    AVCodecParameters *par = avcodec_parameters_alloc();
+    char *filters;
+    AVCodecParameters *par;
 
+    if (actx->modules_initialized)
+        return 0;
+
+    filters = av_strdup(s->filters);
+    par = avcodec_parameters_alloc();
     if ((s->filters && !filters) || !par) {
         ret = AVERROR(ENOMEM);
         goto end;
@@ -295,6 +300,7 @@ static int initialize_modules(struct async_context *actx,
     }
     TRACE(actx, "pushed info %dx%d d=%"PRId64, info.width, info.height, info.duration);
 
+    actx->modules_initialized = 1;
 end:
     if (ret < 0)
         av_thread_message_queue_set_err_recv(actx->info_channel, ret);
@@ -410,20 +416,18 @@ MODULE_THREAD_FUNC(filterer, filtering)
  */
 static void *main_thread(void *arg)
 {
+    int ret;
     struct async_context *actx = arg;
 
     set_thread_name("sxp/main");
 
     LOG(actx, INFO, "starting main thread");
 
-    if (!actx->modules_initialized) {
-        int ret = initialize_modules(actx, actx->s);
-        if (ret < 0) {
-            LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
-            av_thread_message_queue_set_err_recv(actx->info_channel, ret);
-            return NULL;
-        }
-        actx->modules_initialized = 1;
+    ret = initialize_modules_once(actx, actx->s);
+    if (ret < 0) {
+        LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
+        av_thread_message_queue_set_err_recv(actx->info_channel, ret);
+        return NULL;
     }
 
     START_MODULE_THREAD(demuxer);
