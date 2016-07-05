@@ -87,7 +87,7 @@ static int fetch_mod_info(struct async_context *actx)
     ret = av_thread_message_queue_recv(actx->info_channel, &msg, 0);
     if (ret < 0)
         return ret;
-    av_assert0(msg.type = MSG_INFO);
+    av_assert0(msg.type == MSG_INFO);
     memcpy(&actx->info, msg.data, sizeof(actx->info));
     async_free_message_data(&msg);
     actx->has_info = 1;
