@@ -283,12 +283,12 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
         return AVERROR_EXTERNAL;
     }
 
-    vt->out_w = avctx->coded_width;
-    vt->out_h = avctx->coded_height;
+    vt->out_w = avctx->width;
+    vt->out_h = avctx->height;
     update_dimensions(&vt->out_w, &vt->out_h, dec_ctx->max_pixels);
     TRACE(dec_ctx, "dimensions: %dx%d -> %dx%d (nb pixels: %d -> %d for a max of %d)\n",
-          avctx->coded_width, avctx->coded_height, vt->out_w, vt->out_h,
-          avctx->coded_width * avctx->coded_height, vt->out_w * vt->out_h,
+          avctx->width, avctx->height, vt->out_w, vt->out_h,
+          avctx->width * avctx->height, vt->out_w * vt->out_h,
           dec_ctx->max_pixels);
     buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, REQUESTED_PIX_FMT);
 
