@@ -218,7 +218,7 @@ static void print_comb_name(uint64_t comb, int opt_test_flags)
             break;
         printf("%s%s", i ? "-" : "", actions_desc[action].name);
     }
-    printf("\n");
+    printf(" (comb=0x%"PRIx64")\n", comb);
 }
 
 static int exec_comb(struct sxplayer_ctx *s, uint64_t comb, int opt_test_flags)
