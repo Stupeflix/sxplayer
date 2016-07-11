@@ -221,11 +221,21 @@ static void print_comb_name(uint64_t comb, int opt_test_flags)
     printf(" (comb=0x%"PRIx64")\n", comb);
 }
 
-static int exec_comb(struct sxplayer_ctx *s, uint64_t comb, int opt_test_flags)
+static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags)
 {
-    int i;
+    int i, ret = 0;
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+    if (!s)
+        return -1;
+
+    sxplayer_set_option(s, "auto_hwaccel", 0);
 
     print_comb_name(comb, opt_test_flags);
+
+    if (opt_test_flags & FLAG_SKIP)          sxplayer_set_option(s, "skip",          TESTVAL_SKIP);
+    if (opt_test_flags & FLAG_TRIM_DURATION) sxplayer_set_option(s, "trim_duration", TESTVAL_TRIM_DURATION);
+    if (opt_test_flags & FLAG_AUDIO)         sxplayer_set_option(s, "avselect",      SXPLAYER_SELECT_AUDIO);
+
     for (i = 0; i < NB_ACTIONS; i++) {
         int ret;
         const int action = GET_ACTION(comb, i);
@@ -233,9 +243,11 @@ static int exec_comb(struct sxplayer_ctx *s, uint64_t comb, int opt_test_flags)
             break;
         ret = actions_desc[action].func(s, opt_test_flags);
         if (ret < 0)
-            return ret;
+            break;
     }
-    return 0;
+
+    sxplayer_free(&s);
+    return ret;
 }
 
 static int has_dup(uint64_t comb)
@@ -284,30 +296,17 @@ static int run_tests_all_combs(const char *filename, int opt_test_flags)
 {
     int ret = 0;
     uint64_t comb = 0;
-    struct sxplayer_ctx *s = NULL;
 
     for (;;) {
-        s = sxplayer_create(filename);
-        if (!s)
-            return -1;
-
-        sxplayer_set_option(s, "auto_hwaccel", 0);
-
-        if (opt_test_flags & FLAG_SKIP)          sxplayer_set_option(s, "skip",          TESTVAL_SKIP);
-        if (opt_test_flags & FLAG_TRIM_DURATION) sxplayer_set_option(s, "trim_duration", TESTVAL_TRIM_DURATION);
-        if (opt_test_flags & FLAG_AUDIO)         sxplayer_set_option(s, "avselect",      SXPLAYER_SELECT_AUDIO);
-
         comb = get_next_comb(comb);
         if (comb == EOA)
             break;
-        ret = exec_comb(s, comb, opt_test_flags);
+        ret = exec_comb(filename, comb, opt_test_flags);
         if (ret < 0) {
             fprintf(stderr, "test failed\n");
             break;
         }
-        sxplayer_free(&s);
     }
-    sxplayer_free(&s);
     return ret;
 }
 
