@@ -237,7 +237,6 @@ static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags)
     if (opt_test_flags & FLAG_AUDIO)         sxplayer_set_option(s, "avselect",      SXPLAYER_SELECT_AUDIO);
 
     for (i = 0; i < NB_ACTIONS; i++) {
-        int ret;
         const int action = GET_ACTION(comb, i);
         if (!action)
             break;
