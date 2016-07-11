@@ -488,7 +488,6 @@ static int flush_frames(struct filtering_ctx *ctx)
 void filtering_run(struct filtering_ctx *ctx)
 {
     int ret;
-    int in_err, out_err;
 
     TRACE(ctx, "filtering packets from %p into %p", ctx->in_queue, ctx->out_queue);
 
@@ -545,6 +544,7 @@ void filtering_run(struct filtering_ctx *ctx)
         } else if (ctx->max_pts != AV_NOPTS_VALUE && frame->pts >= ctx->max_pts) {
             av_frame_free(&frame);
             TRACE(ctx, "reached trim duration");
+            ret = AVERROR_EOF;
             break;
         }
 
@@ -570,17 +570,10 @@ void filtering_run(struct filtering_ctx *ctx)
     if (ret == AVERROR_EOF)
         ret = flush_frames(ctx);
 
-    if (ret < 0 && ret != AVERROR_EOF) {
-        in_err = out_err = ret;
-    } else {
-        in_err = AVERROR_EXIT;
-        out_err = AVERROR_EOF;
-    }
-    TRACE(ctx, "notify decoder with %s and sink with %s",
-          av_err2str(in_err), av_err2str(out_err));
-    av_thread_message_queue_set_err_send(ctx->in_queue,  in_err);
+    TRACE(ctx, "notify decoder and sink with %s", av_err2str(ret));
+    av_thread_message_queue_set_err_send(ctx->in_queue, ret);
     av_thread_message_flush(ctx->in_queue);
-    av_thread_message_queue_set_err_recv(ctx->out_queue, out_err);
+    av_thread_message_queue_set_err_recv(ctx->out_queue, ret);
 }
 
 void filtering_free(struct filtering_ctx **fp)

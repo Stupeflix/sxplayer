@@ -234,7 +234,6 @@ int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
 void decoding_run(struct decoding_ctx *ctx)
 {
     int ret;
-    int in_err, out_err;
 
     TRACE(ctx, "decoding packets from %p into %p", ctx->pkt_queue, ctx->frames_queue);
 
@@ -307,17 +306,10 @@ void decoding_run(struct decoding_ctx *ctx)
 
     av_frame_free(&ctx->tmp_frame);
 
-    if (ret < 0 && ret != AVERROR_EOF) {
-        in_err = out_err = ret;
-    } else {
-        in_err = AVERROR_EXIT;
-        out_err = AVERROR_EOF;
-    }
-    TRACE(ctx, "notify demuxer with %s and frames queue with %s",
-          av_err2str(in_err), av_err2str(out_err));
-    av_thread_message_queue_set_err_send(ctx->pkt_queue,    in_err);
+    TRACE(ctx, "notify demuxer and frames queue with %s", av_err2str(ret));
+    av_thread_message_queue_set_err_send(ctx->pkt_queue, ret);
     av_thread_message_flush(ctx->pkt_queue);
-    av_thread_message_queue_set_err_recv(ctx->frames_queue, out_err);
+    av_thread_message_queue_set_err_recv(ctx->frames_queue, ret);
 }
 
 void decoding_free(struct decoding_ctx **ctxp)

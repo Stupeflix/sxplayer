@@ -189,7 +189,6 @@ static int pull_packet(struct demuxing_ctx *ctx, AVPacket *pkt)
 void demuxing_run(struct demuxing_ctx *ctx)
 {
     int ret;
-    int in_err, out_err;
 
     TRACE(ctx, "demuxing packets in queue %p", ctx->pkt_queue);
 
@@ -235,6 +234,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
 
         msg.data = av_memdup(&pkt, sizeof(pkt));
         if (!msg.data) {
+            ret = AVERROR(ENOMEM);
             av_packet_unref(&pkt);
             break;
         }
@@ -253,17 +253,10 @@ void demuxing_run(struct demuxing_ctx *ctx)
         }
     }
 
-    if (ret < 0 && ret != AVERROR_EOF) {
-        in_err = out_err = ret;
-    } else {
-        in_err = AVERROR_EXIT;
-        out_err = AVERROR_EOF;
-    }
-    TRACE(ctx, "notify user with %s and decoder with %s",
-          av_err2str(in_err), av_err2str(out_err));
-    av_thread_message_queue_set_err_send(ctx->src_queue, in_err);
+    TRACE(ctx, "notify user and decoder with %s", av_err2str(ret));
+    av_thread_message_queue_set_err_send(ctx->src_queue, ret);
     av_thread_message_flush(ctx->src_queue);
-    av_thread_message_queue_set_err_recv(ctx->pkt_queue, out_err);
+    av_thread_message_queue_set_err_recv(ctx->pkt_queue, ret);
 }
 
 void demuxing_free(struct demuxing_ctx **ctxp)
