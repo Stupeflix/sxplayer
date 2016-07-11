@@ -177,6 +177,9 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     if (!s->log_ctx || log_init(s->log_ctx, s) < 0)
         goto fail;
 
+    LOG(s, INFO, "libsxplayer %d.%d.%d\n",
+        SXPLAYER_VERSION_MAJOR, SXPLAYER_VERSION_MINOR, SXPLAYER_VERSION_MICRO);
+
 #define VFMT(v) (v)>>16, (v)>>8 & 0xff, (v) & 0xff
     for (i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {
         const unsigned bversion = fflibs[i].build_version;
