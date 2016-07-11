@@ -545,6 +545,7 @@ void filtering_run(struct filtering_ctx *ctx)
         } else if (ctx->max_pts != AV_NOPTS_VALUE && frame->pts >= ctx->max_pts) {
             av_frame_free(&frame);
             TRACE(ctx, "reached trim duration");
+            ret = AVERROR_EXIT; // not EOF because we do not want to flush the frames
             break;
         }
 
