@@ -511,6 +511,7 @@ void filtering_run(struct filtering_ctx *ctx)
             TRACE(ctx, "message is a seek, destroy filtergraph and forward message to out queue");
             avfilter_graph_free(&ctx->filter_graph);
             ctx->last_frame_format = AV_PIX_FMT_NONE;
+            av_thread_message_flush(ctx->out_queue);
             ret = av_thread_message_queue_send(ctx->out_queue, &msg, 0);
             if (ret < 0) {
                 async_free_message_data(&msg);
