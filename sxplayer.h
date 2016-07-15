@@ -26,7 +26,7 @@
 
 #define SXPLAYER_VERSION_MAJOR 7
 #define SXPLAYER_VERSION_MINOR 0
-#define SXPLAYER_VERSION_MICRO 5
+#define SXPLAYER_VERSION_MICRO 6
 
 #define SXPLAYER_GET_VERSION(major, minor, micro) ((major)<<16 | (minor)<<8 | (micro))
 
