@@ -279,7 +279,7 @@ void decoding_run(struct decoding_ctx *ctx)
             /* Forward seek message */
             ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);
             if (ret < 0) {
-                av_freep(&msg.data);
+                async_free_message_data(&msg);
                 break;
             }
 
