@@ -168,6 +168,7 @@ static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
 
 static int queue_cached_frame(struct decoding_ctx *ctx)
 {
+    int ret;
     const int64_t cached_ts = av_rescale_q_rnd(get_best_effort_ts(ctx->tmp_frame),
                                                ctx->st_timebase, AV_TIME_BASE_Q,
                                                AV_ROUND_PASS_MINMAX);
@@ -175,7 +176,12 @@ static int queue_cached_frame(struct decoding_ctx *ctx)
     AVFrame *prev_frame = ctx->tmp_frame;
     ctx->tmp_frame = NULL;
     prev_frame->pts = cached_ts;
-    return queue_frame(ctx, prev_frame);
+    ret = queue_frame(ctx, prev_frame);
+    if (ret < 0) {
+        av_frame_free(&prev_frame);
+        return ret;
+    }
+    return 0;
 }
 
 int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
