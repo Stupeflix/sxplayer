@@ -181,24 +181,40 @@ int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info);
  * If you are working on a player (which typically needs seeking and has a
  * refresh rate architecture), this is the function you are probably interested
  * in.
+ *
+ * The function is blocking, it will make sure any asynchronous operation
+ * previously requested (start, seek, stop) is honored before returning.
  */
 struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
 
 /**
- * Start the decoding threads and return.
+ * Request a playback start to the player.
  *
  * The function always returns immediately (it doesn't wait for a frame to be
  * decoded).
  *
  * Return 0 on success, a negative value on error.
  */
+int sxplayer_start(struct sxplayer_ctx *s);
 int sxplayer_prefetch(struct sxplayer_ctx *s);
 
 /**
- * Seek at a requested time.
+ * Request a stop to the player to liberate playback ressources.
  *
- * This function is meant to be used in conjonction with sxplayer_get_next_frame()
- * but not with sxplayer_get_frame() as it does not fit its call model.
+ * The function always returns immediately (it doesn't wait for every
+ * ressources and contexts to be destroyed).
+ *
+ * Return 0 on success, a negative value on error.
+ */
+int sxplayer_stop(struct sxplayer_ctx *s);
+
+/**
+ * Request a seek to the player at a given time.
+ *
+ * The function always returns immediately (the seek will be delayed and
+ * executed in another thread).
+ *
+ * Note: the passed time is relative to the skip option.
  *
  * Return 0 on success, a negative value on error.
  */

@@ -50,48 +50,105 @@ struct async_context {
     pthread_t demuxer_tid;
     pthread_t decoder_tid;
     pthread_t filterer_tid;
-    pthread_t main_tid;
+    pthread_t control_tid;
 
     int demuxer_started;
     int decoder_started;
     int filterer_started;
-    int main_started;
+    int control_started;
 
     AVThreadMessageQueue *src_queue;        // user     <-> demuxer
     AVThreadMessageQueue *pkt_queue;        // demuxer  <-> decoder
     AVThreadMessageQueue *frames_queue;     // decoder  <-> filterer
     AVThreadMessageQueue *sink_queue;       // filterer <-> user
 
+    AVThreadMessageQueue *ctl_in_queue;
+    AVThreadMessageQueue *ctl_out_queue;
+
     int thread_stack_size;
-    int need_wait;
 
     int64_t request_seek;
 
-    AVThreadMessageQueue *info_channel;
     struct info_message info;
     int has_info;
 
     int modules_initialized;
+
+    int need_sync;
+
+    int playing;
+
     const struct sxplayer_ctx *s;
 };
+
+/* Send a message to the control input and fetch from the output until we get
+ * it back */
+static int send_wait_ctl_message(struct async_context *actx,
+                                 struct message *msg)
+{
+    const int message_type = msg->type;
+    const char *msg_type_str = async_get_msg_type_string(message_type);
+    TRACE(actx, "--> send %s", msg_type_str);
+    int ret = av_thread_message_queue_send(actx->ctl_in_queue, msg, 0);
+    if (ret < 0) {
+        TRACE(actx, "couldn't send %s: %s", msg_type_str, av_err2str(ret));
+        return ret;
+    }
+    TRACE(actx, "wait %s", msg_type_str);
+    for (;;) {
+        ret = av_thread_message_queue_recv(actx->ctl_out_queue, msg, 0);
+        if (ret < 0 || msg->type == message_type)
+            break;
+        async_free_message_data(msg);
+    }
+    if (ret < 0)
+        TRACE(actx, "couldn't get %s: %s", msg_type_str, av_err2str(ret));
+    else
+        TRACE(actx, "got %s", msg_type_str);
+    return ret;
+}
+
+/* There might be some actions still processing in the control thread, so we
+ * send a sync message to make sure every actions has been processed */
+static int sync_control_thread(struct async_context *actx)
+{
+    if (actx->need_sync) {
+        TRACE(actx, "need sync");
+        struct message sync_msg = { .type = MSG_SYNC };
+        int ret = send_wait_ctl_message(actx, &sync_msg);
+        if (ret < 0)
+            return ret;
+        av_assert0(!sync_msg.data);
+        actx->need_sync = 0;
+    } else {
+        TRACE(actx, "no need to sync");
+    }
+    return 0;
+}
 
 static int fetch_mod_info(struct async_context *actx)
 {
     int ret;
-    struct message msg;
+    struct message msg = { .type = MSG_INFO };
 
     TRACE(actx, "fetch module info");
     if (actx->has_info)
         return 0;
-    async_start(actx);
-    ret = av_thread_message_queue_recv(actx->info_channel, &msg, 0);
+
+    ret = sync_control_thread(actx);
+    if (ret < 0)
+        return ret;
+
+    ret = send_wait_ctl_message(actx, &msg);
     if (ret < 0)
         return ret;
     av_assert0(msg.type == MSG_INFO);
     memcpy(&actx->info, msg.data, sizeof(actx->info));
+    TRACE(actx, "info fetched: %dx%d duration=%s",
+          actx->info.width, actx->info.height,
+          PTS2TIMESTR(actx->info.duration));
     async_free_message_data(&msg);
     actx->has_info = 1;
-    TRACE(actx, "info fetched");
     return 0;
 }
 
@@ -121,6 +178,10 @@ void async_free_message_data(void *arg)
     case MSG_INFO:
         av_freep(&msg->data);
         break;
+    case MSG_START:
+    case MSG_STOP:
+    case MSG_SYNC:
+        break;
     default:
         av_assert0(0);
     }
@@ -145,42 +206,91 @@ int async_fetch_info(struct async_context *actx, struct sxplayer_info *info)
     return 0;
 }
 
-static int send_seek_message(AVThreadMessageQueue *q, int64_t ts)
+int async_pop_frame(struct async_context *actx, AVFrame **framep)
 {
     int ret;
-    struct message msg = {
-        .type = MSG_SEEK,
-        .data = av_malloc(sizeof(ts)),
-    };
+    struct message msg;
 
-    if (!msg.data)
-        return AVERROR(ENOMEM);
-    *(int64_t *)msg.data = ts;
+    *framep = NULL;
 
-    // flush the queue so the seek message is processed ASAP (there might be a
-    // previous seek message present)
-    av_thread_message_flush(q);
+    ret = sync_control_thread(actx);
+    if (ret < 0)
+        return ret;
 
-    ret = av_thread_message_queue_send(q, &msg, 0);
-    if (ret < 0) {
-        av_thread_message_queue_set_err_recv(q, ret);
-        av_freep(&msg.data);
+    if (!actx->playing) {
+        TRACE(actx, "not playing, start modules");
+        ret = async_start(actx);
+        if (ret < 0)
+            return ret;
+        ret = sync_control_thread(actx);
+        if (ret < 0)
+            return ret;
     }
-    return ret;
+
+    TRACE(actx, "fetching a frame from the sink");
+    ret = av_thread_message_queue_recv(actx->sink_queue, &msg, 0);
+    if (ret < 0) {
+        TRACE(actx, "couldn't fetch frame from sink because %s", av_err2str(ret));
+        av_thread_message_queue_set_err_send(actx->sink_queue, ret);
+        (void)async_stop(actx);
+        return ret;
+    }
+    av_assert0(msg.type == MSG_FRAME);
+    *framep = msg.data;
+    return 0;
+}
+
+static int create_seek_msg(struct message *msg, int64_t ts)
+{
+    msg->type = MSG_SEEK,
+    msg->data = av_malloc(sizeof(ts));
+    if (!msg->data)
+        return AVERROR(ENOMEM);
+    *(int64_t *)msg->data = ts;
+    return 0;
 }
 
 int async_seek(struct async_context *actx, int64_t ts)
 {
-    if (!actx->main_started || actx->need_wait)
-        actx->request_seek = ts;
-    else {
-        int ret;
-
-        ret = send_seek_message(actx->src_queue, ts);
-        if (ret < 0) {
-            actx->request_seek = ts;
-        }
+    TRACE(actx, "--> send seek msg @ %s", PTS2TIMESTR(ts));
+    struct message msg;
+    int ret = create_seek_msg(&msg, ts);
+    if (ret < 0)
+        return ret;
+    ret = av_thread_message_queue_send(actx->ctl_in_queue, &msg, 0);
+    if (ret < 0) {
+        av_thread_message_queue_set_err_recv(actx->ctl_in_queue, ret);
+        av_freep(&msg.data);
     }
+    actx->need_sync = 1;
+    return 0;
+}
+
+int async_start(struct async_context *actx)
+{
+    TRACE(actx, "--> send start msg");
+    int ret;
+    struct message msg = { .type = MSG_START };
+    ret = av_thread_message_queue_send(actx->ctl_in_queue, &msg, 0);
+    if (ret < 0) {
+        av_thread_message_queue_set_err_recv(actx->ctl_in_queue, ret);
+        return ret;
+    }
+    actx->need_sync = 1;
+    return 0;
+}
+
+int async_stop(struct async_context *actx)
+{
+    TRACE(actx, "--> send stop msg");
+    int ret;
+    struct message msg = { .type = MSG_STOP };
+    ret = av_thread_message_queue_send(actx->ctl_in_queue, &msg, 0);
+    if (ret < 0) {
+        av_thread_message_queue_set_err_recv(actx->ctl_in_queue, ret);
+        return ret;
+    }
+    actx->need_sync = 1;
     return 0;
 }
 
@@ -206,6 +316,17 @@ static int initialize_modules_once(struct async_context *actx,
 
     if (actx->modules_initialized)
         return 0;
+
+    av_assert0(!actx->demuxer && !actx->decoder && !actx->filterer);
+
+    TRACE(actx, "alloc modules");
+    actx->demuxer  = demuxing_alloc();
+    actx->decoder  = decoding_alloc();
+    actx->filterer = filtering_alloc();
+    if (!actx->demuxer || !actx->decoder || !actx->filterer)
+        return AVERROR(ENOMEM);
+
+    TRACE(actx, "initialize modules");
 
     filters = av_strdup(s->filters);
     par = avcodec_parameters_alloc();
@@ -265,46 +386,8 @@ static int initialize_modules_once(struct async_context *actx,
     if (ret < 0)
         goto end;
 
-    int64_t duration = max_pts;
-    const int64_t probe_duration = demuxing_probe_duration(actx->demuxer);
-
-    av_assert0(AV_NOPTS_VALUE < 0);
-    if (probe_duration != AV_NOPTS_VALUE && (duration <= 0 ||
-                                             probe_duration < duration)) {
-        LOG(s, INFO, "fix trim_duration from %f to %f",
-              duration       * av_q2d(AV_TIME_BASE_Q),
-              probe_duration * av_q2d(AV_TIME_BASE_Q));
-        duration = probe_duration;
-    }
-    if (duration == AV_NOPTS_VALUE)
-        duration = 0;
-    struct info_message info = {
-        .width    = avctx->width,
-        .height   = avctx->height,
-        .duration = duration,
-    };
-
-    TRACE(actx, "push module info");
-    struct message msg = {
-        .type = MSG_INFO,
-        .data = av_memdup(&info, sizeof(info)),
-    };
-    if (!msg.data) {
-        ret = AVERROR(ENOMEM);
-        goto end;
-    }
-    av_thread_message_queue_set_err_recv(actx->info_channel, 0);
-    ret = av_thread_message_queue_send(actx->info_channel, &msg, 0);
-    if (ret < 0) {
-        async_free_message_data(&msg);
-        goto end;
-    }
-    TRACE(actx, "pushed info %dx%d d=%"PRId64, info.width, info.height, info.duration);
-
     actx->modules_initialized = 1;
 end:
-    if (ret < 0)
-        av_thread_message_queue_set_err_recv(actx->info_channel, ret);
     av_freep(&filters);
     avcodec_parameters_free(&par);
     return ret;
@@ -316,33 +399,6 @@ static int alloc_msg_queue(AVThreadMessageQueue **q, int n)
     if (ret < 0)
         return ret;
     av_thread_message_queue_set_free_func(*q, async_free_message_data);
-    return 0;
-}
-
-int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
-{
-    int ret;
-
-    actx->log_ctx = s->log_ctx;
-    actx->s = s; // :(
-    actx->thread_stack_size = s->thread_stack_size;
-    actx->request_seek = AV_NOPTS_VALUE;
-
-    TRACE(actx, "allocate queues");
-    if ((ret = alloc_msg_queue(&actx->info_channel, 1))                 < 0 ||
-        (ret = alloc_msg_queue(&actx->src_queue,    1))                 < 0 ||
-        (ret = alloc_msg_queue(&actx->pkt_queue,    s->max_nb_packets)) < 0 ||
-        (ret = alloc_msg_queue(&actx->frames_queue, s->max_nb_frames))  < 0 ||
-        (ret = alloc_msg_queue(&actx->sink_queue,   s->max_nb_sink))    < 0)
-        return ret;
-
-    TRACE(actx, "create modules");
-    actx->demuxer  = demuxing_alloc();
-    actx->decoder  = decoding_alloc();
-    actx->filterer = filtering_alloc();
-    if (!actx->demuxer || !actx->decoder || !actx->filterer)
-        return AVERROR(ENOMEM);
-
     return 0;
 }
 
@@ -409,42 +465,114 @@ MODULE_THREAD_FUNC(demuxer,  demuxing)
 MODULE_THREAD_FUNC(decoder,  decoding)
 MODULE_THREAD_FUNC(filterer, filtering)
 
-/**
- * This thread is needed because the initialization of the modules can be slow
- * (for example, probing the information in the demuxer, or initializing the
- * decoder, in particular VideoToolbox) and we want the prefetch operation to
- * be as fast as possible for the user.
- */
-static void *main_thread(void *arg)
+static int op_start(struct async_context *actx)
 {
-    int ret;
-    struct async_context *actx = arg;
+    struct message msg;
+    int64_t seek_to = AV_NOPTS_VALUE;
 
-    set_thread_name("sxp/main");
+    TRACE(actx, "exec");
 
-    LOG(actx, INFO, "starting main thread");
-
-    ret = initialize_modules_once(actx, actx->s);
+    int ret = initialize_modules_once(actx, actx->s);
     if (ret < 0) {
         LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
-        av_thread_message_queue_set_err_recv(actx->info_channel, ret);
-        return NULL;
+        return ret;
+    }
+
+    if (actx->request_seek != AV_NOPTS_VALUE) {
+        seek_to = actx->request_seek;
+    } else if (actx->s->skip64) {
+        seek_to = actx->s->skip64;
+    }
+
+    if (seek_to != AV_NOPTS_VALUE) {
+        TRACE(actx, "seek to: %s", PTS2TIMESTR(seek_to));
+
+        int ret = create_seek_msg(&msg, seek_to);
+        if (ret < 0)
+            return ret;
+
+        // Queue a seek request which we will pull out after the demuxer is started
+        ret = av_thread_message_queue_send(actx->src_queue, &msg, 0);
+        if (ret < 0) {
+            LOG(actx, ERROR, "Unable to queue a seek message to the demuxer, shouldn't happen!");
+            av_thread_message_queue_set_err_recv(actx->src_queue, ret);
+            async_free_message_data(&msg);
+            return ret;
+        }
+
+        actx->request_seek = AV_NOPTS_VALUE;
     }
 
     START_MODULE_THREAD(demuxer);
     START_MODULE_THREAD(decoder);
     START_MODULE_THREAD(filterer);
+    if (!actx->demuxer_started ||
+        !actx->decoder_started ||
+        !actx->filterer_started)
+        return AVERROR(ENOMEM);
 
-    TRACE(actx, "waiting for main to end");
+    actx->playing = 1;
+
+    if (seek_to != AV_NOPTS_VALUE) {
+        TRACE(actx, "wait for seek (to %s) to come back", PTS2TIMESTR(seek_to));
+        do {
+            ret = av_thread_message_queue_recv(actx->sink_queue, &msg, 0);
+            if (ret < 0) {
+                av_thread_message_queue_set_err_send(actx->sink_queue, ret);
+                return ret;
+            }
+            async_free_message_data(&msg);
+        } while (msg.type != MSG_SEEK);
+    }
+
+    return 0;
+}
+
+static int op_info(struct async_context *actx, struct message *msg)
+{
+    const struct sxplayer_ctx *s = actx->s;
+
+    // We need the demuxer to be initialized to be able to call demuxing_*()
+    int ret = initialize_modules_once(actx, s);
+    if (ret < 0) {
+        LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
+        return ret;
+    }
+
+    int64_t duration = s->trim_duration64 >= 0 ? s->skip64 + s->trim_duration64
+                                               : AV_NOPTS_VALUE;
+    const int64_t probe_duration = demuxing_probe_duration(actx->demuxer);
+
+    av_assert0(AV_NOPTS_VALUE < 0);
+    if (probe_duration != AV_NOPTS_VALUE && (duration <= 0 ||
+                                             probe_duration < duration)) {
+        LOG(s, INFO, "fix trim_duration from %f to %f",
+              duration       * av_q2d(AV_TIME_BASE_Q),
+              probe_duration * av_q2d(AV_TIME_BASE_Q));
+        duration = probe_duration;
+    }
+    if (duration == AV_NOPTS_VALUE)
+        duration = 0;
+    const AVStream *st = demuxing_get_stream(actx->demuxer);
+    struct info_message info = {
+        .width    = st->codecpar->width,
+        .height   = st->codecpar->height,
+        .duration = duration,
+    };
+
+    msg->data = av_memdup(&info, sizeof(info));
+    if (!msg->data)
+        return AVERROR(ENOMEM);
+
+    return 0;
+}
+
+static void join_reset_workers(struct async_context *actx)
+{
+    TRACE(actx, "waiting for async to end");
     JOIN_MODULE_THREAD(filterer);
     JOIN_MODULE_THREAD(decoder);
     JOIN_MODULE_THREAD(demuxer);
-    return NULL;
-}
-
-static int wait_main_thread(struct async_context *actx)
-{
-    JOIN_MODULE_THREAD(main);
 
     // every worker ended, reset queues states
     av_thread_message_queue_set_err_send(actx->src_queue,    0);
@@ -455,35 +583,53 @@ static int wait_main_thread(struct async_context *actx)
     av_thread_message_queue_set_err_recv(actx->pkt_queue,    0);
     av_thread_message_queue_set_err_recv(actx->frames_queue, 0);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   0);
-
-    actx->need_wait = 0;
-    return 0;
 }
 
-int async_start(struct async_context *actx)
+/* Forward the message to the modules if they are running, otherwise memorize
+ * it for next time we start them */
+static int op_seek(struct async_context *actx, struct message *seek_msg)
 {
-    if (actx->need_wait)
-        wait_main_thread(actx);
-    else if (actx->main_started)
-        return 0;
+    int ret;
 
-    if (actx->request_seek != AV_NOPTS_VALUE) {
-        send_seek_message(actx->src_queue, actx->request_seek);
-        actx->request_seek = AV_NOPTS_VALUE;
+    TRACE(actx, "exec");
+
+    actx->request_seek = *(int64_t *)seek_msg->data;
+
+    if (!actx->modules_initialized || !actx->playing) {
+        async_free_message_data(seek_msg);
+        return 0;
     }
 
-    START_MODULE_THREAD(main);
+    ret = av_thread_message_queue_send(actx->src_queue, seek_msg, 0);
+    if (ret < 0) {
+        /* If this errors out, it means the modules ended by themselves (no
+         * stop requested by the user), so we delay the seek, reset the workers
+         * and start them again */
+        async_free_message_data(seek_msg);
+        join_reset_workers(actx);
+        return op_start(actx);
+    }
 
-    TRACE(actx, "async started");
+    // We were able to send a seek request, now we wait for it to return
+    for (;;) {
+        TRACE(actx, "seek request sent, wait for its return");
+        ret = av_thread_message_queue_recv(actx->sink_queue, seek_msg, 0);
+        if (ret < 0) {
+            TRACE(actx, "unable to get request seek back");
+            join_reset_workers(actx);
+            return op_start(actx);
+        }
+        async_free_message_data(seek_msg);
+        if (seek_msg->type == MSG_SEEK)
+            break;
+    }
+
     return 0;
 }
 
-int async_stop(struct async_context *actx)
+static void op_stop(struct async_context *actx)
 {
-    if (!actx)
-        return 0;
-
-    TRACE(actx, "stopping");
+    TRACE(actx, "exec");
 
     // modules must stop feeding the queues
     av_thread_message_queue_set_err_send(actx->src_queue,    AVERROR_EXIT);
@@ -497,13 +643,139 @@ int async_stop(struct async_context *actx)
     av_thread_message_queue_set_err_recv(actx->frames_queue, AVERROR_EXIT);
     av_thread_message_queue_set_err_recv(actx->sink_queue,   AVERROR_EXIT);
 
-    // ...and flush them
+    // they won't fill the queues anymore, so we can empty them
     av_thread_message_flush(actx->src_queue);
     av_thread_message_flush(actx->pkt_queue);
     av_thread_message_flush(actx->frames_queue);
     av_thread_message_flush(actx->sink_queue);
 
-    return wait_main_thread(actx);
+    // now that we are sure the threads modules will stop by themselves, we can
+    // join them
+    join_reset_workers(actx);
+
+    // and free their contexts
+    demuxing_free(&actx->demuxer);
+    decoding_free(&actx->decoder);
+    filtering_free(&actx->filterer);
+
+    actx->modules_initialized = 0;
+    actx->playing = 0;
+    actx->request_seek = AV_NOPTS_VALUE;
+}
+
+static void *control_thread(void *arg)
+{
+    int ret = 0;
+    struct async_context *actx = arg;
+
+    LOG(actx, INFO, "starting");
+
+    set_thread_name("sxp/control");
+
+    for (;;) {
+        enum msg_type type;
+        struct message msg;
+
+        ret = av_thread_message_queue_recv(actx->ctl_in_queue, &msg, 0);
+        if (ret < 0) {
+            if (ret != AVERROR_EXIT) {
+                LOG(actx, ERROR, "Unable while pulling a message "
+                    "from the async queue: %s", av_err2str(ret));
+                continue;
+            }
+            break;
+        }
+        type = msg.type;
+
+        TRACE(actx, "--- handling OP %s", async_get_msg_type_string(type));
+
+        switch (type) {
+        case MSG_SEEK:
+            ret = op_seek(actx, &msg);
+            break;
+        case MSG_START:
+            // XXX: fetch info first?
+            if (!actx->playing)
+                ret = op_start(actx);
+            break;
+        case MSG_STOP:
+            if (actx->playing)
+                op_stop(actx);
+            break;
+        case MSG_INFO:
+            ret = op_info(actx, &msg);
+            break;
+        case MSG_SYNC:
+            break;
+        default:
+            av_assert0(0);
+        }
+
+        TRACE(actx, "<-- OP %s processed", async_get_msg_type_string(type));
+
+        if (ret < 0) {
+            LOG(actx, ERROR, "Unable to honor %s message: %s",
+                async_get_msg_type_string(type), av_err2str(ret));
+            async_free_message_data(&msg);
+            av_thread_message_queue_set_err_recv(actx->ctl_out_queue, ret);
+            av_thread_message_queue_set_err_send(actx->ctl_in_queue, ret);
+            op_stop(actx);
+            continue;
+        }
+
+        // Forward the message to the out queue now that it has been processed
+        // if it's a sync OP
+        if (type == MSG_INFO || type == MSG_SYNC) {
+            TRACE(actx, "forward %s to control out queue",
+                  async_get_msg_type_string(type));
+            ret = av_thread_message_queue_send(actx->ctl_out_queue, &msg, 0);
+            if (ret < 0) {
+                // shouldn't happen
+                LOG(actx, ERROR, "Unable to forward %s message to the output async queue: %s",
+                    async_get_msg_type_string(type), av_err2str(ret));
+                async_free_message_data(&msg);
+            }
+        }
+    }
+
+    if (ret < 0) {
+        av_thread_message_queue_set_err_send(actx->ctl_in_queue, ret);
+        av_thread_message_queue_set_err_recv(actx->ctl_out_queue, ret);
+    }
+    TRACE(actx, "control thread ending");
+    op_stop(actx);
+
+    return NULL;
+}
+
+int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
+{
+    int ret;
+
+    av_assert0(!actx->control_started);
+
+    actx->log_ctx = s->log_ctx;
+    actx->s = s;
+    actx->thread_stack_size = s->thread_stack_size;
+    actx->request_seek = AV_NOPTS_VALUE;
+
+    TRACE(actx, "alloc modules queues");
+    if ((ret = alloc_msg_queue(&actx->src_queue,    1))                 < 0 ||
+        (ret = alloc_msg_queue(&actx->pkt_queue,    s->max_nb_packets)) < 0 ||
+        (ret = alloc_msg_queue(&actx->frames_queue, s->max_nb_frames))  < 0 ||
+        (ret = alloc_msg_queue(&actx->sink_queue,   s->max_nb_sink))    < 0)
+        return ret;
+
+    TRACE(actx, "allocate async queues");
+    if ((ret = alloc_msg_queue(&actx->ctl_in_queue,  1)) < 0 ||
+        (ret = alloc_msg_queue(&actx->ctl_out_queue, 1)) < 0)
+        return ret;
+
+    START_MODULE_THREAD(control);
+    if (!actx->control_started)
+        return AVERROR(ENOMEM); // XXX
+
+    return 0;
 }
 
 const char *async_get_msg_type_string(enum msg_type type)
@@ -513,33 +785,32 @@ const char *async_get_msg_type_string(enum msg_type type)
         [MSG_PACKET] = "packet",
         [MSG_SEEK]   = "seek",
         [MSG_INFO]   = "info",
+        [MSG_START]  = "start",
+        [MSG_STOP]   = "stop",
+        [MSG_SYNC]   = "sync",
     };
     return s[type];
 }
 
-int async_pop_msg(struct async_context *actx, struct message *msg)
+static void control_quit(struct async_context *actx)
 {
-    async_start(actx);
-
-    int ret = fetch_mod_info(actx); // make sure they are ready
-    if (ret < 0)
-        return ret;
-
-    TRACE(actx, "fetching a message from the sink");
-    ret = av_thread_message_queue_recv(actx->sink_queue, msg, 0);
-    if (ret < 0) {
-        TRACE(actx, "couldn't fetch message from sink because %s", av_err2str(ret));
-        av_thread_message_queue_set_err_send(actx->sink_queue, ret);
-        actx->need_wait = 1;
-        return ret;
-    }
-    TRACE(actx, "got a message of type %s", async_get_msg_type_string(msg->type));
-    return 0;
+    async_stop(actx);
+    sync_control_thread(actx);
+    av_thread_message_queue_set_err_send(actx->ctl_in_queue,  AVERROR_EXIT);
+    av_thread_message_queue_set_err_send(actx->ctl_out_queue, AVERROR_EXIT);
+    av_thread_message_queue_set_err_recv(actx->ctl_in_queue,  AVERROR_EXIT);
+    av_thread_message_queue_set_err_recv(actx->ctl_out_queue, AVERROR_EXIT);
+    av_thread_message_flush(actx->ctl_in_queue);
+    av_thread_message_flush(actx->ctl_out_queue);
+    JOIN_MODULE_THREAD(control);
 }
 
-int async_started(const struct async_context *actx)
+int async_started(struct async_context *actx)
 {
-    return actx->main_started;
+    int ret = sync_control_thread(actx);
+    if (ret < 0)
+        return ret;
+    return actx->playing;
 }
 
 void async_free(struct async_context **actxp)
@@ -549,18 +820,17 @@ void async_free(struct async_context **actxp)
     if (!actx)
         return;
 
-    async_stop(actx);
-
-    demuxing_free(&actx->demuxer);
-    decoding_free(&actx->decoder);
-    filtering_free(&actx->filterer);
+    control_quit(actx);
 
     av_thread_message_queue_free(&actx->src_queue);
     av_thread_message_queue_free(&actx->pkt_queue);
     av_thread_message_queue_free(&actx->frames_queue);
     av_thread_message_queue_free(&actx->sink_queue);
 
-    av_thread_message_queue_free(&actx->info_channel);
+    av_thread_message_queue_free(&actx->ctl_in_queue);
+    av_thread_message_queue_free(&actx->ctl_out_queue);
+
+    TRACE(actx, "free done");
 
     av_freep(actxp);
 }

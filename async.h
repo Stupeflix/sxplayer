@@ -32,6 +32,9 @@ enum msg_type {
     MSG_PACKET,
     MSG_SEEK,
     MSG_INFO,
+    MSG_START,
+    MSG_STOP,
+    MSG_SYNC,
     NB_MSG
 };
 
@@ -56,11 +59,11 @@ int async_fetch_info(struct async_context *actx, struct sxplayer_info *info);
 
 int async_seek(struct async_context *actx, int64_t ts);
 
-int async_pop_msg(struct async_context *actx, struct message *msg);
+int async_pop_frame(struct async_context *actx, AVFrame **framep);
 
 int async_stop(struct async_context *actx);
 
-int async_started(const struct async_context *actx);
+int async_started(struct async_context *actx);
 
 void async_free(struct async_context **actxp);
 

@@ -219,8 +219,6 @@ void sxplayer_free(struct sxplayer_ctx **ss)
 
     LOG(s, DEBUG, "destroying context");
 
-    async_stop(s->actx);
-
     free_temp_context_data(s);
     free_context(s);
     *ss = NULL;
@@ -276,13 +274,6 @@ static int set_context_fields(struct sxplayer_ctx *s)
     ret = async_init(s->actx, s);
     if (ret < 0)
         return ret;
-
-    if (s->skip64) {
-        TRACE(s, "request initial skip");
-        ret = async_seek(s->actx, s->skip64);
-        if (ret < 0)
-            return ret;
-    }
 
     s->context_configured = 1;
 
@@ -416,27 +407,9 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
         frame = s->cached_frame;
         s->cached_frame = NULL;
     } else {
-        for (;;) {
-            int ret;
-            struct message msg;
-
-            TRACE(s, "querying async context");
-            ret = async_pop_msg(s->actx, &msg);
-            if (ret < 0) {
-                frame = NULL;
-                TRACE(s, "poped a message raising %s", av_err2str(ret));
-                break;
-            } else if (msg.type == MSG_SEEK) {
-                // probably from the initial seek
-                TRACE(s, "got a seek message while poping, ignoring");
-                async_free_message_data(&msg);
-                continue;
-            } else {
-                TRACE(s, "got a frame!");
-                frame = msg.data;
-                break;
-            }
-        }
+        int ret = async_pop_frame(s->actx, &frame);
+        if (ret < 0)
+            TRACE(s, "poped a message raising %s", av_err2str(ret));
     }
 
     if (frame) {
@@ -481,27 +454,7 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 
 static int do_seek(struct sxplayer_ctx *s, int64_t t64)
 {
-    struct message msg;
-    int ret, retried = -1;
-
-retry:
-    retried++;
-    ret = async_seek(s->actx, get_media_time(s, t64));
-    if (ret < 0)
-        return ret;
-
-    TRACE(s, "seek requested, wait for it to be effective");
-    do {
-        ret = async_pop_msg(s->actx, &msg);
-        if (!retried && (ret == AVERROR_EOF || ret == AVERROR_EXIT))
-            goto retry;
-        if (ret < 0)
-            return ret;
-        async_free_message_data(&msg);
-    } while (msg.type != MSG_SEEK);
-    TRACE(s, "seek message obtained");
-
-    return 0;
+    return async_seek(s->actx, get_media_time(s, t64));
 }
 
 int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
@@ -522,7 +475,20 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
     return do_seek(s, TIME2INT64(reqt));
 }
 
-int sxplayer_prefetch(struct sxplayer_ctx *s)
+int sxplayer_stop(struct sxplayer_ctx *s)
+{
+    int ret;
+
+    LOG(s, DEBUG, "stop requested");
+
+    ret = configure_context(s);
+    if (ret < 0)
+        return ret;
+
+    return async_stop(s->actx);
+}
+
+int sxplayer_start(struct sxplayer_ctx *s)
 {
     int ret;
     const int64_t t = av_gettime();
@@ -541,20 +507,15 @@ int sxplayer_prefetch(struct sxplayer_ctx *s)
     if (ret < 0)
         return ret;
 
-    /* If the media reached EOF, then we need to seek back to the beginning of
-     * the presentation for the next playback (the initial seek is usually
-     * performed at the end of configure_context(), at its first init). */
-    if (ret > 0) {
-        TRACE(s, "context already configured, request initial skip");
-        ret = async_seek(s->actx, s->skip64);
-        if (ret < 0)
-            return ret;
-    }
-
     ret = async_start(s->actx);
     s->last_op_was_prefetch = 1;
     LOG(s, DEBUG, "prefetched in %fs (ret=%s)", (av_gettime() - t) / 1000000., av_err2str(ret));
     return ret;
+}
+
+int sxplayer_prefetch(struct sxplayer_ctx *s)
+{
+    return sxplayer_start(s);
 }
 
 struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
@@ -718,15 +679,6 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
         return ret_frame(s, NULL);
 
     frame = pop_frame(s);
-
-    /* If the media reached EOF, then we need to seek back to the beginning of
-     * the presentation for the next playback (the initial seek is usually
-     * performed at the end of configure_context(), at its first init). */
-    if (!frame) {
-        TRACE(s, "query a seek back to 0 for the next demux");
-        async_seek(s->actx, s->skip64);
-    }
-
     return ret_frame(s, frame);
 }
 
