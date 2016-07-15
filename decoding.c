@@ -267,6 +267,8 @@ void decoding_run(struct decoding_ctx *ctx)
              * until a new packet is pushed. */
             decoder_flush(ctx->decoder);
 
+            av_frame_free(&ctx->tmp_frame);
+
             /* Let's save some little time by dropping frames in the queue so
              * the user don't get a shit ton of false positives before the
              * frames he requested. */
