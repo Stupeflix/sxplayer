@@ -513,7 +513,7 @@ void filtering_run(struct filtering_ctx *ctx)
             ctx->last_frame_format = AV_PIX_FMT_NONE;
             ret = av_thread_message_queue_send(ctx->out_queue, &msg, 0);
             if (ret < 0) {
-                av_freep(&msg.data);
+                async_free_message_data(&msg);
                 break;
             }
             continue;
