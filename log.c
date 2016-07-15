@@ -61,7 +61,8 @@ void log_free(struct log_ctx **ctxp)
     av_freep(ctxp);
 }
 
-void log_print(void *log_ctx, int log_level, const char *fn, const char *fmt, ...)
+void log_print(void *log_ctx, int log_level, const char *filename,
+               int ln, const char *fn, const char *fmt, ...)
 {
     struct log_ctx *ctx = log_ctx;
     va_list arg_list;
@@ -93,11 +94,14 @@ void log_print(void *log_ctx, int log_level, const char *fn, const char *fmt, ..
             t = av_gettime();
             if (!ctx->last_time)
                 ctx->last_time = t;
-            av_log(ctx->avlog, av_log_level, "[%f] %s: %s\n", (t - ctx->last_time) / 1000000., fn, logline);
+            av_log(ctx->avlog, av_log_level, "[%f] %s:%d %s: %s\n",
+                   (t - ctx->last_time) / 1000000.,
+                   filename, ln, fn, logline);
             ctx->last_time = t;
             pthread_mutex_unlock(&ctx->lock);
         } else {
-            av_log(ctx->avlog, av_log_level, "%s: %s\n", fn, logline);
+            av_log(ctx->avlog, av_log_level, "%s:%d %s: %s\n",
+                   filename, ln, fn, logline);
         }
     }
 }
