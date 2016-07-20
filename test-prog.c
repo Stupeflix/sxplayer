@@ -343,6 +343,25 @@ static int run_image_test(const char *filename)
     return 0;
 }
 
+static int run_image_seek_test(const char *filename)
+{
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+    struct sxplayer_frame *f;
+
+    if (!s)
+        return -1;
+    sxplayer_seek(s, 10.2);
+    f = sxplayer_get_frame(s, 10.5);
+    if (!f) {
+        fprintf(stderr, "didn't get first image\n");
+        return -1;
+    }
+    sxplayer_release_frame(f);
+
+    sxplayer_free(&s);
+    return 0;
+}
+
 static int test_next_frame(const char *filename)
 {
     int i = 0, ret = 0, r;
@@ -578,6 +597,9 @@ int main(int ac, char **av)
     }
 
     if (run_image_test(av[2]) < 0)
+        return -1;
+
+    if (run_image_seek_test(av[2]) < 0)
         return -1;
 
     if (run_notavail_file_test() < 0)
