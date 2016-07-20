@@ -35,6 +35,7 @@ struct decoder_ctx {
     void *opaque;
     int use_hwaccel;
     int max_pixels;
+    const char *vt_pix_fmt;
 };
 
 struct decoder {
@@ -53,7 +54,8 @@ int decoder_init(void *log_ctx,
                  const AVStream *stream,
                  struct decoding_ctx *decoding_ctx,
                  void *opaque,
-                 int max_pixels);
+                 int max_pixels,
+                 const char *vt_pix_fmt);
 int decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt);
 void decoder_flush(struct decoder_ctx *ctx);
 void decoder_free(struct decoder_ctx **ctxp);

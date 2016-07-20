@@ -20,13 +20,13 @@
  */
 
 #include <pthread.h>
+#include <libavutil/avassert.h>
+#include <libavutil/pixdesc.h>
 #include <VideoToolbox/VideoToolbox.h>
 
 #include "decoding.h"
 #include "decoders.h"
 #include "internal.h"
-
-#define REQUESTED_PIX_FMT kCVPixelFormatType_32BGRA
 
 struct async_frame {
     int64_t pts;
@@ -248,6 +248,18 @@ static void decode_callback(void *opaque,
     update_nb_queue(dec_ctx, vt, -1);
 }
 
+static uint32_t pix_fmt_ff2vt(const char *fmt_str)
+{
+    const enum AVPixelFormat fmt_ff = av_get_pix_fmt(fmt_str);
+    switch (fmt_ff) {
+    case AV_PIX_FMT_BGRA: return kCVPixelFormatType_32BGRA;
+    case AV_PIX_FMT_NV12: return kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+    default:
+        av_assert0(0);
+    }
+    return -1;
+}
+
 static int vtdec_init(struct decoder_ctx *dec_ctx)
 {
     AVCodecContext *avctx = dec_ctx->avctx;
@@ -290,7 +302,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
           avctx->width, avctx->height, vt->out_w, vt->out_h,
           avctx->width * avctx->height, vt->out_w * vt->out_h,
           dec_ctx->max_pixels);
-    buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, REQUESTED_PIX_FMT);
+    buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, pix_fmt_ff2vt(dec_ctx->vt_pix_fmt));
 
     decoder_cb.decompressionOutputCallback = decode_callback;
     decoder_cb.decompressionOutputRefCon   = dec_ctx;

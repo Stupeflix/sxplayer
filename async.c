@@ -231,7 +231,8 @@ static int initialize_modules_once(struct async_context *actx,
                         s->auto_hwaccel,
                         s->export_mvs,
                         s->opaque ? *(void **)s->opaque : NULL,
-                        s->max_pixels);
+                        s->max_pixels,
+                        s->vt_pix_fmt);
     if (ret < 0)
         goto end;
 

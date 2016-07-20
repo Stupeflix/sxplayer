@@ -75,7 +75,8 @@ int decoding_init(void *log_ctx,
                   int auto_hwaccel,
                   int export_mvs,
                   void *opaque,
-                  int max_pixels)
+                  int max_pixels,
+                  const char *vt_pix_fmt)
 {
     int ret;
     const struct decoder *dec_def, *dec_def_fallback;
@@ -117,13 +118,13 @@ int decoding_init(void *log_ctx,
 
     DUMP_INFO(stream->codecpar, "original");
 
-    ret = decoder_init(log_ctx, ctx->decoder, dec_def, stream, ctx, opaque, max_pixels);
+    ret = decoder_init(log_ctx, ctx->decoder, dec_def, stream, ctx, opaque, max_pixels, vt_pix_fmt);
     if (ret < 0 && dec_def_fallback) {
         TRACE(ctx, "unable to init %s decoder, fallback on %s decoder",
               dec_def->name, dec_def_fallback->name);
         if (ret != AVERROR_DECODER_NOT_FOUND)
             LOG(ctx, ERROR, "Decoder fallback"); // TODO: no fallback here on iOS
-        ret = decoder_init(log_ctx, ctx->decoder, dec_def_fallback, stream, ctx, opaque, max_pixels);
+        ret = decoder_init(log_ctx, ctx->decoder, dec_def_fallback, stream, ctx, opaque, max_pixels, vt_pix_fmt);
     }
     if (ret < 0)
         return ret;

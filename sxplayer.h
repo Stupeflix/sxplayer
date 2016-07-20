@@ -153,6 +153,7 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
  *   opaque                   binary    pointer to an opaque pointer forwarded to the decoder (for example, a pointer to an android/view/Surface to use in conjonction with the mediacodec decoder)
  *   max_pixels               integer   maximum number of pixels per frame
  *   audio_texture            integer   output audio as a video texture
+ *   vt_pix_fmt               string    VideoToolbox pixel format in the CVPixelBufferRef ("bgra" or "nv12")
  */
 int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
 

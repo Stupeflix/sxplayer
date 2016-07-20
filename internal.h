@@ -66,6 +66,7 @@ struct sxplayer_ctx {
     int opaque_size;                        // opaque pointer size
     int max_pixels;                         // maximum number of pixels per frame
     int audio_texture;                      // output audio as a video texture
+    char *vt_pix_fmt;                       // VideoToolbox pixel format in the CVPixelBufferRef
 
     struct async_context *actx;
     int64_t skip64;

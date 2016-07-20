@@ -40,13 +40,15 @@ int decoder_init(void *log_ctx,
                  const AVStream *stream,
                  struct decoding_ctx *decoding_ctx,
                  void *opaque,
-                 int max_pixels)
+                 int max_pixels,
+                 const char *vt_pix_fmt)
 {
     int ret;
 
     ctx->log_ctx = log_ctx;
     ctx->opaque = opaque;
     ctx->max_pixels = max_pixels;
+    ctx->vt_pix_fmt = vt_pix_fmt;
 
     TRACE(ctx, "try to initialize private decoder");
 

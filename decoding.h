@@ -36,7 +36,8 @@ int decoding_init(void *log_ctx,
                   int auto_hwaccel,
                   int export_mvs,
                   void *opaque,
-                  int max_pixels);
+                  int max_pixels,
+                  const char *vt_pix_fmt);
 
 const AVCodecContext *decoding_get_avctx(struct decoding_ctx *ctx);
 
