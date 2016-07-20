@@ -28,6 +28,30 @@
 #include "decoders.h"
 #include "internal.h"
 
+#define BUFCOUNT_DEBUG 1
+
+#if BUFCOUNT_DEBUG
+static pthread_once_t g_bufcounter_initialized = PTHREAD_ONCE_INIT;
+static pthread_mutex_t g_mutex_bufcounter;
+static int g_bufcount;
+
+static int initialize_bufcounter(void)
+{
+    return pthread_mutex_init(&g_mutex_bufcounter, NULL);
+}
+
+static int bufcounter_update(int n)
+{
+    pthread_mutex_lock(&g_mutex_bufcounter);
+    g_bufcount += n;
+    fprintf(stderr, "[BUFFER COUNTER] op:[%s%d] newtotal:[%d]\n",
+            n > 0 ? "+" : "", n, g_bufcount);
+    pthread_mutex_unlock(&g_mutex_bufcounter);
+}
+#else
+#define bufcounter_update
+#endif
+
 struct async_frame {
     int64_t pts;
     CVPixelBufferRef cv_buffer;
@@ -142,6 +166,7 @@ static void buffer_release(void *opaque, uint8_t *data)
 {
     CVPixelBufferRef cv_buffer = (CVImageBufferRef)data;
     CVPixelBufferRelease(cv_buffer);
+    bufcounter_update(-1);
 }
 
 static int push_async_frame(struct decoder_ctx *dec_ctx,
@@ -212,6 +237,8 @@ static void decode_callback(void *opaque,
     new_frame->cv_buffer = CVPixelBufferRetain(image_buffer);
     new_frame->pts = pts.value;
 
+    bufcounter_update(1);
+
     queue_walker = vt->queue;
 
     if (!queue_walker || (new_frame->pts < queue_walker->pts)) {
@@ -269,6 +296,12 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     VTDecompressionOutputCallbackRecord decoder_cb;
     CFDictionaryRef decoder_spec;
     CFDictionaryRef buf_attr;
+
+#if BUFCOUNT_DEBUG
+    int ret = pthread_once(&g_bufcounter_initialized, initialize_bufcounter);
+    if (ret < 0)
+        return AVERROR(ret);
+#endif
 
     TRACE(dec_ctx, "init");
 
