@@ -515,6 +515,7 @@ int sxplayer_start(struct sxplayer_ctx *s)
 
 int sxplayer_prefetch(struct sxplayer_ctx *s)
 {
+    LOG(s, WARNING, "sxplayer_prefetch() is deprecated, use sxplayer_start() instead");
     return sxplayer_start(s);
 }
 

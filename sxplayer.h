@@ -196,7 +196,11 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
  * Return 0 on success, a negative value on error.
  */
 int sxplayer_start(struct sxplayer_ctx *s);
-int sxplayer_prefetch(struct sxplayer_ctx *s);
+
+/**
+ * Deprecated, use sxplayer_start() instead.
+ */
+int sxplayer_prefetch(struct sxplayer_ctx *s) __attribute__((deprecated));
 
 /**
  * Request a stop to the player to liberate playback ressources.
