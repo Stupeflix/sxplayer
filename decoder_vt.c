@@ -34,6 +34,7 @@
 static pthread_once_t g_bufcounter_initialized = PTHREAD_ONCE_INIT;
 static pthread_mutex_t g_mutex_bufcounter;
 static int g_bufcount;
+static int g_deccount;
 
 static int initialize_bufcounter(void)
 {
@@ -44,12 +45,20 @@ static int bufcounter_update(int n)
 {
     pthread_mutex_lock(&g_mutex_bufcounter);
     g_bufcount += n;
-    fprintf(stderr, "[BUFFER COUNTER] op:[%s%d] newtotal:[%d]\n",
-            n > 0 ? "+" : "", n, g_bufcount);
+    fprintf(stderr, "[BUFFER COUNTER] op:[%s%d] newtotal:[%d] nbdec:[%d]\n",
+            n > 0 ? "+" : "", n, g_bufcount, g_deccount);
+    pthread_mutex_unlock(&g_mutex_bufcounter);
+}
+
+static int deccounter_update(int n)
+{
+    pthread_mutex_lock(&g_mutex_bufcounter);
+    g_deccount += n;
     pthread_mutex_unlock(&g_mutex_bufcounter);
 }
 #else
-#define bufcounter_update
+#define bufcounter_update(x) (void)(x)
+#define deccounter_update(x) (void)(x)
 #endif
 
 struct async_frame {
@@ -301,6 +310,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
     int ret = pthread_once(&g_bufcounter_initialized, initialize_bufcounter);
     if (ret < 0)
         return AVERROR(ret);
+    deccounter_update(1);
 #endif
 
     TRACE(dec_ctx, "init");
@@ -531,6 +541,8 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
         CFRelease(vt->session);
         vt->session = NULL;
     }
+
+    deccounter_update(1);
 }
 
 const struct decoder decoder_vt = {
