@@ -344,20 +344,6 @@ static int initialize_modules_once(struct async_context *actx,
     if (ret < 0)
         goto end;
 
-    /* Decoder */
-    ret = decoding_init(actx->log_ctx,
-                        actx->decoder,
-                        actx->pkt_queue, actx->frames_queue,
-                        demuxing_get_stream(actx->demuxer),
-                        s->auto_hwaccel,
-                        s->export_mvs,
-                        s->opaque ? *(void **)s->opaque : NULL,
-                        s->max_pixels,
-                        s->vt_pix_fmt);
-    if (ret < 0)
-        goto end;
-
-    /* Filterer */
     if (s->autorotate) {
         const double theta = demuxing_probe_rotation(actx->demuxer);
 
@@ -372,6 +358,22 @@ static int initialize_modules_once(struct async_context *actx,
 
     const int64_t max_pts = s->trim_duration64 >= 0 ? s->skip64 + s->trim_duration64
                                                     : AV_NOPTS_VALUE;
+
+    /* Decoder */
+    ret = decoding_init(actx->log_ctx,
+                        actx->decoder,
+                        actx->pkt_queue, actx->frames_queue,
+                        demuxing_get_stream(actx->demuxer),
+                        s->auto_hwaccel,
+                        s->export_mvs,
+                        s->opaque ? *(void **)s->opaque : NULL,
+                        s->max_pixels,
+                        s->vt_pix_fmt,
+                        max_pts);
+    if (ret < 0)
+        goto end;
+
+    /* Filterer */
     const AVCodecContext *avctx = decoding_get_avctx(actx->decoder);
 
     ret = avcodec_parameters_from_context(par, avctx);

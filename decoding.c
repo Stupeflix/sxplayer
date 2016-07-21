@@ -208,6 +208,9 @@ int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
           PTS2TIMESTR(ts), ts, get_best_effort_ts(frame),
           ctx->st_timebase.num, ctx->st_timebase.den);
 
+    if (ctx->max_pts != AV_NOPTS_VALUE && ts >= ctx->max_pts)
+        return AVERROR_EXIT; // not EOF because we do not want to flush the frames
+
     if (ctx->seek_request != AV_NOPTS_VALUE && ts < ctx->seek_request) {
         TRACE(ctx, "frame ts:%s (%"PRId64"), skipping because before %s (%"PRId64")",
               PTS2TIMESTR(ts), ts, PTS2TIMESTR(ctx->seek_request), ctx->seek_request);
