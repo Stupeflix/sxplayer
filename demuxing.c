@@ -148,6 +148,9 @@ int demuxing_init(void *log_ctx,
     ctx->stream_idx = ret;
     ctx->stream = ctx->fmt_ctx->streams[ctx->stream_idx];
 
+    fprintf(stderr, "TB: %d/%d\n", ctx->stream->time_base.num,
+            ctx->stream->time_base.den);
+
     av_dump_format(ctx->fmt_ctx, 0, filename, 0);
 
     return 0;

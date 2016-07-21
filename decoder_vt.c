@@ -391,8 +391,8 @@ static CMSampleBufferRef sample_buffer_create(CMFormatDescriptionRef fmt_desc,
     CMSampleBufferRef sample_buf;
     CMSampleTimingInfo timeInfoArray[1] = {0};
 
-    timeInfoArray[0].presentationTimeStamp = frame_pts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_pts, 1);
-    timeInfoArray[0].decodeTimeStamp       = frame_dts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_dts, 1);
+    timeInfoArray[0].presentationTimeStamp = frame_pts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_pts, 24000);
+    timeInfoArray[0].decodeTimeStamp       = frame_dts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_dts, 24000);
     timeInfoArray[0].duration              = kCMTimeInvalid;
 
     fprintf(stderr, "buffer create with PTS:%"PRId64" DTS:%"PRId64"\n", frame_pts, frame_dts);
