@@ -234,6 +234,12 @@ static void decode_callback(void *opaque,
         return;
     }
 
+    if (CMTIME_IS_INVALID(pts)) {
+        LOG(dec_ctx, ERROR, "Got a frame with unknown frame pts, skipping");
+        update_nb_queue(dec_ctx, vt, -1);
+        return;
+    }
+
     new_frame = av_mallocz(sizeof(struct async_frame));
     new_frame->next_frame = NULL;
     new_frame->cv_buffer = CVPixelBufferRetain(image_buffer);
@@ -387,6 +393,7 @@ static CMSampleBufferRef sample_buffer_create(CMFormatDescriptionRef fmt_desc,
 
     timeInfoArray[0].presentationTimeStamp = frame_pts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_pts, 1);
     timeInfoArray[0].decodeTimeStamp       = frame_dts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_dts, 1);
+    timeInfoArray[0].duration              = kCMTimeInvalid;
 
     fprintf(stderr, "buffer create with PTS:%"PRId64" DTS:%"PRId64"\n", frame_pts, frame_dts);
 
