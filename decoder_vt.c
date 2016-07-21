@@ -542,7 +542,7 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
         vt->session = NULL;
     }
 
-    deccounter_update(1);
+    deccounter_update(-1);
 }
 
 const struct decoder decoder_vt = {
