@@ -481,6 +481,8 @@ int sxplayer_stop(struct sxplayer_ctx *s)
 
     LOG(s, DEBUG, "stop requested");
 
+    av_frame_free(&s->cached_frame);
+
     ret = configure_context(s);
     if (ret < 0)
         return ret;
