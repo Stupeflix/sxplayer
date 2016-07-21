@@ -239,6 +239,7 @@ static void decode_callback(void *opaque,
 
     bufcounter_update(1);
 
+#if 0
     queue_walker = vt->queue;
 
     if (!queue_walker || (new_frame->pts < queue_walker->pts)) {
@@ -271,6 +272,10 @@ static void decode_callback(void *opaque,
             vt->queue = queue_walker = next_frame;
         }
     }
+#else
+    push_async_frame(dec_ctx, new_frame);
+    av_free(new_frame);
+#endif
 
     update_nb_queue(dec_ctx, vt, -1);
 }
@@ -370,15 +375,16 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
 static CMSampleBufferRef sample_buffer_create(CMFormatDescriptionRef fmt_desc,
                                                            void *buffer,
                                                            int size,
-                                                           int64_t frame_pts)
+                                                           int64_t frame_pts,
+                                                           int64_t frame_dts)
 {
     OSStatus status;
     CMBlockBufferRef  block_buf;
     CMSampleBufferRef sample_buf;
     CMSampleTimingInfo timeInfoArray[1] = {0};
 
-    timeInfoArray[0].presentationTimeStamp = CMTimeMake(frame_pts, 1);
-    timeInfoArray[0].decodeTimeStamp = kCMTimeInvalid;
+    timeInfoArray[0].presentationTimeStamp = frame_pts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_pts, 1);
+    timeInfoArray[0].decodeTimeStamp       = frame_dts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_dts, 1);
 
     block_buf  = NULL;
     sample_buf = NULL;
@@ -431,8 +437,10 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
         return AVERROR_EOF;
     }
 
-    VTDecodeFrameFlags decodeFlags = kVTDecodeFrame_EnableAsynchronousDecompression;
-    CMSampleBufferRef sample_buf = sample_buffer_create(vt->cm_fmt_desc, pkt->data, pkt->size, pkt->pts);
+    VTDecodeFrameFlags decodeFlags = kVTDecodeFrame_EnableAsynchronousDecompression
+                                   | kVTDecodeFrame_EnableTemporalProcessing;
+    CMSampleBufferRef sample_buf = sample_buffer_create(vt->cm_fmt_desc, pkt->data, pkt->size,
+                                                        pkt->pts, pkt->dts);
 
     if (!sample_buf)
         return AVERROR_EXTERNAL;
