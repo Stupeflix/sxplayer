@@ -767,8 +767,8 @@ int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
         return ret;
 
     TRACE(actx, "allocate async queues");
-    if ((ret = alloc_msg_queue(&actx->ctl_in_queue,  1)) < 0 ||
-        (ret = alloc_msg_queue(&actx->ctl_out_queue, 1)) < 0)
+    if ((ret = alloc_msg_queue(&actx->ctl_in_queue,  5)) < 0 ||
+        (ret = alloc_msg_queue(&actx->ctl_out_queue, 5)) < 0)
         return ret;
 
     START_MODULE_THREAD(control);
