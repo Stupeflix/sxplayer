@@ -226,6 +226,8 @@ static void decode_callback(void *opaque,
 
     TRACE(dec_ctx, "entering decode callback");
 
+    fprintf(stderr, "decode callback at pts=%"PRId64"\n", pts.value);
+
     if (!image_buffer) {
         TRACE(dec_ctx, "decode cb received NULL output image buffer");
         update_nb_queue(dec_ctx, vt, -1);
@@ -385,6 +387,8 @@ static CMSampleBufferRef sample_buffer_create(CMFormatDescriptionRef fmt_desc,
 
     timeInfoArray[0].presentationTimeStamp = frame_pts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_pts, 1);
     timeInfoArray[0].decodeTimeStamp       = frame_dts == AV_NOPTS_VALUE ? kCMTimeInvalid : CMTimeMake(frame_dts, 1);
+
+    fprintf(stderr, "buffer create with PTS:%"PRId64" DTS:%"PRId64"\n", frame_pts, frame_dts);
 
     block_buf  = NULL;
     sample_buf = NULL;
