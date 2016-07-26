@@ -38,7 +38,7 @@ enum action {
 
 static int action_prefetch(struct sxplayer_ctx *s, int opt_test_flags)
 {
-    return sxplayer_prefetch(s);
+    return sxplayer_start(s);
 }
 
 #define FLAG_SKIP          (1<<0)
