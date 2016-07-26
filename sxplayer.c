@@ -452,11 +452,6 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 }
 #endif
 
-static int do_seek(struct sxplayer_ctx *s, int64_t t64)
-{
-    return async_seek(s->actx, get_media_time(s, t64));
-}
-
 int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
 {
     int ret;
@@ -472,7 +467,7 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
     if (s->trim_duration64 == AV_NOPTS_VALUE)
         s->trim_duration64 = async_probe_duration(s->actx);
 
-    return do_seek(s, TIME2INT64(reqt));
+    return async_seek(s->actx, get_media_time(s, TIME2INT64(reqt)));
 }
 
 int sxplayer_stop(struct sxplayer_ctx *s)
@@ -639,7 +634,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         av_frame_free(&candidate);
         av_frame_free(&s->cached_frame);
 
-        ret = do_seek(s, t64);
+        ret = async_seek(s->actx, vt);
         if (ret < 0)
             return ret_frame(s, NULL);
     }
