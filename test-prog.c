@@ -576,6 +576,37 @@ static int run_notavail_file_test(void)
     return 0;
 }
 
+static int run_misc_events(const char *filename)
+{
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+    struct sxplayer_frame *f;
+
+    if (!s)
+        return -1;
+    sxplayer_seek(s, 12.7);
+    sxplayer_seek(s, 21.0);
+    sxplayer_seek(s, 5.3);
+    sxplayer_start(s);
+    sxplayer_start(s);
+    sxplayer_seek(s, 15.3);
+    sxplayer_stop(s);
+    sxplayer_start(s);
+    sxplayer_stop(s);
+    sxplayer_start(s);
+    sxplayer_seek(s, 7.2);
+    sxplayer_start(s);
+    sxplayer_stop(s);
+    sxplayer_seek(s, 82.9);
+    f = sxplayer_get_frame(s, 83.5);
+    if (!f) {
+        sxplayer_free(&s);
+        return -1;
+    }
+    sxplayer_free(&s);
+    sxplayer_release_frame(f);
+    return 0;
+}
+
 static const int tests_flags[] = {
     0,
                FLAG_SKIP,
@@ -606,6 +637,9 @@ int main(int ac, char **av)
         return -1;
 
     if (test_next_frame(av[1]) < 0)
+        return -1;
+
+    if (run_misc_events(av[1]) < 0)
         return -1;
 
     if (run_audio_test(av[1]) < 0)
