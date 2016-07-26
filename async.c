@@ -482,7 +482,7 @@ static int op_start(struct async_context *actx)
         TRACE(actx, "request seek is set to %s", PTS2TIMESTR(actx->request_seek));
         seek_to = actx->request_seek;
     } else if (actx->s->skip64) {
-        TRACE(actx, "skip is set to %s", actx->s->skip64);
+        TRACE(actx, "skip is set to %s", PTS2TIMESTR(actx->s->skip64));
         seek_to = actx->s->skip64;
     }
 
