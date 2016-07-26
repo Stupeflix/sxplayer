@@ -303,21 +303,40 @@ static int configure_context(struct sxplayer_ctx *s)
     return 0;
 }
 
+#define START_FUNC_BASE(name, ...) do {                     \
+    s->cur_func_name = name;                                \
+    if (LOG_LEVEL >= AV_LOG_WARNING)                        \
+        s->entering_time = av_gettime();                    \
+    LOG(s, DEBUG, ">>> " name __VA_ARGS__);                \
+} while (0)
+
+#define START_FUNC(name)      START_FUNC_BASE(name, " requested")
+#define START_FUNC_T(name, t) START_FUNC_BASE(name, " requested with t=%g", t)
+
+#define END_FUNC(max_time_warning) do {                                                                     \
+    const float exect = LOG_LEVEL >= AV_LOG_WARNING ? (av_gettime() - s->entering_time) / 1000000. : -1;    \
+                                                                                                            \
+    if (exect > max_time_warning)                                                                           \
+        LOG(s, WARNING, "getting the frame took %fs!", exect);                                              \
+                                                                                                            \
+    if (LOG_LEVEL >= AV_LOG_WARNING)                                                                        \
+        LOG(s, DEBUG, "<<< %s executed in in %fs", s->cur_func_name, exect);                               \
+} while (0)
+
+#define MAX_ASYNC_OP_TIME (10/1000.)
+#define MAX_SYNC_OP_TIME  (1/60.)
+
 /* Return the frame only if different from previous one. We do not make a
  * simple pointer check because of the frame reference counting (and thus
  * pointer reuse, depending on many parameters)  */
 static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 {
-    struct sxplayer_frame *ret;
+    struct sxplayer_frame *ret = NULL;
     AVFrameSideData *sd;
-    const float exect = LOG_LEVEL >= AV_LOG_WARNING ? (av_gettime() - s->entering_time) / 1000000. : -1;
-
-    if (exect > 1/60.)
-        LOG(s, WARNING, "getting the frame took %fs!", exect);
 
     if (!frame) {
-        LOG(s, DEBUG, " <<< return nothing in %fs", exect);
-        return NULL;
+        LOG(s, DEBUG, "no frame to return");
+        goto end;
     }
 
     const int64_t frame_ts = frame->pts;
@@ -327,15 +346,15 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 
     /* if same frame as previously, do not raise it again */
     if (s->last_pushed_frame_ts == frame_ts) {
-        LOG(s, DEBUG, " <<< same frame as previously, return NULL in %fs", exect);
+        LOG(s, DEBUG, "same frame as previously, return NULL");
         av_frame_free(&frame);
-        return NULL;
+        goto end;
     }
 
     ret = av_mallocz(sizeof(*ret));
     if (!ret) {
         av_frame_free(&frame);
-        return NULL;
+        goto end;
     }
 
     s->last_pushed_frame_ts = frame_ts;
@@ -346,8 +365,8 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
         if (!ret->mvs) {
             LOG(s, ERROR, "Unable to memdup motion vectors side data");
             av_frame_free(&frame);
-            av_free(ret);
-            return NULL;
+            av_freep(&ret);
+            goto end;
         }
         ret->nb_mvs = sd->size / sizeof(AVMotionVector);
         TRACE(s, "export %d motion vectors", ret->nb_mvs);
@@ -374,10 +393,11 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
         ret->pix_fmt = smp_fmts_ff2sx(frame->format);
     }
 
-    LOG(s, DEBUG, " <<< return %dx%d frame @ ts=%s [max:%s] in %fs",
+    LOG(s, DEBUG, "return %dx%d frame @ ts=%s [max:%s]",
         frame->width, frame->height, PTS2TIMESTR(frame_ts),
-        PTS2TIMESTR(s->skip64 + s->trim_duration64),
-        exect);
+        PTS2TIMESTR(s->skip64 + s->trim_duration64));
+end:
+    END_FUNC(MAX_SYNC_OP_TIME);
     return ret;
 }
 
@@ -454,7 +474,8 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
 {
     int ret;
 
-    LOG(s, DEBUG, "seek requested at t=%f", reqt);
+    START_FUNC_T("SEEK", reqt);
+
     ret = configure_context(s);
     if (ret < 0)
         return ret;
@@ -465,14 +486,16 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
     if (s->trim_duration64 == AV_NOPTS_VALUE)
         s->trim_duration64 = async_probe_duration(s->actx);
 
-    return async_seek(s->actx, get_media_time(s, TIME2INT64(reqt)));
+    ret = async_seek(s->actx, get_media_time(s, TIME2INT64(reqt)));
+    END_FUNC(MAX_ASYNC_OP_TIME);
+    return ret;
 }
 
 int sxplayer_stop(struct sxplayer_ctx *s)
 {
     int ret;
 
-    LOG(s, DEBUG, "stop requested");
+    START_FUNC("STOP");
 
     av_frame_free(&s->cached_frame);
 
@@ -480,22 +503,23 @@ int sxplayer_stop(struct sxplayer_ctx *s)
     if (ret < 0)
         return ret;
 
-    return async_stop(s->actx);
+    ret = async_stop(s->actx);
+    END_FUNC(MAX_ASYNC_OP_TIME);
+    return ret;
 }
 
 int sxplayer_start(struct sxplayer_ctx *s)
 {
     int ret;
-    const int64_t t = av_gettime();
 
-    LOG(s, DEBUG, "prefetch requested");
+    START_FUNC("START");
 
     ret = configure_context(s);
     if (ret < 0)
         return ret;
 
     ret = async_start(s->actx);
-    LOG(s, DEBUG, "prefetched in %fs (ret=%s)", (av_gettime() - t) / 1000000., av_err2str(ret));
+    END_FUNC(MAX_ASYNC_OP_TIME);
     return ret;
 }
 
@@ -511,10 +535,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     int64_t diff;
     const int64_t t64 = TIME2INT64(t);
 
-    if (LOG_LEVEL >= AV_LOG_WARNING)
-        s->entering_time = av_gettime();
-
-    LOG(s, DEBUG, " >>> get frame for t=%g", t);
+    START_FUNC_T("GET FRAME", t);
 
 #if SYNTH_FRAME
     return ret_synth_frame(s, t);
@@ -656,10 +677,7 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
     int ret;
     AVFrame *frame;
 
-    if (LOG_LEVEL >= AV_LOG_WARNING)
-        s->entering_time = av_gettime();
-
-    LOG(s, DEBUG, " >>> get next frame");
+    START_FUNC("GET NEXT FRAME");
 
     ret = configure_context(s);
     if (ret < 0)
@@ -671,30 +689,36 @@ struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 
 int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)
 {
-    int ret;
+    int ret = 0;
 
-    LOG(s, DEBUG, "probing information");
+    START_FUNC("GET INFO");
 
     ret = configure_context(s);
     if (ret < 0)
-        return ret;
+        goto end;
     ret = async_fetch_info(s->actx, info);
     if (ret < 0)
-        return ret;
+        goto end;
     TRACE(s, "media info: %dx%d %f", info->width, info->height, info->duration);
-    return 0;
+
+end:
+    END_FUNC(1.0);
+    return ret;
 }
 
 int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration)
 {
-    int ret;
+    int ret = 0;
     struct sxplayer_info info;
 
-    LOG(s, DEBUG, "getting duration");
+    START_FUNC("GET DURATION");
 
     ret = sxplayer_get_info(s, &info);
     if (ret < 0)
-        return ret;
+        goto end;
     *duration = info.duration;
-    return 0;
+
+end:
+    END_FUNC(1.0);
+    return ret;
 }
