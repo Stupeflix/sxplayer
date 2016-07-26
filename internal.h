@@ -80,7 +80,6 @@ struct sxplayer_ctx {
     int64_t first_ts;
     int64_t last_ts;
     int64_t entering_time;
-    int last_op_was_prefetch;
 };
 
 #endif
