@@ -33,6 +33,7 @@ struct demuxing_ctx {
     AVFormatContext *fmt_ctx;
     AVStream *stream;
     int stream_idx;
+    int is_image;
     AVThreadMessageQueue *src_queue;
     AVThreadMessageQueue *pkt_queue;
 };
@@ -49,7 +50,7 @@ struct demuxing_ctx *demuxing_alloc(void)
 // duration
 int64_t demuxing_probe_duration(const struct demuxing_ctx *ctx)
 {
-    if (!strstr(ctx->fmt_ctx->iformat->name, "image2") && !strstr(ctx->fmt_ctx->iformat->name, "_pipe")) {
+    if (!ctx->is_image) {
         int64_t probe_duration64 = ctx->fmt_ctx->duration;
         AVRational scaleq = AV_TIME_BASE_Q;
 
@@ -147,6 +148,8 @@ int demuxing_init(void *log_ctx,
     }
     ctx->stream_idx = ret;
     ctx->stream = ctx->fmt_ctx->streams[ctx->stream_idx];
+    ctx->is_image = strstr(ctx->fmt_ctx->iformat->name, "image2") ||
+                    strstr(ctx->fmt_ctx->iformat->name, "_pipe");
 
     av_dump_format(ctx->fmt_ctx, 0, filename, 0);
 
@@ -202,7 +205,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
             if (ret < 0)
                 break;
 
-            if (msg.type == MSG_SEEK) {
+            if (msg.type == MSG_SEEK && !ctx->is_image) {
                 /* Make later modules stop working ASAP */
                 av_thread_message_flush(ctx->pkt_queue);
 
