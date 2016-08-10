@@ -1,7 +1,7 @@
 /*
  * This file is part of sxplayer.
  *
- * Copyright (c) 2015 Stupeflix
+ * Copyright (c) 2016 Stupeflix
  *
  * sxplayer is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,25 +18,25 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef FILTERING_H
-#define FILTERING_H
+#ifndef MSG_H
+#define MSG_H
 
-#include <libavutil/threadmessage.h>
+enum msg_type {
+    MSG_FRAME,
+    MSG_PACKET,
+    MSG_SEEK,
+    MSG_INFO,
+    MSG_START,
+    MSG_STOP,
+    MSG_SYNC,
+    NB_MSG
+};
 
-#include "decoding.h"
+struct message {
+    void *data;
+    enum msg_type type;
+};
 
-struct filtering_ctx *filtering_alloc(void);
+void msg_free_data(void *arg);
 
-int filtering_init(void *log_ctx,
-                   struct filtering_ctx *ctx,
-                   AVThreadMessageQueue *in_queue,
-                   AVThreadMessageQueue *out_queue,
-                   const AVCodecContext *avctx,
-                   double media_rotation,
-                   const struct sxplayer_opts *o);
-
-void filtering_run(struct filtering_ctx *ctx);
-
-void filtering_free(struct filtering_ctx **ctxp);
-
-#endif /* FILTERING_H */
+#endif

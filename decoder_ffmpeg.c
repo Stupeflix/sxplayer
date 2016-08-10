@@ -27,7 +27,7 @@
 
 #include "decoding.h"
 #include "decoders.h"
-#include "internal.h"
+#include "log.h"
 
 #if HAVE_MEDIACODEC_HWACCEL
 
@@ -113,12 +113,12 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
     return ret;
 }
 
-static int ffdec_init_sw(struct decoder_ctx *ctx)
+static int ffdec_init_sw(struct decoder_ctx *ctx, const struct sxplayer_opts *opts)
 {
     return ffdec_init(ctx, 0);
 }
 
-static int ffdec_init_hw(struct decoder_ctx *ctx)
+static int ffdec_init_hw(struct decoder_ctx *ctx, const struct sxplayer_opts *opts)
 {
     return ffdec_init(ctx, 1);
 }

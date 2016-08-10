@@ -24,6 +24,8 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
+#include "opts.h"
+
 struct decoding_ctx;
 
 struct decoder_ctx {
@@ -34,13 +36,11 @@ struct decoder_ctx {
     struct decoding_ctx *decoding_ctx;
     void *opaque;
     int use_hwaccel;
-    int max_pixels;
-    const char *vt_pix_fmt;
 };
 
 struct decoder {
     const char *name;
-    int (*init)(struct decoder_ctx *ctx);
+    int (*init)(struct decoder_ctx *ctx, const struct sxplayer_opts *opts);
     void (*uninit)(struct decoder_ctx *ctx);
     int (*push_packet)(struct decoder_ctx *ctx, const AVPacket *pkt);
     void (*flush)(struct decoder_ctx *ctx);
@@ -53,9 +53,7 @@ int decoder_init(void *log_ctx,
                  const struct decoder *dec,
                  const AVStream *stream,
                  struct decoding_ctx *decoding_ctx,
-                 void *opaque,
-                 int max_pixels,
-                 const char *vt_pix_fmt);
+                 const struct sxplayer_opts *opts);
 int decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt);
 void decoder_flush(struct decoder_ctx *ctx);
 void decoder_free(struct decoder_ctx **ctxp);

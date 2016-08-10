@@ -25,14 +25,16 @@
 #include <libavformat/avformat.h>
 #include <libavutil/threadmessage.h>
 
+#include "opts.h"
+
 struct demuxing_ctx *demuxing_alloc(void);
 
 int demuxing_init(void *log_ctx,
                   struct demuxing_ctx *ctx,
                   AVThreadMessageQueue *src_queue,
                   AVThreadMessageQueue *pkt_queue,
-                  const char *filename, int avselect,
-                  int pkt_skip_mod);
+                  const char *filename,
+                  const struct sxplayer_opts *opts);
 
 int64_t demuxing_probe_duration(const struct demuxing_ctx *ctx);
 double demuxing_probe_rotation(const struct demuxing_ctx *ctx);
