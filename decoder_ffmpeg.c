@@ -25,7 +25,7 @@
 #include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
 
-#include "decoding.h"
+#include "mod_decoding.h"
 #include "decoders.h"
 #include "log.h"
 

@@ -23,7 +23,7 @@
 #include <libavutil/display.h>
 #include <libavutil/eval.h>
 
-#include "demuxing.h"
+#include "mod_demuxing.h"
 #include "internal.h"
 #include "log.h"
 #include "msg.h"

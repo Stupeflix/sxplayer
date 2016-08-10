@@ -32,9 +32,9 @@
 #include "async.h"
 #include "log.h"
 
-#include "demuxing.h"
-#include "decoding.h"
-#include "filtering.h"
+#include "mod_demuxing.h"
+#include "mod_decoding.h"
+#include "mod_filtering.h"
 
 struct info_message {
     int width, height;

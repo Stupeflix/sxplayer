@@ -1,6 +1,6 @@
 NAME = sxplayer
 
-PROJECT_OBJS = log.o async.o decoders.o decoder_ffmpeg.o demuxing.o decoding.o filtering.o utils.o msg.o
+PROJECT_OBJS = log.o async.o decoders.o decoder_ffmpeg.o mod_demuxing.o mod_decoding.o mod_filtering.o utils.o msg.o
 DARWIN_OBJS  = decoder_vt.o
 ANDROID_OBJS =
 

@@ -21,7 +21,7 @@
 #include <libavutil/pixdesc.h>
 #include <libavutil/opt.h>
 
-#include "decoding.h"
+#include "mod_decoding.h"
 #include "decoders.h"
 #include "internal.h"
 #include "msg.h"

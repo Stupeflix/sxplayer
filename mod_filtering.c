@@ -30,7 +30,7 @@
 
 #include "sxplayer.h"
 #include "internal.h"
-#include "filtering.h"
+#include "mod_filtering.h"
 #include "log.h"
 #include "msg.h"
 

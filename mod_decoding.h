@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef DECODING_H
-#define DECODING_H
+#ifndef MOD_DECODING_H
+#define MOD_DECODING_H
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -45,4 +45,4 @@ void decoding_run(struct decoding_ctx *ctx);
 
 void decoding_free(struct decoding_ctx **ctxp);
 
-#endif /* DECODING_H */
+#endif

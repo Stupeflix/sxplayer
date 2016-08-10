@@ -24,7 +24,7 @@
 #include <libavutil/pixdesc.h>
 #include <VideoToolbox/VideoToolbox.h>
 
-#include "decoding.h"
+#include "mod_decoding.h"
 #include "decoders.h"
 #include "internal.h"
 #include "log.h"

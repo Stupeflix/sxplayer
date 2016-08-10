@@ -18,30 +18,26 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef DEMUXING_H
-#define DEMUXING_H
+#ifndef MOD_FILTERING_H
+#define MOD_FILTERING_H
 
-#include <stdint.h>
-#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
 #include <libavutil/threadmessage.h>
 
 #include "opts.h"
 
-struct demuxing_ctx *demuxing_alloc(void);
+struct filtering_ctx *filtering_alloc(void);
 
-int demuxing_init(void *log_ctx,
-                  struct demuxing_ctx *ctx,
-                  AVThreadMessageQueue *src_queue,
-                  AVThreadMessageQueue *pkt_queue,
-                  const char *filename,
-                  const struct sxplayer_opts *opts);
+int filtering_init(void *log_ctx,
+                   struct filtering_ctx *ctx,
+                   AVThreadMessageQueue *in_queue,
+                   AVThreadMessageQueue *out_queue,
+                   const AVCodecContext *avctx,
+                   double media_rotation,
+                   const struct sxplayer_opts *o);
 
-int64_t demuxing_probe_duration(const struct demuxing_ctx *ctx);
-double demuxing_probe_rotation(const struct demuxing_ctx *ctx);
-const AVStream *demuxing_get_stream(const struct demuxing_ctx *ctx);
+void filtering_run(struct filtering_ctx *ctx);
 
-void demuxing_run(struct demuxing_ctx *ctx);
+void filtering_free(struct filtering_ctx **ctxp);
 
-void demuxing_free(struct demuxing_ctx **ctxp);
-
-#endif /* DEMUXING_H */
+#endif
