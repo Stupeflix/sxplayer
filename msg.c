@@ -1,7 +1,7 @@
 /*
  * This file is part of sxplayer.
  *
- * Copyright (c) 2015 Stupeflix
+ * Copyright (c) 2016 Stupeflix
  *
  * sxplayer is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,25 +18,35 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef FILTERING_H
-#define FILTERING_H
+#include <libavutil/frame.h>
+#include <libavutil/avassert.h>
+#include <libavcodec/avcodec.h>
 
-#include <libavutil/threadmessage.h>
+#include "msg.h"
 
-#include "decoding.h"
+void msg_free_data(void *arg)
+{
+    struct message *msg = arg;
 
-struct filtering_ctx *filtering_alloc(void);
-
-int filtering_init(void *log_ctx,
-                   struct filtering_ctx *ctx,
-                   AVThreadMessageQueue *in_queue,
-                   AVThreadMessageQueue *out_queue,
-                   const AVCodecContext *avctx,
-                   double media_rotation,
-                   const struct sxplayer_opts *o);
-
-void filtering_run(struct filtering_ctx *ctx);
-
-void filtering_free(struct filtering_ctx **ctxp);
-
-#endif /* FILTERING_H */
+    switch (msg->type) {
+    case MSG_FRAME: {
+        AVFrame *frame = msg->data;
+        av_frame_free(&frame);
+        break;
+    }
+    case MSG_PACKET:
+        av_packet_unref(msg->data);
+        av_freep(&msg->data);
+        break;
+    case MSG_SEEK:
+    case MSG_INFO:
+        av_freep(&msg->data);
+        break;
+    case MSG_START:
+    case MSG_STOP:
+    case MSG_SYNC:
+        break;
+    default:
+        av_assert0(0);
+    }
+}

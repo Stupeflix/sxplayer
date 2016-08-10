@@ -24,6 +24,8 @@
 #include "decoding.h"
 #include "decoders.h"
 #include "internal.h"
+#include "msg.h"
+#include "log.h"
 
 extern const struct decoder decoder_ffmpeg_sw;
 extern const struct decoder decoder_ffmpeg_hw;
@@ -72,11 +74,7 @@ int decoding_init(void *log_ctx,
                   AVThreadMessageQueue *pkt_queue,
                   AVThreadMessageQueue *frames_queue,
                   const AVStream *stream,
-                  int auto_hwaccel,
-                  int export_mvs,
-                  void *opaque,
-                  int max_pixels,
-                  const char *vt_pix_fmt)
+                  const struct sxplayer_opts *opts)
 {
     int ret;
     const struct decoder *dec_def, *dec_def_fallback;
@@ -89,7 +87,7 @@ int decoding_init(void *log_ctx,
     ctx->pkt_queue = pkt_queue;
     ctx->frames_queue = frames_queue;
 
-    if (auto_hwaccel && decoder_def_hwaccel) {
+    if (opts->auto_hwaccel && decoder_def_hwaccel) {
         dec_def          = decoder_def_hwaccel;
         dec_def_fallback = decoder_def_software;
     } else {
@@ -118,18 +116,18 @@ int decoding_init(void *log_ctx,
 
     DUMP_INFO(stream->codecpar, "original");
 
-    ret = decoder_init(log_ctx, ctx->decoder, dec_def, stream, ctx, opaque, max_pixels, vt_pix_fmt);
+    ret = decoder_init(log_ctx, ctx->decoder, dec_def, stream, ctx, opts);
     if (ret < 0 && dec_def_fallback) {
         TRACE(ctx, "unable to init %s decoder, fallback on %s decoder",
               dec_def->name, dec_def_fallback->name);
         if (ret != AVERROR_DECODER_NOT_FOUND)
             LOG(ctx, ERROR, "Decoder fallback"); // TODO: no fallback here on iOS
-        ret = decoder_init(log_ctx, ctx->decoder, dec_def_fallback, stream, ctx, opaque, max_pixels, vt_pix_fmt);
+        ret = decoder_init(log_ctx, ctx->decoder, dec_def_fallback, stream, ctx, opts);
     }
     if (ret < 0)
         return ret;
 
-    if (export_mvs)
+    if (opts->export_mvs)
         av_opt_set(ctx->decoder->avctx, "flags2", "+export_mvs", 0);
 
     avcodec_parameters_from_context(par, ctx->decoder->avctx);
@@ -282,7 +280,7 @@ void decoding_run(struct decoding_ctx *ctx)
             /* Forward seek message */
             ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);
             if (ret < 0) {
-                async_free_message_data(&msg);
+                msg_free_data(&msg);
                 break;
             }
 

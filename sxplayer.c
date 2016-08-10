@@ -31,9 +31,31 @@
 #include <libavutil/time.h>
 
 #include "sxplayer.h"
+#include "async.h"
+#include "log.h"
 #include "internal.h"
 
-#define OFFSET(x) offsetof(struct sxplayer_ctx, x)
+struct sxplayer_ctx {
+    const AVClass *class;                   // necessary for the AVOption mechanism
+    struct log_ctx *log_ctx;
+    char *filename;                         // input filename
+    char *logname;
+
+    struct sxplayer_opts opts;
+
+    struct async_context *actx;
+    int context_configured;
+
+    AVFrame *cached_frame;
+    int64_t last_pushed_frame_ts;           // ts value of the latest pushed frame (it acts as a UID)
+    int64_t last_frame_poped_ts;
+    int64_t first_ts;
+    int64_t last_ts;
+    int64_t entering_time;
+    const char *cur_func_name;
+};
+
+#define OFFSET(x) offsetof(struct sxplayer_ctx, opts.x)
 static const AVOption sxplayer_options[] = {
     { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SXPLAYER_SELECT_VIDEO}, 0, NB_SXPLAYER_MEDIA_SELECTION-1 },
     { "skip",                   NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
@@ -200,7 +222,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     s->first_ts             = AV_NOPTS_VALUE;
     s->last_frame_poped_ts  = AV_NOPTS_VALUE;
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
-    s->trim_duration64      = AV_NOPTS_VALUE;
+    s->opts.trim_duration64 = AV_NOPTS_VALUE;
 
     av_assert0(!s->context_configured);
     return s;
@@ -227,51 +249,52 @@ void sxplayer_free(struct sxplayer_ctx **ss)
 /**
  * Map the timeline time to the media time
  */
-static int64_t get_media_time(const struct sxplayer_ctx *s, int64_t t)
+static int64_t get_media_time(const struct sxplayer_opts *o, int64_t t)
 {
-    if (!s->trim_duration64)
+    if (!o->trim_duration64)
         return 0;
-    return s->skip64 + FFMIN(t, s->trim_duration64);
+    return o->skip64 + FFMIN(t, o->trim_duration64);
 }
 
 static int set_context_fields(struct sxplayer_ctx *s)
 {
     int ret;
+    struct sxplayer_opts *o = &s->opts;
 
-    if (pix_fmts_sx2ff(s->sw_pix_fmt) == AV_PIX_FMT_NONE) {
+    if (pix_fmts_sx2ff(o->sw_pix_fmt) == AV_PIX_FMT_NONE) {
         LOG(s, ERROR, "Invalid software decoding pixel format specified");
         return AVERROR(EINVAL);
     }
 
-    if (s->auto_hwaccel && (s->filters || s->autorotate || s->export_mvs)) {
+    if (o->auto_hwaccel && (o->filters || o->autorotate || o->export_mvs)) {
         LOG(s, WARNING, "Filters ('%s'), autorotate (%d), or export_mvs (%d) settings "
             "are set but hwaccel is enabled, disabling auto_hwaccel so these "
-            "options are honored", s->filters, s->autorotate, s->export_mvs);
-        s->auto_hwaccel = 0;
+            "options are honored", o->filters, o->autorotate, o->export_mvs);
+        o->auto_hwaccel = 0;
     }
 
     LOG(s, INFO, "avselect:%d skip:%f trim_duration:%f "
         "dist_time_seek_trigger:%f queues:[%d %d %d] filters:'%s'",
-        s->avselect, s->skip, s->trim_duration,
-        s->dist_time_seek_trigger,
-        s->max_nb_packets, s->max_nb_frames, s->max_nb_sink,
-        s->filters ? s->filters : "");
+        o->avselect, o->skip, o->trim_duration,
+        o->dist_time_seek_trigger,
+        o->max_nb_packets, o->max_nb_frames, o->max_nb_sink,
+        o->filters ? o->filters : "");
 
-    s->skip64 = TIME2INT64(s->skip);
-    s->dist_time_seek_trigger64 = TIME2INT64(s->dist_time_seek_trigger);
-    s->trim_duration64 = s->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(s->trim_duration);
+    o->skip64 = TIME2INT64(o->skip);
+    o->dist_time_seek_trigger64 = TIME2INT64(o->dist_time_seek_trigger);
+    o->trim_duration64 = o->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->trim_duration);
 
     TRACE(s, "rescaled values: skip=%s dist:%s dur:%s",
-          PTS2TIMESTR(s->skip64),
-          PTS2TIMESTR(s->dist_time_seek_trigger64),
-          PTS2TIMESTR(s->trim_duration64));
+          PTS2TIMESTR(o->skip64),
+          PTS2TIMESTR(o->dist_time_seek_trigger64),
+          PTS2TIMESTR(o->trim_duration64));
 
     av_assert0(!s->actx);
     s->actx = async_alloc_context();
     if (!s->actx)
         return AVERROR(ENOMEM);
 
-    ret = async_init(s->actx, s);
+    ret = async_init(s->actx, s->log_ctx, s->filename, &s->opts);
     if (ret < 0)
         return ret;
 
@@ -332,6 +355,7 @@ static int configure_context(struct sxplayer_ctx *s)
 static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 {
     struct sxplayer_frame *ret = NULL;
+    struct sxplayer_opts *o = &s->opts;
     AVFrameSideData *sd;
 
     if (!frame) {
@@ -376,8 +400,8 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->data = frame->data[0];
     ret->linesize = frame->linesize[0];
     ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
-    if (s->avselect == SXPLAYER_SELECT_VIDEO ||
-        (s->avselect == SXPLAYER_SELECT_AUDIO && s->audio_texture)) {
+    if (o->avselect == SXPLAYER_SELECT_VIDEO ||
+        (o->avselect == SXPLAYER_SELECT_AUDIO && o->audio_texture)) {
         if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
             ret->data = frame->data[3];
 #if HAVE_MEDIACODEC_HWACCEL
@@ -395,7 +419,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 
     LOG(s, DEBUG, "return %dx%d frame @ ts=%s [max:%s]",
         frame->width, frame->height, PTS2TIMESTR(frame_ts),
-        PTS2TIMESTR(s->skip64 + s->trim_duration64));
+        PTS2TIMESTR(o->skip64 + o->trim_duration64));
 end:
     END_FUNC(MAX_SYNC_OP_TIME);
     return ret;
@@ -473,6 +497,7 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
 {
     int ret;
+    struct sxplayer_opts *o = &s->opts;
 
     START_FUNC_T("SEEK", reqt);
 
@@ -483,10 +508,10 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
     av_frame_free(&s->cached_frame);
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
 
-    if (s->trim_duration64 == AV_NOPTS_VALUE)
-        s->trim_duration64 = async_probe_duration(s->actx);
+    if (o->trim_duration64 == AV_NOPTS_VALUE)
+        o->trim_duration64 = async_probe_duration(s->actx);
 
-    ret = async_seek(s->actx, get_media_time(s, TIME2INT64(reqt)));
+    ret = async_seek(s->actx, get_media_time(o, TIME2INT64(reqt)));
     END_FUNC(MAX_ASYNC_OP_TIME);
     return ret;
 }
@@ -534,6 +559,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     int ret;
     int64_t diff;
     const int64_t t64 = TIME2INT64(t);
+    struct sxplayer_opts *o = &s->opts;
 
     START_FUNC_T("GET FRAME", t);
 
@@ -555,17 +581,17 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
      * the demuxing/decoding/filtering machinery). If we're not at our first
      * sxplayer_get_frame() call then we will not enter in this block again and
      * the next checks preventing a restart will work as expected. */
-    if (s->trim_duration64 == AV_NOPTS_VALUE)
-        s->trim_duration64 = async_probe_duration(s->actx);
+    if (o->trim_duration64 == AV_NOPTS_VALUE)
+        o->trim_duration64 = async_probe_duration(s->actx);
 
-    const int64_t vt = get_media_time(s, t64);
+    const int64_t vt = get_media_time(o, t64);
     TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
 
     /* If the trim duration couldn't be evaluated, it's likely an image so
      * we will assume this is the case. In the case we already pushed a
      * picture we don't want to restart the decoding thread again so we
      * return NULL. */
-    if (!s->trim_duration64 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
+    if (!o->trim_duration64 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
         TRACE(s, "no trim duration, likely picture, and frame already returned");
         return ret_frame(s, NULL);
     }
@@ -592,9 +618,9 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
          * before we start the decoding process in order to save one seek and
          * some decoding (a seek for the initial skip, then another one soon
          * after to reach the requested time). */
-        if (!async_started(s->actx) && vt > s->skip64) {
+        if (!async_started(s->actx) && vt > o->skip64) {
             TRACE(s, "no prefetch, but requested time (%s) beyond initial skip (%s)",
-                  PTS2TIMESTR(vt), PTS2TIMESTR(s->skip64));
+                  PTS2TIMESTR(vt), PTS2TIMESTR(o->skip64));
             async_seek(s->actx, vt);
         }
 
@@ -633,13 +659,13 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         return ret_frame(s, candidate);
 
     /* Check if a seek is needed */
-    if (diff < 0 || diff > s->dist_time_seek_trigger64) {
+    if (diff < 0 || diff > o->dist_time_seek_trigger64) {
         if (diff < 0)
             TRACE(s, "diff %s [%"PRId64"] < 0 request backward seek", PTS2TIMESTR(diff), diff);
         else
             TRACE(s, "diff %s > %s [%"PRId64" > %"PRId64"] request future seek",
-                  PTS2TIMESTR(diff), PTS2TIMESTR(s->dist_time_seek_trigger64),
-                  diff, s->dist_time_seek_trigger64);
+                  PTS2TIMESTR(diff), PTS2TIMESTR(o->dist_time_seek_trigger64),
+                  diff, o->dist_time_seek_trigger64);
 
         av_frame_free(&candidate);
         av_frame_free(&s->cached_frame);

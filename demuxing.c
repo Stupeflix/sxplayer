@@ -25,6 +25,8 @@
 
 #include "demuxing.h"
 #include "internal.h"
+#include "log.h"
+#include "msg.h"
 
 struct demuxing_ctx {
     void *log_ctx;
@@ -93,8 +95,8 @@ int demuxing_init(void *log_ctx,
                   struct demuxing_ctx *ctx,
                   AVThreadMessageQueue *src_queue,
                   AVThreadMessageQueue *pkt_queue,
-                  const char *filename, int avselect,
-                  int pkt_skip_mod)
+                  const char *filename,
+                  const struct sxplayer_opts *opts)
 {
     int ret;
     enum AVMediaType media_type;
@@ -103,9 +105,9 @@ int demuxing_init(void *log_ctx,
 
     ctx->src_queue = src_queue;
     ctx->pkt_queue = pkt_queue;
-    ctx->pkt_skip_mod = pkt_skip_mod;
+    ctx->pkt_skip_mod = opts->pkt_skip_mod;
 
-    switch (avselect) {
+    switch (opts->avselect) {
     case SXPLAYER_SELECT_VIDEO: media_type = AVMEDIA_TYPE_VIDEO; break;
     case SXPLAYER_SELECT_AUDIO: media_type = AVMEDIA_TYPE_AUDIO; break;
     default:
@@ -215,7 +217,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
                 LOG(ctx, INFO, "Seek in media at ts=%s", PTS2TIMESTR(seek_to));
                 ret = avformat_seek_file(ctx->fmt_ctx, -1, INT64_MIN, seek_to, seek_to, 0);
                 if (ret < 0) {
-                    async_free_message_data(&msg);
+                    msg_free_data(&msg);
                     break;
                 }
             }
@@ -223,7 +225,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
             /* Forward the message */
             ret = av_thread_message_queue_send(ctx->pkt_queue, &msg, 0);
             if (ret < 0) {
-                async_free_message_data(&msg);
+                msg_free_data(&msg);
                 break;
             }
         }

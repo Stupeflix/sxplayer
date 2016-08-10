@@ -27,6 +27,7 @@
 #include "decoding.h"
 #include "decoders.h"
 #include "internal.h"
+#include "log.h"
 
 #define BUFCOUNT_DEBUG 0
 
@@ -296,7 +297,7 @@ static uint32_t pix_fmt_ff2vt(const char *fmt_str)
     return -1;
 }
 
-static int vtdec_init(struct decoder_ctx *dec_ctx)
+static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *opts)
 {
     AVCodecContext *avctx = dec_ctx->avctx;
     struct vtdec_context *vt = dec_ctx->priv_data;
@@ -340,12 +341,12 @@ static int vtdec_init(struct decoder_ctx *dec_ctx)
 
     vt->out_w = avctx->width;
     vt->out_h = avctx->height;
-    update_dimensions(&vt->out_w, &vt->out_h, dec_ctx->max_pixels);
+    update_dimensions(&vt->out_w, &vt->out_h, opts->max_pixels);
     TRACE(dec_ctx, "dimensions: %dx%d -> %dx%d (nb pixels: %d -> %d for a max of %d)\n",
           avctx->width, avctx->height, vt->out_w, vt->out_h,
           avctx->width * avctx->height, vt->out_w * vt->out_h,
-          dec_ctx->max_pixels);
-    buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, pix_fmt_ff2vt(dec_ctx->vt_pix_fmt));
+          opts->max_pixels);
+    buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, pix_fmt_ff2vt(opts->vt_pix_fmt));
 
     decoder_cb.decompressionOutputCallback = decode_callback;
     decoder_cb.decompressionOutputRefCon   = dec_ctx;

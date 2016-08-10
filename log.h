@@ -23,6 +23,8 @@
 
 #include <libavutil/log.h>
 
+#include "sxplayer.h"
+
 /* ENABLE_DBG can be set with the build system using TRACE=yes option. It will
  * enable the compilation of the tracing logging */
 #ifndef ENABLE_DBG

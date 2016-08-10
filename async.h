@@ -24,31 +24,17 @@
 #include <stdint.h>
 
 #include "sxplayer.h"
-#include "internal.h"
-
-enum msg_type {
-    MSG_FRAME,
-    MSG_PACKET,
-    MSG_SEEK,
-    MSG_INFO,
-    MSG_START,
-    MSG_STOP,
-    MSG_SYNC,
-    NB_MSG
-};
-
-struct message {
-    void *data;
-    enum msg_type type;
-};
+#include "opts.h"
+#include "msg.h"
 
 const char *async_get_msg_type_string(enum msg_type type);
 
-void async_free_message_data(void *arg);
+void msg_free_data(void *arg);
 
 struct async_context *async_alloc_context(void);
 
-int async_init(struct async_context *actx, const struct sxplayer_ctx *s);
+int async_init(struct async_context *actx, void *log_ctx,
+               const char *filename, const struct sxplayer_opts *o);
 
 int async_start(struct async_context *actx);
 

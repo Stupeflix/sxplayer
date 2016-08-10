@@ -30,6 +30,7 @@
 
 #include "internal.h"
 #include "async.h"
+#include "log.h"
 
 #include "demuxing.h"
 #include "decoding.h"
@@ -42,6 +43,8 @@ struct info_message {
 
 struct async_context {
     void *log_ctx;
+    const char *filename;
+    const struct sxplayer_opts *o;
 
     struct demuxing_ctx  *demuxer;
     struct decoding_ctx  *decoder;
@@ -77,8 +80,6 @@ struct async_context {
     int need_sync;
 
     int playing;
-
-    const struct sxplayer_ctx *s;
 };
 
 /* Send a message to the control input and fetch from the output until we get
@@ -99,7 +100,7 @@ static int send_wait_ctl_message(struct async_context *actx,
         ret = av_thread_message_queue_recv(actx->ctl_out_queue, msg, 0);
         if (ret < 0 || msg->type == message_type)
             break;
-        async_free_message_data(msg);
+        msg_free_data(msg);
     }
     if (ret < 0)
         TRACE(actx, "couldn't get %s: %s", msg_type_str, av_err2str(ret));
@@ -147,7 +148,7 @@ static int fetch_mod_info(struct async_context *actx)
     TRACE(actx, "info fetched: %dx%d duration=%s",
           actx->info.width, actx->info.height,
           PTS2TIMESTR(actx->info.duration));
-    async_free_message_data(&msg);
+    msg_free_data(&msg);
     actx->has_info = 1;
     return 0;
 }
@@ -158,33 +159,6 @@ struct async_context *async_alloc_context(void)
     if (!actx)
         return NULL;
     return actx;
-}
-
-void async_free_message_data(void *arg)
-{
-    struct message *msg = arg;
-
-    switch (msg->type) {
-    case MSG_FRAME: {
-        AVFrame *frame = msg->data;
-        av_frame_free(&frame);
-        break;
-    }
-    case MSG_PACKET:
-        av_packet_unref(msg->data);
-        av_freep(&msg->data);
-        break;
-    case MSG_SEEK:
-    case MSG_INFO:
-        av_freep(&msg->data);
-        break;
-    case MSG_START:
-    case MSG_STOP:
-    case MSG_SYNC:
-        break;
-    default:
-        av_assert0(0);
-    }
 }
 
 int64_t async_probe_duration(struct async_context *actx)
@@ -294,25 +268,10 @@ int async_stop(struct async_context *actx)
     return 0;
 }
 
-static char *update_filters_str(char *filters, const char *append)
-{
-    char *str;
-
-    if (filters) {
-        str = av_asprintf("%s,%s", filters, append);
-        av_free(filters);
-    } else {
-        str = av_strdup(append);
-    }
-    return str;
-}
-
 static int initialize_modules_once(struct async_context *actx,
-                                   const struct sxplayer_ctx *s)
+                                   const struct sxplayer_opts *opts)
 {
     int ret;
-    char *filters;
-    AVCodecParameters *par;
 
     if (actx->modules_initialized)
         return 0;
@@ -328,69 +287,23 @@ static int initialize_modules_once(struct async_context *actx,
 
     TRACE(actx, "initialize modules");
 
-    filters = av_strdup(s->filters);
-    par = avcodec_parameters_alloc();
-    if ((s->filters && !filters) || !par) {
-        ret = AVERROR(ENOMEM);
-        goto end;
-    }
-
-    /* Demuxer */
-    ret = demuxing_init(actx->log_ctx,
-                        actx->demuxer,
-                        actx->src_queue, actx->pkt_queue,
-                        s->filename, s->avselect,
-                        s->pkt_skip_mod);
-    if (ret < 0)
-        goto end;
-
-    /* Decoder */
-    ret = decoding_init(actx->log_ctx,
-                        actx->decoder,
-                        actx->pkt_queue, actx->frames_queue,
-                        demuxing_get_stream(actx->demuxer),
-                        s->auto_hwaccel,
-                        s->export_mvs,
-                        s->opaque ? *(void **)s->opaque : NULL,
-                        s->max_pixels,
-                        s->vt_pix_fmt);
-    if (ret < 0)
-        goto end;
-
-    /* Filterer */
-    if (s->autorotate) {
-        const double theta = demuxing_probe_rotation(actx->demuxer);
-
-        if (fabs(theta - 90) < 1.0)
-            filters = update_filters_str(filters, "transpose=clock");
-        else if (fabs(theta - 180) < 1.0)
-            filters = update_filters_str(filters, "vflip,hflip");
-        else if (fabs(theta - 270) < 1.0)
-            filters = update_filters_str(filters, "transpose=cclock");
-        TRACE(actx, "update filtergraph to: %s", filters);
-    }
-
-    const int64_t max_pts = s->trim_duration64 >= 0 ? s->skip64 + s->trim_duration64
-                                                    : AV_NOPTS_VALUE;
-    const AVCodecContext *avctx = decoding_get_avctx(actx->decoder);
-
-    ret = avcodec_parameters_from_context(par, avctx);
-    if (ret < 0)
-        goto end;
-
-    ret = filtering_init(actx->log_ctx,
-                         actx->filterer,
-                         actx->frames_queue, actx->sink_queue,
-                         par, filters, s->sw_pix_fmt,
-                         max_pts, s->max_pixels, s->audio_texture);
-    if (ret < 0)
-        goto end;
+    if ((ret = demuxing_init(actx->log_ctx,
+                             actx->demuxer,
+                             actx->src_queue, actx->pkt_queue,
+                             actx->filename, opts)) < 0 ||
+        (ret = decoding_init(actx->log_ctx,
+                             actx->decoder,
+                             actx->pkt_queue, actx->frames_queue,
+                             demuxing_get_stream(actx->demuxer), opts)) < 0 ||
+        (ret = filtering_init(actx->log_ctx,
+                              actx->filterer,
+                              actx->frames_queue, actx->sink_queue,
+                              decoding_get_avctx(actx->decoder),
+                              demuxing_probe_rotation(actx->demuxer), opts)) < 0)
+        return ret;
 
     actx->modules_initialized = 1;
-end:
-    av_freep(&filters);
-    avcodec_parameters_free(&par);
-    return ret;
+    return 0;
 }
 
 static int alloc_msg_queue(AVThreadMessageQueue **q, int n)
@@ -398,7 +311,7 @@ static int alloc_msg_queue(AVThreadMessageQueue **q, int n)
     int ret = av_thread_message_queue_alloc(q, n, sizeof(struct message));
     if (ret < 0)
         return ret;
-    av_thread_message_queue_set_free_func(*q, async_free_message_data);
+    av_thread_message_queue_set_free_func(*q, msg_free_data);
     return 0;
 }
 
@@ -469,10 +382,11 @@ static int op_start(struct async_context *actx)
 {
     struct message msg;
     int64_t seek_to = AV_NOPTS_VALUE;
+    const struct sxplayer_opts *o = actx->o;
 
     TRACE(actx, "exec");
 
-    int ret = initialize_modules_once(actx, actx->s);
+    int ret = initialize_modules_once(actx, o);
     if (ret < 0) {
         LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
         return ret;
@@ -481,9 +395,9 @@ static int op_start(struct async_context *actx)
     if (actx->request_seek != AV_NOPTS_VALUE) {
         TRACE(actx, "request seek is set to %s", PTS2TIMESTR(actx->request_seek));
         seek_to = actx->request_seek;
-    } else if (actx->s->skip64) {
-        TRACE(actx, "skip is set to %s", PTS2TIMESTR(actx->s->skip64));
-        seek_to = actx->s->skip64;
+    } else if (o->skip64) {
+        TRACE(actx, "skip is set to %s", PTS2TIMESTR(actx->o->skip64));
+        seek_to = o->skip64;
     }
 
     if (seek_to != AV_NOPTS_VALUE) {
@@ -498,7 +412,7 @@ static int op_start(struct async_context *actx)
         if (ret < 0) {
             LOG(actx, ERROR, "Unable to queue a seek message to the demuxer, shouldn't happen!");
             av_thread_message_queue_set_err_recv(actx->src_queue, ret);
-            async_free_message_data(&msg);
+            msg_free_data(&msg);
             return ret;
         }
 
@@ -523,7 +437,7 @@ static int op_start(struct async_context *actx)
                 av_thread_message_queue_set_err_send(actx->sink_queue, ret);
                 return ret;
             }
-            async_free_message_data(&msg);
+            msg_free_data(&msg);
         } while (msg.type != MSG_SEEK);
     }
 
@@ -532,25 +446,25 @@ static int op_start(struct async_context *actx)
 
 static int op_info(struct async_context *actx, struct message *msg)
 {
-    const struct sxplayer_ctx *s = actx->s;
+    const struct sxplayer_opts *o = actx->o;
 
     // We need the demuxer to be initialized to be able to call demuxing_*()
-    int ret = initialize_modules_once(actx, s);
+    int ret = initialize_modules_once(actx, o);
     if (ret < 0) {
         LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
         return ret;
     }
 
-    int64_t duration = s->trim_duration64 >= 0 ? s->skip64 + s->trim_duration64
+    int64_t duration = o->trim_duration64 >= 0 ? o->skip64 + o->trim_duration64
                                                : AV_NOPTS_VALUE;
     const int64_t probe_duration = demuxing_probe_duration(actx->demuxer);
 
     av_assert0(AV_NOPTS_VALUE < 0);
     if (probe_duration != AV_NOPTS_VALUE && (duration <= 0 ||
                                              probe_duration < duration)) {
-        LOG(s, INFO, "fix trim_duration from %f to %f",
-              duration       * av_q2d(AV_TIME_BASE_Q),
-              probe_duration * av_q2d(AV_TIME_BASE_Q));
+        LOG(actx, INFO, "fix trim_duration from %f to %f",
+            duration       * av_q2d(AV_TIME_BASE_Q),
+            probe_duration * av_q2d(AV_TIME_BASE_Q));
         duration = probe_duration;
     }
     if (duration == AV_NOPTS_VALUE)
@@ -598,7 +512,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
     actx->request_seek = *(int64_t *)seek_msg->data;
 
     if (!actx->modules_initialized || !actx->playing) {
-        async_free_message_data(seek_msg);
+        msg_free_data(seek_msg);
         return 0;
     }
 
@@ -607,7 +521,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
         /* If this errors out, it means the modules ended by themselves (no
          * stop requested by the user), so we delay the seek, reset the workers
          * and start them again */
-        async_free_message_data(seek_msg);
+        msg_free_data(seek_msg);
         join_reset_workers(actx);
         return op_start(actx);
     }
@@ -621,7 +535,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
             join_reset_workers(actx);
             return op_start(actx);
         }
-        async_free_message_data(seek_msg);
+        msg_free_data(seek_msg);
         if (seek_msg->type == MSG_SEEK)
             break;
     }
@@ -718,7 +632,7 @@ static void *control_thread(void *arg)
         if (ret < 0) {
             LOG(actx, ERROR, "Unable to honor %s message: %s",
                 async_get_msg_type_string(type), av_err2str(ret));
-            async_free_message_data(&msg);
+            msg_free_data(&msg);
             av_thread_message_queue_set_err_recv(actx->ctl_out_queue, ret);
             av_thread_message_queue_set_err_send(actx->ctl_in_queue, ret);
             op_stop(actx);
@@ -735,7 +649,7 @@ static void *control_thread(void *arg)
                 // shouldn't happen
                 LOG(actx, ERROR, "Unable to forward %s message to the output async queue: %s",
                     async_get_msg_type_string(type), av_err2str(ret));
-                async_free_message_data(&msg);
+                msg_free_data(&msg);
             }
         }
     }
@@ -750,22 +664,24 @@ static void *control_thread(void *arg)
     return NULL;
 }
 
-int async_init(struct async_context *actx, const struct sxplayer_ctx *s)
+int async_init(struct async_context *actx, void *log_ctx,
+               const char *filename, const struct sxplayer_opts *o)
 {
     int ret;
 
     av_assert0(!actx->control_started);
 
-    actx->log_ctx = s->log_ctx;
-    actx->s = s;
-    actx->thread_stack_size = s->thread_stack_size;
+    actx->log_ctx = log_ctx;
+    actx->filename = filename;
+    actx->o = o;
+    actx->thread_stack_size = o->thread_stack_size;
     actx->request_seek = AV_NOPTS_VALUE;
 
     TRACE(actx, "alloc modules queues");
     if ((ret = alloc_msg_queue(&actx->src_queue,    1))                 < 0 ||
-        (ret = alloc_msg_queue(&actx->pkt_queue,    s->max_nb_packets)) < 0 ||
-        (ret = alloc_msg_queue(&actx->frames_queue, s->max_nb_frames))  < 0 ||
-        (ret = alloc_msg_queue(&actx->sink_queue,   s->max_nb_sink))    < 0)
+        (ret = alloc_msg_queue(&actx->pkt_queue,    o->max_nb_packets)) < 0 ||
+        (ret = alloc_msg_queue(&actx->frames_queue, o->max_nb_frames))  < 0 ||
+        (ret = alloc_msg_queue(&actx->sink_queue,   o->max_nb_sink))    < 0)
         return ret;
 
     TRACE(actx, "allocate async queues");

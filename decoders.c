@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "internal.h"
 #include "decoders.h"
+#include "log.h"
 
 struct decoder_ctx *decoder_alloc(void)
 {
@@ -39,16 +39,12 @@ int decoder_init(void *log_ctx,
                  const struct decoder *dec,
                  const AVStream *stream,
                  struct decoding_ctx *decoding_ctx,
-                 void *opaque,
-                 int max_pixels,
-                 const char *vt_pix_fmt)
+                 const struct sxplayer_opts *opts)
 {
     int ret;
 
     ctx->log_ctx = log_ctx;
-    ctx->opaque = opaque;
-    ctx->max_pixels = max_pixels;
-    ctx->vt_pix_fmt = vt_pix_fmt;
+    ctx->opaque = opts->opaque ? *(void **)opts->opaque : NULL;
 
     TRACE(ctx, "try to initialize private decoder");
 
@@ -62,7 +58,7 @@ int decoder_init(void *log_ctx,
     // context) can be destroyed any time after the decoder_init() returns
     avcodec_parameters_to_context(ctx->avctx, stream->codecpar);
 
-    ret = dec->init(ctx);
+    ret = dec->init(ctx, opts);
     if (ret < 0) {
         if (dec->uninit)
             dec->uninit(ctx);

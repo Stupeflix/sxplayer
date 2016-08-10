@@ -31,6 +31,8 @@
 #include "sxplayer.h"
 #include "internal.h"
 #include "filtering.h"
+#include "log.h"
+#include "msg.h"
 
 #define AUDIO_NBITS      10
 #define AUDIO_NBSAMPLES  (1<<(AUDIO_NBITS))
@@ -313,38 +315,43 @@ static AVFrame *get_audio_frame(void)
     return frame;
 }
 
+static char *update_filters_str(char *filters, const char *append)
+{
+    char *str;
+
+    if (filters) {
+        str = av_asprintf("%s,%s", filters, append);
+        av_free(filters);
+    } else {
+        str = av_strdup(append);
+    }
+    return str;
+}
+
 int filtering_init(void *log_ctx,
                    struct filtering_ctx *ctx,
                    AVThreadMessageQueue *in_queue,
                    AVThreadMessageQueue *out_queue,
-                   const AVCodecParameters *codecpar,
-                   const char *filters,
-                   int sw_pix_fmt,
-                   int64_t max_pts,
-                   int max_pixels,
-                   int audio_texture)
+                   const AVCodecContext *avctx,
+                   double media_rotation,
+                   const struct sxplayer_opts *o)
 {
     int ret;
 
     ctx->log_ctx = log_ctx;
     ctx->in_queue  = in_queue;
     ctx->out_queue = out_queue;
-    ctx->sw_pix_fmt = sw_pix_fmt;
-    ctx->max_pts = max_pts;
-    ctx->max_pixels = max_pixels;
-    ctx->audio_texture = audio_texture;
+    ctx->sw_pix_fmt = o->sw_pix_fmt;
+    ctx->max_pixels = o->max_pixels;
+    ctx->audio_texture = o->audio_texture;
+    ctx->max_pts = o->trim_duration64 >= 0 ? o->skip64 + o->trim_duration64
+                                           : AV_NOPTS_VALUE;
 
-    if (filters) {
-        ctx->filters = av_strdup(filters);
-        if (!ctx->filters)
-            return AVERROR(ENOMEM);
-    }
-
-    ret = avcodec_parameters_copy(ctx->codecpar, codecpar);
+    ret = avcodec_parameters_from_context(ctx->codecpar, avctx);
     if (ret < 0)
         return ret;
 
-    if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
+    if (ctx->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
         int i;
 
         ctx->audio_texture_frame = get_audio_frame();
@@ -372,6 +379,22 @@ int filtering_init(void *log_ctx,
         ctx->rdft_data[1] = av_mallocz_array(AUDIO_NBSAMPLES, sizeof(*ctx->rdft_data[1]));
         if (!ctx->rdft_data[0] || !ctx->rdft_data[1])
             return AVERROR(ENOMEM);
+    }
+
+    if (o->filters) {
+        ctx->filters = av_strdup(o->filters);
+        if (!ctx->filters)
+            return AVERROR(ENOMEM);
+    }
+
+    if (ctx->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && o->autorotate) {
+        if (fabs(media_rotation - 90) < 1.0)
+            ctx->filters = update_filters_str(ctx->filters, "transpose=clock");
+        else if (fabs(media_rotation - 180) < 1.0)
+            ctx->filters = update_filters_str(ctx->filters, "vflip,hflip");
+        else if (fabs(media_rotation - 270) < 1.0)
+            ctx->filters = update_filters_str(ctx->filters, "transpose=cclock");
+        TRACE(ctx, "update filtergraph to: %s", ctx->filters);
     }
 
     return 0;
@@ -514,7 +537,7 @@ void filtering_run(struct filtering_ctx *ctx)
             av_thread_message_flush(ctx->out_queue);
             ret = av_thread_message_queue_send(ctx->out_queue, &msg, 0);
             if (ret < 0) {
-                async_free_message_data(&msg);
+                msg_free_data(&msg);
                 break;
             }
             continue;

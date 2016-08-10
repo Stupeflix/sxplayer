@@ -26,6 +26,8 @@
 #include <libavutil/frame.h>
 #include <libavutil/threadmessage.h>
 
+#include "opts.h"
+
 struct decoding_ctx *decoding_alloc(void);
 
 int decoding_init(void *log_ctx,
@@ -33,11 +35,7 @@ int decoding_init(void *log_ctx,
                   AVThreadMessageQueue *pkt_queue,
                   AVThreadMessageQueue *frames_queue,
                   const AVStream *stream,
-                  int auto_hwaccel,
-                  int export_mvs,
-                  void *opaque,
-                  int max_pixels,
-                  const char *vt_pix_fmt);
+                  const struct sxplayer_opts *opts);
 
 const AVCodecContext *decoding_get_avctx(struct decoding_ctx *ctx);
 

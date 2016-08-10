@@ -21,7 +21,8 @@
 #include <pthread.h>
 #include <stdarg.h>
 #include <libavutil/time.h>
-#include "internal.h"
+
+#include "log.h"
 
 struct log_ctx {
     void *avlog;
