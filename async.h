@@ -22,7 +22,6 @@
 #define ASYNC_H
 
 #include <stdint.h>
-#include <libavutil/rational.h>
 
 #include "sxplayer.h"
 #include "internal.h"
