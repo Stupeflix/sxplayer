@@ -1,6 +1,7 @@
 NAME = sxplayer
 
 PROJECT_OBJS = async.o          \
+               bufcount.o       \
                decoder_ffmpeg.o \
                decoders.o       \
                log.o            \

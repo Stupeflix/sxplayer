@@ -154,6 +154,7 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
  *   max_pixels               integer   maximum number of pixels per frame
  *   audio_texture            integer   output audio as a video texture
  *   vt_pix_fmt               string    VideoToolbox pixel format in the CVPixelBufferRef ("bgra" or "nv12")
+ *   max_user_frames          integer   maximum number of simultaneous frames you may hold as a user. The actual number of frames internally will be a bit larger. Warning: may cause deadlock if you don't release all your frames. 0 is the default and means no limit.
  */
 int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
 
