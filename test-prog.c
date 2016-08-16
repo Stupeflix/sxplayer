@@ -642,6 +642,9 @@ int main(int ac, char **av)
     if (run_misc_events(av[1]) < 0)
         return -1;
 
+    if (run_misc_events(av[2]) < 0)
+        return -1;
+
     if (run_audio_test(av[1]) < 0)
         return -1;
 

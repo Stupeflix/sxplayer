@@ -38,8 +38,6 @@ int async_init(struct async_context *actx, void *log_ctx,
 
 int async_start(struct async_context *actx);
 
-int64_t async_probe_duration(struct async_context *actx);
-
 int async_fetch_info(struct async_context *actx, struct sxplayer_info *info);
 
 int async_seek(struct async_context *actx, int64_t ts);

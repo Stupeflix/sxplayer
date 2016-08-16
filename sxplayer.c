@@ -222,7 +222,6 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
     s->first_ts             = AV_NOPTS_VALUE;
     s->last_frame_poped_ts  = AV_NOPTS_VALUE;
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
-    s->opts.trim_duration64 = AV_NOPTS_VALUE;
 
     av_assert0(!s->context_configured);
     return s;
@@ -251,9 +250,7 @@ void sxplayer_free(struct sxplayer_ctx **ss)
  */
 static int64_t get_media_time(const struct sxplayer_opts *o, int64_t t)
 {
-    if (!o->trim_duration64)
-        return 0;
-    return o->skip64 + FFMIN(t, o->trim_duration64);
+    return o->skip64 + (o->trim_duration64 == AV_NOPTS_VALUE ? t : FFMIN(t, o->trim_duration64));
 }
 
 static int set_context_fields(struct sxplayer_ctx *s)
@@ -417,9 +414,8 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
         ret->pix_fmt = smp_fmts_ff2sx(frame->format);
     }
 
-    LOG(s, DEBUG, "return %dx%d frame @ ts=%s [max:%s]",
-        frame->width, frame->height, PTS2TIMESTR(frame_ts),
-        PTS2TIMESTR(o->skip64 + o->trim_duration64));
+    LOG(s, DEBUG, "return %dx%d frame @ ts=%s",
+        frame->width, frame->height, PTS2TIMESTR(frame_ts));
 end:
     END_FUNC(MAX_SYNC_OP_TIME);
     return ret;
@@ -508,9 +504,6 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
     av_frame_free(&s->cached_frame);
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
 
-    if (o->trim_duration64 == AV_NOPTS_VALUE)
-        o->trim_duration64 = async_probe_duration(s->actx);
-
     ret = async_seek(s->actx, get_media_time(o, TIME2INT64(reqt)));
     END_FUNC(MAX_ASYNC_OP_TIME);
     return ret;
@@ -576,25 +569,8 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         return ret_frame(s, NULL);
     }
 
-    /* In this case, the decoding thread wasn't ever started once but we need
-     * this information at least once, so we probe [async] (which will start
-     * the demuxing/decoding/filtering machinery). If we're not at our first
-     * sxplayer_get_frame() call then we will not enter in this block again and
-     * the next checks preventing a restart will work as expected. */
-    if (o->trim_duration64 == AV_NOPTS_VALUE)
-        o->trim_duration64 = async_probe_duration(s->actx);
-
     const int64_t vt = get_media_time(o, t64);
     TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
-
-    /* If the trim duration couldn't be evaluated, it's likely an image so
-     * we will assume this is the case. In the case we already pushed a
-     * picture we don't want to restart the decoding thread again so we
-     * return NULL. */
-    if (!o->trim_duration64 && s->last_pushed_frame_ts != AV_NOPTS_VALUE) {
-        TRACE(s, "no trim duration, likely picture, and frame already returned");
-        return ret_frame(s, NULL);
-    }
 
     if (s->last_ts != AV_NOPTS_VALUE && vt >= s->last_ts &&
         s->last_pushed_frame_ts == s->last_ts) {
@@ -667,12 +643,19 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
                   PTS2TIMESTR(diff), PTS2TIMESTR(o->dist_time_seek_trigger64),
                   diff, o->dist_time_seek_trigger64);
 
-        av_frame_free(&candidate);
+        /* If we never returned a frame and got a candidate, we do not free it
+         * immediately, because after the seek we might not actually get
+         * anything. Typical case: images where we request a random timestamp. */
+        if (diff > 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE)
+            av_frame_free(&candidate);
+
         av_frame_free(&s->cached_frame);
 
         ret = async_seek(s->actx, vt);
-        if (ret < 0)
+        if (ret < 0) {
+            av_frame_free(&candidate);
             return ret_frame(s, NULL);
+        }
     }
 
     /* Consume frames until we get a frame as accurate as possible */

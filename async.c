@@ -161,14 +161,6 @@ struct async_context *async_alloc_context(void)
     return actx;
 }
 
-int64_t async_probe_duration(struct async_context *actx)
-{
-    int ret = fetch_mod_info(actx);
-    if (ret < 0)
-        return 0;
-    return actx->info.duration;
-}
-
 int async_fetch_info(struct async_context *actx, struct sxplayer_info *info)
 {
     int ret = fetch_mod_info(actx);

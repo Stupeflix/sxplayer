@@ -344,8 +344,8 @@ int filtering_init(void *log_ctx,
     ctx->sw_pix_fmt = o->sw_pix_fmt;
     ctx->max_pixels = o->max_pixels;
     ctx->audio_texture = o->audio_texture;
-    ctx->max_pts = o->trim_duration64 >= 0 ? o->skip64 + o->trim_duration64
-                                           : AV_NOPTS_VALUE;
+    ctx->max_pts = o->trim_duration64 > 0 ? o->skip64 + o->trim_duration64
+                                          : AV_NOPTS_VALUE;
 
     ret = avcodec_parameters_from_context(ctx->codecpar, avctx);
     if (ret < 0)
