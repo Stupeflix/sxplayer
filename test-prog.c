@@ -602,6 +602,13 @@ static int run_misc_events(const char *filename)
         sxplayer_free(&s);
         return -1;
     }
+    sxplayer_release_frame(f);
+    sxplayer_stop(s);
+    f = sxplayer_get_frame(s, 83.5);
+    if (!f) {
+        sxplayer_free(&s);
+        return -1;
+    }
     sxplayer_free(&s);
     sxplayer_release_frame(f);
     return 0;

@@ -516,6 +516,7 @@ int sxplayer_stop(struct sxplayer_ctx *s)
     START_FUNC("STOP");
 
     av_frame_free(&s->cached_frame);
+    s->last_pushed_frame_ts = AV_NOPTS_VALUE;
 
     ret = configure_context(s);
     if (ret < 0)
