@@ -218,9 +218,16 @@ static int create_seek_msg(struct message *msg, int64_t ts)
 
 int async_seek(struct async_context *actx, int64_t ts)
 {
-    TRACE(actx, "--> send seek msg @ %s", PTS2TIMESTR(ts));
     struct message msg;
-    int ret = create_seek_msg(&msg, ts);
+    int ret = fetch_mod_info(actx);
+    if (ret < 0)
+        return ret;
+    if (!actx->info.duration) {
+        TRACE(actx, "media has no duration, ignore seek request");
+        return 0;
+    }
+    TRACE(actx, "--> send seek msg @ %s", PTS2TIMESTR(ts));
+    ret = create_seek_msg(&msg, ts);
     if (ret < 0)
         return ret;
     ret = av_thread_message_queue_send(actx->ctl_in_queue, &msg, 0);

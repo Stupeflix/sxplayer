@@ -207,7 +207,9 @@ void demuxing_run(struct demuxing_ctx *ctx)
             if (ret < 0)
                 break;
 
-            if (msg.type == MSG_SEEK && !ctx->is_image) {
+            if (msg.type == MSG_SEEK) {
+                av_assert0(!ctx->is_image);
+
                 /* Make later modules stop working ASAP */
                 av_thread_message_flush(ctx->pkt_queue);
 
