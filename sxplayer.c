@@ -352,7 +352,7 @@ static int configure_context(struct sxplayer_ctx *s)
 static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 {
     struct sxplayer_frame *ret = NULL;
-    struct sxplayer_opts *o = &s->opts;
+    const struct sxplayer_opts *o = &s->opts;
     AVFrameSideData *sd;
 
     if (!frame) {
@@ -493,7 +493,7 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
 int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
 {
     int ret;
-    struct sxplayer_opts *o = &s->opts;
+    const struct sxplayer_opts *o = &s->opts;
 
     START_FUNC_T("SEEK", reqt);
 
@@ -553,7 +553,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     int ret;
     int64_t diff;
     const int64_t t64 = TIME2INT64(t);
-    struct sxplayer_opts *o = &s->opts;
+    const struct sxplayer_opts *o = &s->opts;
 
     START_FUNC_T("GET FRAME", t);
 
