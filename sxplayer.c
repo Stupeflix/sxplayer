@@ -497,12 +497,12 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
 
     START_FUNC_T("SEEK", reqt);
 
+    av_frame_free(&s->cached_frame);
+    s->last_pushed_frame_ts = AV_NOPTS_VALUE;
+
     ret = configure_context(s);
     if (ret < 0)
         return ret;
-
-    av_frame_free(&s->cached_frame);
-    s->last_pushed_frame_ts = AV_NOPTS_VALUE;
 
     ret = async_seek(s->actx, get_media_time(o, TIME2INT64(reqt)));
     END_FUNC(MAX_ASYNC_OP_TIME);
