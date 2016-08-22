@@ -340,7 +340,7 @@ static int configure_context(struct sxplayer_ctx *s)
         LOG(s, WARNING, "getting the frame took %fs!", exect);                                              \
                                                                                                             \
     if (LOG_LEVEL >= AV_LOG_WARNING)                                                                        \
-        LOG(s, DEBUG, "<<< %s executed in in %fs", s->cur_func_name, exect);                               \
+        LOG(s, DEBUG, "<<< %s executed in %fs", s->cur_func_name, exect);                                   \
 } while (0)
 
 #define MAX_ASYNC_OP_TIME (10/1000.)
