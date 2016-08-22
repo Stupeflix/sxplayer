@@ -594,7 +594,7 @@ static void *control_thread(void *arg)
         ret = av_thread_message_queue_recv(actx->ctl_in_queue, &msg, 0);
         if (ret < 0) {
             if (ret != AVERROR_EXIT) {
-                LOG(actx, ERROR, "Unable while pulling a message "
+                LOG(actx, ERROR, "Unable to pull a message "
                     "from the async queue: %s", av_err2str(ret));
                 continue;
             }
