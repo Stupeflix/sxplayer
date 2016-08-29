@@ -27,6 +27,7 @@
 
 #include "mod_decoding.h"
 #include "decoders.h"
+#include "internal.h"
 #include "log.h"
 
 #if HAVE_MEDIACODEC_HWACCEL
