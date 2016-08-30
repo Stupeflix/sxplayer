@@ -632,10 +632,7 @@ static void *control_thread(void *arg)
             LOG(actx, ERROR, "Unable to honor %s message: %s",
                 async_get_msg_type_string(type), av_err2str(ret));
             msg_free_data(&msg);
-            av_thread_message_queue_set_err_recv(actx->ctl_out_queue, ret);
-            av_thread_message_queue_set_err_send(actx->ctl_in_queue, ret);
-            op_stop(actx);
-            continue;
+            break;
         }
 
         // Forward the message to the out queue now that it has been processed
