@@ -87,7 +87,8 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
     ctx->use_hwaccel = 0;
     av_opt_set_int(avctx, "refcounted_frames", 1, 0);
 
-    if (hw && avctx->codec_id == AV_CODEC_ID_H264) {
+    if (hw) {
+        if (avctx->codec_id == AV_CODEC_ID_H264) {
         AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
         if (!codec)
             return AVERROR_DECODER_NOT_FOUND;
@@ -98,6 +99,9 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
         avctx->thread_count = 1;
 #endif
         dec = codec;
+        } else {
+            return AVERROR_DECODER_NOT_FOUND;
+        }
     }
 
     TRACE(ctx, "codec open");
