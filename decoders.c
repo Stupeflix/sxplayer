@@ -19,6 +19,7 @@
  */
 
 #include "decoders.h"
+#include "internal.h"
 #include "log.h"
 
 struct decoder_ctx *decoder_alloc(void)
@@ -57,6 +58,11 @@ int decoder_init(void *log_ctx,
     // We need to copy the stream information because the stream (and its codec
     // context) can be destroyed any time after the decoder_init() returns
     avcodec_parameters_to_context(ctx->avctx, stream->codecpar);
+
+    // The MediaCodec decoder needs pkt_timebase in order to rescale the
+    // timestamps that will be forwarded to the output surface
+    if (HAVE_MEDIACODEC_HWACCEL && !strcmp(dec->name, "ffmpeg_hw"))
+        av_codec_set_pkt_timebase(ctx->avctx, stream->time_base);
 
     ret = dec->init(ctx, opts);
     if (ret < 0) {
