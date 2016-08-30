@@ -234,6 +234,7 @@ int async_seek(struct async_context *actx, int64_t ts)
     if (ret < 0) {
         av_thread_message_queue_set_err_recv(actx->ctl_in_queue, ret);
         av_freep(&msg.data);
+        return ret;
     }
     actx->need_sync = 1;
     return 0;
