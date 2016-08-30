@@ -89,16 +89,16 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
 
     if (hw) {
         if (avctx->codec_id == AV_CODEC_ID_H264) {
-        AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
-        if (!codec)
-            return AVERROR_DECODER_NOT_FOUND;
+            AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
+            if (!codec)
+                return AVERROR_DECODER_NOT_FOUND;
 
 #if HAVE_MEDIACODEC_HWACCEL
-        avctx->opaque = ctx;
-        avctx->get_format = mediacodec_hwaccel_get_format;
-        avctx->thread_count = 1;
+            avctx->opaque = ctx;
+            avctx->get_format = mediacodec_hwaccel_get_format;
+            avctx->thread_count = 1;
 #endif
-        dec = codec;
+            dec = codec;
         } else {
             return AVERROR_DECODER_NOT_FOUND;
         }
