@@ -55,6 +55,8 @@ PCNAME  = lib$(NAME).pc
 
 OBJS += $(NAME).o $(PROJECT_OBJS)
 
+CPPFLAGS += -MMD -MP
+
 CFLAGS += -Wall -O2 -Werror=missing-prototypes -fPIC
 ifeq ($(DEBUG),yes)
 	CFLAGS += -g
@@ -68,6 +70,9 @@ LDLIBS := $(shell $(PKG_CONFIG) --libs   $(PROJECT_PKG_CONFIG_LIBS)) $(LDLIBS) $
 PROGOBJS = player.o
 TESTPROG = test-prog
 TESTOBJS = $(TESTPROG).o
+
+ALLOBJS = $(OBJS) $(PROGOBJS) $(TESTOBJS)
+ALLDEPS = $(ALLOBJS:.o=.d)
 
 $(LIBNAME): $(OBJS)
 ifeq ($(SHARED),yes)
@@ -90,7 +95,7 @@ $(TESTPROG): $(OBJS) $(TESTOBJS)
 all: $(LIBNAME) $(PCNAME) $(NAME)
 
 clean:
-	$(RM) lib$(NAME).so lib$(NAME).dylib lib$(NAME).a $(NAME).hpp $(NAME) $(OBJS) $(TESTPROG) $(TESTOBJS) $(PROGOBJS) $(PCNAME)
+	$(RM) lib$(NAME).so lib$(NAME).dylib lib$(NAME).a $(NAME).hpp $(NAME) $(OBJS) $(ALLDEPS) $(TESTPROG) $(TESTOBJS) $(PROGOBJS) $(PCNAME)
 $(PCNAME): $(PCNAME).tpl
 ifeq ($(SHARED),yes)
 	sed -e "s#PREFIX#$(PREFIX)#;s#DEP_LIBS##;s#DEP_PRIVATE_LIBS#$(LDLIBS)#" $^ > $@
@@ -122,3 +127,5 @@ testmem: $(TESTPROG)
 	valgrind --leak-check=full ./$(TESTPROG) media.mkv image.jpg
 
 .PHONY: all test clean install uninstall
+
+-include $(ALLDEPS)
