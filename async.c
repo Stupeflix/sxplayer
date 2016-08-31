@@ -483,9 +483,27 @@ static int op_info(struct async_context *actx, struct message *msg)
     return 0;
 }
 
-static void join_reset_workers(struct async_context *actx)
+static void kill_join_reset_workers(struct async_context *actx)
 {
-    TRACE(actx, "waiting for async to end");
+    TRACE(actx, "prevent modules from feeding and reading from the queues");
+    av_thread_message_queue_set_err_send(actx->src_queue,    AVERROR_EXIT);
+    av_thread_message_queue_set_err_send(actx->pkt_queue,    AVERROR_EXIT);
+    av_thread_message_queue_set_err_send(actx->frames_queue, AVERROR_EXIT);
+    av_thread_message_queue_set_err_send(actx->sink_queue,   AVERROR_EXIT);
+    av_thread_message_queue_set_err_recv(actx->src_queue,    AVERROR_EXIT);
+    av_thread_message_queue_set_err_recv(actx->pkt_queue,    AVERROR_EXIT);
+    av_thread_message_queue_set_err_recv(actx->frames_queue, AVERROR_EXIT);
+    av_thread_message_queue_set_err_recv(actx->sink_queue,   AVERROR_EXIT);
+
+    // they won't fill the queues anymore, so we can empty them
+    av_thread_message_flush(actx->src_queue);
+    av_thread_message_flush(actx->pkt_queue);
+    av_thread_message_flush(actx->frames_queue);
+    av_thread_message_flush(actx->sink_queue);
+
+    // now that we are sure the threads modules will stop by themselves, we can
+    // join them
+    TRACE(actx, "waiting for modules to end");
     JOIN_MODULE_THREAD(filterer);
     JOIN_MODULE_THREAD(decoder);
     JOIN_MODULE_THREAD(demuxer);
@@ -522,7 +540,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
          * stop requested by the user), so we delay the seek, reset the workers
          * and start them again */
         msg_free_data(seek_msg);
-        join_reset_workers(actx);
+        kill_join_reset_workers(actx);
         return op_start(actx);
     }
 
@@ -532,7 +550,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
         ret = av_thread_message_queue_recv(actx->sink_queue, seek_msg, 0);
         if (ret < 0) {
             TRACE(actx, "unable to get request seek back");
-            join_reset_workers(actx);
+            kill_join_reset_workers(actx);
             return op_start(actx);
         }
         msg_free_data(seek_msg);
@@ -547,29 +565,8 @@ static void op_stop(struct async_context *actx)
 {
     TRACE(actx, "exec");
 
-    // modules must stop feeding the queues
-    av_thread_message_queue_set_err_send(actx->src_queue,    AVERROR_EXIT);
-    av_thread_message_queue_set_err_send(actx->pkt_queue,    AVERROR_EXIT);
-    av_thread_message_queue_set_err_send(actx->frames_queue, AVERROR_EXIT);
-    av_thread_message_queue_set_err_send(actx->sink_queue,   AVERROR_EXIT);
+    kill_join_reset_workers(actx);
 
-    // ...and stop reading from them
-    av_thread_message_queue_set_err_recv(actx->src_queue,    AVERROR_EXIT);
-    av_thread_message_queue_set_err_recv(actx->pkt_queue,    AVERROR_EXIT);
-    av_thread_message_queue_set_err_recv(actx->frames_queue, AVERROR_EXIT);
-    av_thread_message_queue_set_err_recv(actx->sink_queue,   AVERROR_EXIT);
-
-    // they won't fill the queues anymore, so we can empty them
-    av_thread_message_flush(actx->src_queue);
-    av_thread_message_flush(actx->pkt_queue);
-    av_thread_message_flush(actx->frames_queue);
-    av_thread_message_flush(actx->sink_queue);
-
-    // now that we are sure the threads modules will stop by themselves, we can
-    // join them
-    join_reset_workers(actx);
-
-    // and free their contexts
     demuxing_free(&actx->demuxer);
     decoding_free(&actx->decoder);
     filtering_free(&actx->filterer);
