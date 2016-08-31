@@ -24,43 +24,11 @@
 #include <libavutil/pixdesc.h>
 #include <VideoToolbox/VideoToolbox.h>
 
+#include "bufcount.h"
 #include "mod_decoding.h"
 #include "decoders.h"
 #include "internal.h"
 #include "log.h"
-
-#define BUFCOUNT_DEBUG 0
-
-#if BUFCOUNT_DEBUG
-static pthread_once_t g_bufcounter_initialized = PTHREAD_ONCE_INIT;
-static pthread_mutex_t g_mutex_bufcounter;
-static int g_bufcount;
-static int g_deccount;
-
-static int initialize_bufcounter(void)
-{
-    return pthread_mutex_init(&g_mutex_bufcounter, NULL);
-}
-
-static int bufcounter_update(int n)
-{
-    pthread_mutex_lock(&g_mutex_bufcounter);
-    g_bufcount += n;
-    fprintf(stderr, "[BUFFER COUNTER] op:[%s%d] newtotal:[%d] nbdec:[%d]\n",
-            n > 0 ? "+" : "", n, g_bufcount, g_deccount);
-    pthread_mutex_unlock(&g_mutex_bufcounter);
-}
-
-static int deccounter_update(int n)
-{
-    pthread_mutex_lock(&g_mutex_bufcounter);
-    g_deccount += n;
-    pthread_mutex_unlock(&g_mutex_bufcounter);
-}
-#else
-#define bufcounter_update(x) (void)(x)
-#define deccounter_update(x) (void)(x)
-#endif
 
 struct async_frame {
     int64_t pts;
@@ -77,6 +45,7 @@ struct vtdec_context {
     pthread_cond_t cond;
     int nb_queued;
     int out_w, out_h;
+    struct bufcount_context *bufcount;
 };
 
 static CMVideoFormatDescriptionRef format_desc_create(CMVideoCodecType codec_type,
@@ -176,7 +145,7 @@ static void buffer_release(void *opaque, uint8_t *data)
 {
     CVPixelBufferRef cv_buffer = (CVImageBufferRef)data;
     CVPixelBufferRelease(cv_buffer);
-    bufcounter_update(-1);
+    bufcount_update_ref(opaque, -1);
 }
 
 static int push_async_frame(struct decoder_ctx *dec_ctx,
@@ -197,7 +166,7 @@ static int push_async_frame(struct decoder_ctx *dec_ctx,
     frame->buf[0]  = av_buffer_create(frame->data[3],
                                       sizeof(frame->data[3]),
                                       buffer_release,
-                                      NULL,
+                                      vt->bufcount,
                                       AV_BUFFER_FLAG_READONLY);
     if (!frame->buf[0]) {
         av_frame_free(&frame);
@@ -247,8 +216,6 @@ static void decode_callback(void *opaque,
     new_frame->cv_buffer = CVPixelBufferRetain(image_buffer);
     new_frame->pts = pts.value;
 
-    bufcounter_update(1);
-
     queue_walker = vt->queue;
 
     if (!queue_walker || (new_frame->pts < queue_walker->pts)) {
@@ -258,6 +225,7 @@ static void decode_callback(void *opaque,
         TRACE(dec_ctx, "queueing frame pts=%"PRId64" at pos=%d",
               new_frame->pts, vt->nb_frames);
         vt->nb_frames++;
+        bufcount_update_max(vt->bufcount, 1);
     } else {
         /* walk the queue and insert this frame where it belongs in display order */
         struct async_frame *next_frame;
@@ -271,6 +239,7 @@ static void decode_callback(void *opaque,
                 TRACE(dec_ctx, "queueing frame pts=%"PRId64" at pos=%d",
                       new_frame->pts, vt->nb_frames);
                 vt->nb_frames++;
+                bufcount_update_max(vt->bufcount, 1);
                 break;
             }
 
@@ -279,10 +248,12 @@ static void decode_callback(void *opaque,
             av_free(queue_walker);
             vt->nb_frames--;
             vt->queue = queue_walker = next_frame;
+            bufcount_update_max(vt->bufcount, -1);
         }
     }
 
     update_nb_queue(dec_ctx, vt, -1);
+    bufcount_update_ref(vt->bufcount, 1);
 }
 
 static uint32_t pix_fmt_ff2vt(const char *fmt_str)
@@ -299,6 +270,7 @@ static uint32_t pix_fmt_ff2vt(const char *fmt_str)
 
 static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *opts)
 {
+    int ret;
     AVCodecContext *avctx = dec_ctx->avctx;
     struct vtdec_context *vt = dec_ctx->priv_data;
     int cm_codec_type;
@@ -307,19 +279,18 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
     CFDictionaryRef decoder_spec;
     CFDictionaryRef buf_attr;
 
-#if BUFCOUNT_DEBUG
-    int ret = pthread_once(&g_bufcounter_initialized, initialize_bufcounter);
-    if (ret < 0)
-        return AVERROR(ret);
-    deccounter_update(1);
-#endif
-
     TRACE(dec_ctx, "init");
 
     avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
 
     pthread_mutex_init(&vt->lock, NULL);
     pthread_cond_init(&vt->cond, NULL);
+
+    if (opts->max_user_frames) {
+        ret = bufcount_create(&vt->bufcount, opts->max_user_frames + 3);
+        if (ret < 0)
+            return ret;
+    }
 
     switch (avctx->codec_id) {
     case AV_CODEC_ID_H264:       cm_codec_type = kCMVideoCodecType_H264;       break;
@@ -486,6 +457,7 @@ static inline void process_queued_frames(struct decoder_ctx *dec_ctx, int push)
             push_async_frame(dec_ctx, top_frame);
         av_freep(&top_frame);
     }
+    bufcount_update_max(vt->bufcount, -vt->nb_frames);
     vt->nb_frames = 0;
 }
 
@@ -543,7 +515,7 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
         vt->session = NULL;
     }
 
-    deccounter_update(-1);
+    bufcount_update_ref(vt->bufcount, -1);
 }
 
 const struct decoder decoder_vt = {
