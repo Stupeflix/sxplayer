@@ -126,6 +126,6 @@ test: $(TESTPROG)
 testmem: $(TESTPROG)
 	valgrind --leak-check=full ./$(TESTPROG) media.mkv image.jpg
 
-.PHONY: all test clean install uninstall
+.PHONY: all test clean install uninstall player
 
 -include $(ALLDEPS)
