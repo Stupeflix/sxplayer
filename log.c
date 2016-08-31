@@ -87,26 +87,25 @@ void log_print(void *log_ctx, int log_level, const char *filename,
 {
     struct log_ctx *ctx = log_ctx;
     va_list arg_list;
+    char logline[512];
 
-        char logline[512];
+    va_start(arg_list, fmt);
+    vsnprintf(logline, sizeof(logline), fmt, arg_list);
+    va_end(arg_list);
 
-        va_start(arg_list, fmt);
-        vsnprintf(logline, sizeof(logline), fmt, arg_list);
-        va_end(arg_list);
-
-        if (ENABLE_DBG) {
-            int64_t t;
-            pthread_mutex_lock(&ctx->lock);
-            t = av_gettime();
-            if (!ctx->last_time)
-                ctx->last_time = t;
-            exec_log_cb(ctx, log_level, "[%f] %s:%d %s: %s\n",
-                   (t - ctx->last_time) / 1000000.,
-                   filename, ln, fn, logline);
+    if (ENABLE_DBG) {
+        int64_t t;
+        pthread_mutex_lock(&ctx->lock);
+        t = av_gettime();
+        if (!ctx->last_time)
             ctx->last_time = t;
-            pthread_mutex_unlock(&ctx->lock);
-        } else {
-            exec_log_cb(ctx, log_level, "%s:%d %s: %s\n",
-                   filename, ln, fn, logline);
-        }
+        exec_log_cb(ctx, log_level, "[%f] %s:%d %s: %s\n",
+                    (t - ctx->last_time) / 1000000.,
+                    filename, ln, fn, logline);
+        ctx->last_time = t;
+        pthread_mutex_unlock(&ctx->lock);
+    } else {
+        exec_log_cb(ctx, log_level, "%s:%d %s: %s\n",
+                    filename, ln, fn, logline);
+    }
 }
