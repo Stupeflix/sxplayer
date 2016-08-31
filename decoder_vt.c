@@ -286,8 +286,8 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
     pthread_mutex_init(&vt->lock, NULL);
     pthread_cond_init(&vt->cond, NULL);
 
-    if (opts->max_user_frames) {
-        ret = bufcount_create(&vt->bufcount, opts->max_user_frames + 3);
+    if (opts->max_user_frames > 0) {
+        ret = bufcount_create(&vt->bufcount, opts->max_user_frames + 2);
         if (ret < 0)
             return ret;
     }

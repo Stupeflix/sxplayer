@@ -23,7 +23,7 @@
 #include "bufcount.h"
 #include "internal.h"
 
-#define BUFCOUNT_DEBUG 0
+#define BUFCOUNT_DEBUG 1
 #define MIN_BUF 3
 
 struct bufcount_context {

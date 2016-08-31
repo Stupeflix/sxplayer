@@ -75,7 +75,7 @@ static const AVOption sxplayer_options[] = {
     { "max_pixels",             NULL, OFFSET(max_pixels),             AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
     { "audio_texture",          NULL, OFFSET(audio_texture),          AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { "vt_pix_fmt",             NULL, OFFSET(vt_pix_fmt),             AV_OPT_TYPE_STRING,    {.str="bgra"},  0, 0 },
-    { "max_user_frames",        NULL, OFFSET(max_user_frames),        AV_OPT_TYPE_INT,       {.i64=0},       0, INT_MAX },
+    { "max_user_frames",        NULL, OFFSET(max_user_frames),        AV_OPT_TYPE_INT,       {.i64=1},       0, INT_MAX },
     { NULL }
 };
 
