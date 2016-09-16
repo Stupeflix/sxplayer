@@ -88,8 +88,11 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
     av_opt_set_int(avctx, "refcounted_frames", 1, 0);
 
     if (hw) {
-        if (avctx->codec_id == AV_CODEC_ID_H264) {
-            AVCodec *codec = avcodec_find_decoder_by_name("h264_mediacodec");
+        if (avctx->codec_id == AV_CODEC_ID_H264 ||
+            avctx->codec_id == AV_CODEC_ID_HEVC) {
+            const char *codec_name = avctx->codec_id == AV_CODEC_ID_H264 ? "h264_mediacodec"
+                                                                         : "hevc_mediacodec";
+            AVCodec *codec = avcodec_find_decoder_by_name(codec_name);
             if (!codec)
                 return AVERROR_DECODER_NOT_FOUND;
 
