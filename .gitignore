@@ -1,4 +1,5 @@
 *.o
+*.d
 libsxplayer.a
 libsxplayer.pc
 libsxplayer.so
