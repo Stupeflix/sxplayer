@@ -625,6 +625,28 @@ static const int tests_flags[] = {
     FLAG_AUDIO|FLAG_SKIP|FLAG_TRIM_DURATION,
 };
 
+static int test_high_refresh_rate(const char *filename)
+{
+    struct sxplayer_ctx *s = sxplayer_create(filename);
+    struct sxplayer_frame *f;
+    const double t = 1/60.;
+
+    if (!s)
+        return -1;
+
+    f = sxplayer_get_frame(s, 0.);
+    if (!f)
+        return -1;
+    sxplayer_release_frame(f);
+    f = sxplayer_get_frame(s, t);
+    if (f && f->ts > t) {
+        fprintf(stderr, "unexpected frame at %f with ts=%f\n", t, f->ts);
+        sxplayer_release_frame(f);
+        return -1;
+    }
+    return 0;
+}
+
 int main(int ac, char **av)
 {
     int i;
@@ -633,6 +655,9 @@ int main(int ac, char **av)
         fprintf(stderr, "Usage: %s <media.mkv> <image.jpg>\n", av[0]);
         return -1;
     }
+
+    if (test_high_refresh_rate(av[1]) < 0)
+        return -1;
 
     if (run_image_test(av[2]) < 0)
         return -1;
