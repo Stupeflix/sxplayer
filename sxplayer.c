@@ -669,7 +669,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         if (!next)
             break;
         if (next->pts > vt) {
-            if (!candidate && !next_is_cached_frame)
+            if (!candidate && !next_is_cached_frame && s->last_pushed_frame_ts == AV_NOPTS_VALUE)
                 candidate = next;
             else
                 s->cached_frame = next;
