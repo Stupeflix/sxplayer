@@ -218,15 +218,9 @@ static int create_seek_msg(struct message *msg, int64_t ts)
 
 int async_seek(struct async_context *actx, int64_t ts)
 {
-    struct message msg;
-    int ret = fetch_mod_info(actx);
-    if (ret < 0)
-        return ret;
-    if (!actx->info.duration) {
-        TRACE(actx, "media has no duration, ignore seek request");
-        return 0;
-    }
     TRACE(actx, "--> send seek msg @ %s", PTS2TIMESTR(ts));
+    int ret;
+    struct message msg;
     ret = create_seek_msg(&msg, ts);
     if (ret < 0)
         return ret;
@@ -524,12 +518,28 @@ static void kill_join_reset_workers(struct async_context *actx)
 static int op_seek(struct async_context *actx, struct message *seek_msg)
 {
     int ret;
+    const struct sxplayer_opts *o = actx->o;
 
     TRACE(actx, "exec");
 
+    // We need the demuxer to be initialized to be able to call demuxing_*()
+    ret = initialize_modules_once(actx, o);
+    if (ret < 0) {
+        LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
+        msg_free_data(seek_msg);
+        return ret;
+    }
+
+    const int64_t probe_duration = demuxing_probe_duration(actx->demuxer);
+    if (probe_duration == AV_NOPTS_VALUE) {
+        TRACE(actx, "media has no duration, ignore seek");
+        msg_free_data(seek_msg);
+        return 0;
+    }
+
     actx->request_seek = *(int64_t *)seek_msg->data;
 
-    if (!actx->modules_initialized || !actx->playing) {
+    if (!actx->playing) {
         msg_free_data(seek_msg);
         return 0;
     }
