@@ -644,6 +644,7 @@ static int test_high_refresh_rate(const char *filename)
         sxplayer_release_frame(f);
         return -1;
     }
+    sxplayer_free(&s);
     return 0;
 }
 
