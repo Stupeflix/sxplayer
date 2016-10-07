@@ -88,10 +88,33 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
     av_opt_set_int(avctx, "refcounted_frames", 1, 0);
 
     if (hw) {
-        if (avctx->codec_id == AV_CODEC_ID_H264 ||
-            avctx->codec_id == AV_CODEC_ID_HEVC) {
-            const char *codec_name = avctx->codec_id == AV_CODEC_ID_H264 ? "h264_mediacodec"
-                                                                         : "hevc_mediacodec";
+        if (avctx->codec_id == AV_CODEC_ID_H264  ||
+            avctx->codec_id == AV_CODEC_ID_HEVC  ||
+            avctx->codec_id == AV_CODEC_ID_MPEG4 ||
+            avctx->codec_id == AV_CODEC_ID_VP8   ||
+            avctx->codec_id == AV_CODEC_ID_VP9) {
+            const char *codec_name = NULL;
+
+            switch (avctx->codec_id) {
+            case AV_CODEC_ID_H264:
+                codec_name = "h264_mediacodec";
+                break;
+            case AV_CODEC_ID_HEVC:
+                codec_name = "hevc_mediacodec";
+                break;
+            case AV_CODEC_ID_MPEG4:
+                codec_name = "mpeg4_mediacodec";
+                break;
+            case AV_CODEC_ID_VP8:
+                codec_name = "vp8_mediacodec";
+                break;
+            case AV_CODEC_ID_VP9:
+                codec_name = "vp9_mediacodec";
+                break;
+            default:
+                av_assert0(0);
+            }
+
             AVCodec *codec = avcodec_find_decoder_by_name(codec_name);
             if (!codec)
                 return AVERROR_DECODER_NOT_FOUND;
