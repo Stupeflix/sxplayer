@@ -1,0 +1,6 @@
+LIBSXPLAYER {
+    global:
+        sxplayer_*;
+    local:
+        *;
+};
