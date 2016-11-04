@@ -195,7 +195,7 @@ static int decode_packet(struct decoder_ctx *ctx, const AVPacket *pkt, int *got_
     decoded = FFMIN(ret, pkt->size);
 
     if (*got_frame) {
-        ret = decoding_queue_frame(ctx->decoding_ctx, dec_frame);
+        ret = sxpi_decoding_queue_frame(ctx->decoding_ctx, dec_frame);
         if (ret < 0) {
             TRACE(ctx, "could not queue frame: %s", av_err2str(ret));
             av_frame_free(&dec_frame);
@@ -224,7 +224,7 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
         avpkt.size -= ret;
     } while (avpkt.size > 0 || (flush && got_frame));
     if (ret == 0 && flush && !got_frame)
-        return decoding_queue_frame(ctx->decoding_ctx, NULL);
+        return sxpi_decoding_queue_frame(ctx->decoding_ctx, NULL);
     return ret;
 }
 
@@ -245,14 +245,14 @@ static void ffdec_uninit_hw(struct decoder_ctx *ctx)
     }
 }
 
-const struct decoder decoder_ffmpeg_sw = {
+const struct decoder sxpi_decoder_ffmpeg_sw = {
     .name        = "ffmpeg_sw",
     .init        = ffdec_init_sw,
     .push_packet = ffdec_push_packet,
     .flush       = ffdec_flush,
 };
 
-const struct decoder decoder_ffmpeg_hw = {
+const struct decoder sxpi_decoder_ffmpeg_hw = {
     .name        = "ffmpeg_hw",
     .init        = ffdec_init_hw,
     .push_packet = ffdec_push_packet,

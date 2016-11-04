@@ -27,21 +27,21 @@
 
 #include "opts.h"
 
-struct demuxing_ctx *demuxing_alloc(void);
+struct demuxing_ctx *sxpi_demuxing_alloc(void);
 
-int demuxing_init(void *log_ctx,
-                  struct demuxing_ctx *ctx,
-                  AVThreadMessageQueue *src_queue,
-                  AVThreadMessageQueue *pkt_queue,
-                  const char *filename,
-                  const struct sxplayer_opts *opts);
+int sxpi_demuxing_init(void *log_ctx,
+                       struct demuxing_ctx *ctx,
+                       AVThreadMessageQueue *src_queue,
+                       AVThreadMessageQueue *pkt_queue,
+                       const char *filename,
+                       const struct sxplayer_opts *opts);
 
-int64_t demuxing_probe_duration(const struct demuxing_ctx *ctx);
-double demuxing_probe_rotation(const struct demuxing_ctx *ctx);
-const AVStream *demuxing_get_stream(const struct demuxing_ctx *ctx);
+int64_t sxpi_demuxing_probe_duration(const struct demuxing_ctx *ctx);
+double sxpi_demuxing_probe_rotation(const struct demuxing_ctx *ctx);
+const AVStream *sxpi_demuxing_get_stream(const struct demuxing_ctx *ctx);
 
-void demuxing_run(struct demuxing_ctx *ctx);
+void sxpi_demuxing_run(struct demuxing_ctx *ctx);
 
-void demuxing_free(struct demuxing_ctx **ctxp);
+void sxpi_demuxing_free(struct demuxing_ctx **ctxp);
 
 #endif

@@ -31,14 +31,14 @@ struct log_ctx {
     void (*callback)(void *arg, int level, const char *fmt, va_list vl);
 };
 
-void log_set_callback(struct log_ctx *ctx, void *arg,
+void sxpi_log_set_callback(struct log_ctx *ctx, void *arg,
                       void (*callback)(void *arg, int level, const char *fmt, va_list vl))
 {
     ctx->user_arg = arg;
     ctx->callback = callback;
 }
 
-struct log_ctx *log_alloc(void)
+struct log_ctx *sxpi_log_alloc(void)
 {
     struct log_ctx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
@@ -58,13 +58,13 @@ static void default_callback(void *arg, int level, const char *fmt, va_list vl)
     av_vlog(arg, av_log_levels[level], fmt, vl);
 }
 
-int log_init(struct log_ctx *ctx, void *avlog)
+int sxpi_log_init(struct log_ctx *ctx, void *avlog)
 {
-    log_set_callback(ctx, avlog, default_callback);
+    sxpi_log_set_callback(ctx, avlog, default_callback);
     return AVERROR(pthread_mutex_init(&ctx->lock, NULL));
 }
 
-void log_free(struct log_ctx **ctxp)
+void sxpi_log_free(struct log_ctx **ctxp)
 {
     struct log_ctx *ctx = *ctxp;
     if (!ctx)
@@ -82,7 +82,7 @@ static void exec_log_cb(struct log_ctx *ctx, int log_level, const char *fmt, ...
     va_end(vl);
 }
 
-void log_print(void *log_ctx, int log_level, const char *filename,
+void sxpi_log_print(void *log_ctx, int log_level, const char *filename,
                int ln, const char *fn, const char *fmt, ...)
 {
     struct log_ctx *ctx = log_ctx;

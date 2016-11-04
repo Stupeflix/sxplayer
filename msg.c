@@ -24,7 +24,7 @@
 
 #include "msg.h"
 
-void msg_free_data(void *arg)
+void sxpi_msg_free_data(void *arg)
 {
     struct message *msg = arg;
 

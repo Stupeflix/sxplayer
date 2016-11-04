@@ -32,11 +32,11 @@
 
 #define HAVE_MEDIACODEC_HWACCEL LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 49, 103)
 
-enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
-enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
-enum sxplayer_pixel_format smp_fmts_ff2sx(enum AVSampleFormat smp_fmt);
-void set_thread_name(const char *name);
-void update_dimensions(int *width, int *height, int max_pixels);
+enum AVPixelFormat sxpi_pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
+enum sxplayer_pixel_format sxpi_pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
+enum sxplayer_pixel_format sxpi_smp_fmts_ff2sx(enum AVSampleFormat smp_fmt);
+void sxpi_set_thread_name(const char *name);
+void sxpi_update_dimensions(int *width, int *height, int max_pixels);
 
 #define TIME2INT64(d) llrint((d) * av_q2d(av_inv_q(AV_TIME_BASE_Q)))
 #define PTS2TIMESTR(t64) av_ts2timestr(t64, &AV_TIME_BASE_Q)

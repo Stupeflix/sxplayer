@@ -41,8 +41,8 @@
 //# define LOG_LEVEL AV_LOG_DEBUG  // will log most of the important actions (get/ret frame)
 #endif
 
-#define DO_LOG(c, log_level, ...) log_print((c)->log_ctx, log_level, \
-                                            __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+#define DO_LOG(c, log_level, ...) sxpi_log_print((c)->log_ctx, log_level, \
+                                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
 
 #define LOG(c, level, ...) DO_LOG(c, SXPLAYER_LOG_##level, __VA_ARGS__)
 
@@ -56,16 +56,16 @@
 
 struct log_ctx;
 
-struct log_ctx *log_alloc(void);
+struct log_ctx *sxpi_log_alloc(void);
 
-int log_init(struct log_ctx *ctx, void *avlog);
+int sxpi_log_init(struct log_ctx *ctx, void *avlog);
 
-void log_set_callback(struct log_ctx *ctx, void *arg,
-                      void (*callback)(void *arg, int level, const char *fmt, va_list vl));
+void sxpi_log_set_callback(struct log_ctx *ctx, void *arg,
+                           void (*callback)(void *arg, int level, const char *fmt, va_list vl));
 
-void log_print(void *log_ctx, int log_level, const char *filename,
-               int ln, const char *fn, const char *fmt, ...) av_printf_format(6, 7);
+void sxpi_log_print(void *log_ctx, int log_level, const char *filename,
+                    int ln, const char *fn, const char *fmt, ...) av_printf_format(6, 7);
 
-void log_free(struct log_ctx **ctxp);
+void sxpi_log_free(struct log_ctx **ctxp);
 
 #endif /* LOG_H */

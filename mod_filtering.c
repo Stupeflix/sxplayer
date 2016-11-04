@@ -62,7 +62,7 @@ struct filtering_ctx {
     FFTSample *rdft_data[AUDIO_NBCHANNELS]; // real discrete fourier transform data for each channel
 };
 
-struct filtering_ctx *filtering_alloc(void)
+struct filtering_ctx *sxpi_filtering_alloc(void)
 {
     struct filtering_ctx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
@@ -249,12 +249,12 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     snprintf(args, sizeof(args), "%s", ctx->filters ? ctx->filters : "");
     if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
-        const enum AVPixelFormat sw_pix_fmt = pix_fmts_sx2ff(ctx->sw_pix_fmt);
+        const enum AVPixelFormat sw_pix_fmt = sxpi_pix_fmts_sx2ff(ctx->sw_pix_fmt);
         const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? sw_pix_fmt : ctx->last_frame_format;
 
         if (ctx->max_pixels) {
             int w = codecpar->width, h = codecpar->height;
-            update_dimensions(&w, &h, ctx->max_pixels);
+            sxpi_update_dimensions(&w, &h, ctx->max_pixels);
             av_strlcatf(args, sizeof(args),
                         "%sscale=%d:%d:force_original_aspect_ratio=decrease",
                         *args ? "," : "", w, h);
@@ -328,13 +328,13 @@ static char *update_filters_str(char *filters, const char *append)
     return str;
 }
 
-int filtering_init(void *log_ctx,
-                   struct filtering_ctx *ctx,
-                   AVThreadMessageQueue *in_queue,
-                   AVThreadMessageQueue *out_queue,
-                   const AVCodecContext *avctx,
-                   double media_rotation,
-                   const struct sxplayer_opts *o)
+int sxpi_filtering_init(void *log_ctx,
+                        struct filtering_ctx *ctx,
+                        AVThreadMessageQueue *in_queue,
+                        AVThreadMessageQueue *out_queue,
+                        const AVCodecContext *avctx,
+                        double media_rotation,
+                        const struct sxplayer_opts *o)
 {
     int ret;
 
@@ -508,7 +508,7 @@ static int flush_frames(struct filtering_ctx *ctx)
     return ret;
 }
 
-void filtering_run(struct filtering_ctx *ctx)
+void sxpi_filtering_run(struct filtering_ctx *ctx)
 {
     int ret;
     int in_err, out_err;
@@ -537,7 +537,7 @@ void filtering_run(struct filtering_ctx *ctx)
             av_thread_message_flush(ctx->out_queue);
             ret = av_thread_message_queue_send(ctx->out_queue, &msg, 0);
             if (ret < 0) {
-                msg_free_data(&msg);
+                sxpi_msg_free_data(&msg);
                 break;
             }
             continue;
@@ -608,7 +608,7 @@ void filtering_run(struct filtering_ctx *ctx)
     av_thread_message_queue_set_err_recv(ctx->out_queue, out_err);
 }
 
-void filtering_free(struct filtering_ctx **fp)
+void sxpi_filtering_free(struct filtering_ctx **fp)
 {
     struct filtering_ctx *ctx = *fp;
 

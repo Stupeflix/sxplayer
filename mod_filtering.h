@@ -26,18 +26,18 @@
 
 #include "opts.h"
 
-struct filtering_ctx *filtering_alloc(void);
+struct filtering_ctx *sxpi_filtering_alloc(void);
 
-int filtering_init(void *log_ctx,
-                   struct filtering_ctx *ctx,
-                   AVThreadMessageQueue *in_queue,
-                   AVThreadMessageQueue *out_queue,
-                   const AVCodecContext *avctx,
-                   double media_rotation,
-                   const struct sxplayer_opts *o);
+int sxpi_filtering_init(void *log_ctx,
+                        struct filtering_ctx *ctx,
+                        AVThreadMessageQueue *in_queue,
+                        AVThreadMessageQueue *out_queue,
+                        const AVCodecContext *avctx,
+                        double media_rotation,
+                        const struct sxplayer_opts *o);
 
-void filtering_run(struct filtering_ctx *ctx);
+void sxpi_filtering_run(struct filtering_ctx *ctx);
 
-void filtering_free(struct filtering_ctx **ctxp);
+void sxpi_filtering_free(struct filtering_ctx **ctxp);
 
 #endif

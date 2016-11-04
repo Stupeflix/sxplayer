@@ -88,7 +88,7 @@ static int send_wait_ctl_message(struct async_context *actx,
                                  struct message *msg)
 {
     const int message_type = msg->type;
-    const char *msg_type_str = async_get_msg_type_string(message_type);
+    const char *msg_type_str = sxpi_async_get_msg_type_string(message_type);
     TRACE(actx, "--> send %s", msg_type_str);
     int ret = av_thread_message_queue_send(actx->ctl_in_queue, msg, 0);
     if (ret < 0) {
@@ -100,7 +100,7 @@ static int send_wait_ctl_message(struct async_context *actx,
         ret = av_thread_message_queue_recv(actx->ctl_out_queue, msg, 0);
         if (ret < 0 || msg->type == message_type)
             break;
-        msg_free_data(msg);
+        sxpi_msg_free_data(msg);
     }
     if (ret < 0)
         TRACE(actx, "couldn't get %s: %s", msg_type_str, av_err2str(ret));
@@ -148,12 +148,12 @@ static int fetch_mod_info(struct async_context *actx)
     TRACE(actx, "info fetched: %dx%d duration=%s",
           actx->info.width, actx->info.height,
           PTS2TIMESTR(actx->info.duration));
-    msg_free_data(&msg);
+    sxpi_msg_free_data(&msg);
     actx->has_info = 1;
     return 0;
 }
 
-struct async_context *async_alloc_context(void)
+struct async_context *sxpi_async_alloc_context(void)
 {
     struct async_context *actx = av_mallocz(sizeof(*actx));
     if (!actx)
@@ -161,7 +161,7 @@ struct async_context *async_alloc_context(void)
     return actx;
 }
 
-int async_fetch_info(struct async_context *actx, struct sxplayer_info *info)
+int sxpi_async_fetch_info(struct async_context *actx, struct sxplayer_info *info)
 {
     int ret = fetch_mod_info(actx);
     if (ret < 0)
@@ -172,7 +172,7 @@ int async_fetch_info(struct async_context *actx, struct sxplayer_info *info)
     return 0;
 }
 
-int async_pop_frame(struct async_context *actx, AVFrame **framep)
+int sxpi_async_pop_frame(struct async_context *actx, AVFrame **framep)
 {
     int ret;
     struct message msg;
@@ -185,7 +185,7 @@ int async_pop_frame(struct async_context *actx, AVFrame **framep)
 
     if (!actx->playing) {
         TRACE(actx, "not playing, start modules");
-        ret = async_start(actx);
+        ret = sxpi_async_start(actx);
         if (ret < 0)
             return ret;
         ret = sync_control_thread(actx);
@@ -198,7 +198,7 @@ int async_pop_frame(struct async_context *actx, AVFrame **framep)
     if (ret < 0) {
         TRACE(actx, "couldn't fetch frame from sink because %s", av_err2str(ret));
         av_thread_message_queue_set_err_send(actx->sink_queue, ret);
-        (void)async_stop(actx);
+        (void)sxpi_async_stop(actx);
         return ret;
     }
     av_assert0(msg.type == MSG_FRAME);
@@ -216,7 +216,7 @@ static int create_seek_msg(struct message *msg, int64_t ts)
     return 0;
 }
 
-int async_seek(struct async_context *actx, int64_t ts)
+int sxpi_async_seek(struct async_context *actx, int64_t ts)
 {
     TRACE(actx, "--> send seek msg @ %s", PTS2TIMESTR(ts));
     int ret;
@@ -234,7 +234,7 @@ int async_seek(struct async_context *actx, int64_t ts)
     return 0;
 }
 
-int async_start(struct async_context *actx)
+int sxpi_async_start(struct async_context *actx)
 {
     TRACE(actx, "--> send start msg");
     int ret;
@@ -248,7 +248,7 @@ int async_start(struct async_context *actx)
     return 0;
 }
 
-int async_stop(struct async_context *actx)
+int sxpi_async_stop(struct async_context *actx)
 {
     TRACE(actx, "--> send stop msg");
     int ret;
@@ -273,27 +273,27 @@ static int initialize_modules_once(struct async_context *actx,
     av_assert0(!actx->demuxer && !actx->decoder && !actx->filterer);
 
     TRACE(actx, "alloc modules");
-    actx->demuxer  = demuxing_alloc();
-    actx->decoder  = decoding_alloc();
-    actx->filterer = filtering_alloc();
+    actx->demuxer  = sxpi_demuxing_alloc();
+    actx->decoder  = sxpi_decoding_alloc();
+    actx->filterer = sxpi_filtering_alloc();
     if (!actx->demuxer || !actx->decoder || !actx->filterer)
         return AVERROR(ENOMEM);
 
     TRACE(actx, "initialize modules");
 
-    if ((ret = demuxing_init(actx->log_ctx,
+    if ((ret = sxpi_demuxing_init(actx->log_ctx,
                              actx->demuxer,
                              actx->src_queue, actx->pkt_queue,
                              actx->filename, opts)) < 0 ||
-        (ret = decoding_init(actx->log_ctx,
+        (ret = sxpi_decoding_init(actx->log_ctx,
                              actx->decoder,
                              actx->pkt_queue, actx->frames_queue,
-                             demuxing_get_stream(actx->demuxer), opts)) < 0 ||
-        (ret = filtering_init(actx->log_ctx,
+                             sxpi_demuxing_get_stream(actx->demuxer), opts)) < 0 ||
+        (ret = sxpi_filtering_init(actx->log_ctx,
                               actx->filterer,
                               actx->frames_queue, actx->sink_queue,
-                              decoding_get_avctx(actx->decoder),
-                              demuxing_probe_rotation(actx->demuxer), opts)) < 0)
+                              sxpi_decoding_get_avctx(actx->decoder),
+                              sxpi_demuxing_probe_rotation(actx->demuxer), opts)) < 0)
         return ret;
 
     actx->modules_initialized = 1;
@@ -305,7 +305,7 @@ static int alloc_msg_queue(AVThreadMessageQueue **q, int n)
     int ret = av_thread_message_queue_alloc(q, n, sizeof(struct message));
     if (ret < 0)
         return ret;
-    av_thread_message_queue_set_free_func(*q, msg_free_data);
+    av_thread_message_queue_set_free_func(*q, sxpi_msg_free_data);
     return 0;
 }
 
@@ -313,9 +313,9 @@ static int alloc_msg_queue(AVThreadMessageQueue **q, int n)
 static void *name##_thread(void *arg)                                           \
 {                                                                               \
     struct async_context *actx = arg;                                           \
-    set_thread_name("sxp/" AV_STRINGIFY(name));                                 \
+    sxpi_set_thread_name("sxp/" AV_STRINGIFY(name));                            \
     TRACE(actx, "[>] " AV_STRINGIFY(action) " thread starting");                \
-    action##_run(actx->name);                                                   \
+    sxpi_##action##_run(actx->name);                                            \
     TRACE(actx, "[<] " AV_STRINGIFY(action) " thread ending");                  \
     return NULL;                                                                \
 }
@@ -406,7 +406,7 @@ static int op_start(struct async_context *actx)
         if (ret < 0) {
             LOG(actx, ERROR, "Unable to queue a seek message to the demuxer, shouldn't happen!");
             av_thread_message_queue_set_err_recv(actx->src_queue, ret);
-            msg_free_data(&msg);
+            sxpi_msg_free_data(&msg);
             return ret;
         }
 
@@ -431,7 +431,7 @@ static int op_start(struct async_context *actx)
                 av_thread_message_queue_set_err_send(actx->sink_queue, ret);
                 return ret;
             }
-            msg_free_data(&msg);
+            sxpi_msg_free_data(&msg);
         } while (msg.type != MSG_SEEK);
     }
 
@@ -451,7 +451,7 @@ static int op_info(struct async_context *actx, struct message *msg)
 
     int64_t duration = o->trim_duration64 >= 0 ? o->skip64 + o->trim_duration64
                                                : AV_NOPTS_VALUE;
-    const int64_t probe_duration = demuxing_probe_duration(actx->demuxer);
+    const int64_t probe_duration = sxpi_demuxing_probe_duration(actx->demuxer);
 
     av_assert0(AV_NOPTS_VALUE < 0);
     if (probe_duration != AV_NOPTS_VALUE && (duration <= 0 ||
@@ -463,7 +463,7 @@ static int op_info(struct async_context *actx, struct message *msg)
     }
     if (duration == AV_NOPTS_VALUE)
         duration = 0;
-    const AVStream *st = demuxing_get_stream(actx->demuxer);
+    const AVStream *st = sxpi_demuxing_get_stream(actx->demuxer);
     struct info_message info = {
         .width    = st->codecpar->width,
         .height   = st->codecpar->height,
@@ -526,21 +526,21 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
     ret = initialize_modules_once(actx, o);
     if (ret < 0) {
         LOG(actx, ERROR, "initializing modules failed with %s", av_err2str(ret));
-        msg_free_data(seek_msg);
+        sxpi_msg_free_data(seek_msg);
         return ret;
     }
 
-    const int64_t probe_duration = demuxing_probe_duration(actx->demuxer);
+    const int64_t probe_duration = sxpi_demuxing_probe_duration(actx->demuxer);
     if (probe_duration == AV_NOPTS_VALUE) {
         TRACE(actx, "media has no duration, ignore seek");
-        msg_free_data(seek_msg);
+        sxpi_msg_free_data(seek_msg);
         return 0;
     }
 
     actx->request_seek = *(int64_t *)seek_msg->data;
 
     if (!actx->playing) {
-        msg_free_data(seek_msg);
+        sxpi_msg_free_data(seek_msg);
         return 0;
     }
 
@@ -549,7 +549,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
         /* If this errors out, it means the modules ended by themselves (no
          * stop requested by the user), so we delay the seek, reset the workers
          * and start them again */
-        msg_free_data(seek_msg);
+        sxpi_msg_free_data(seek_msg);
         kill_join_reset_workers(actx);
         return op_start(actx);
     }
@@ -563,7 +563,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
             kill_join_reset_workers(actx);
             return op_start(actx);
         }
-        msg_free_data(seek_msg);
+        sxpi_msg_free_data(seek_msg);
         if (seek_msg->type == MSG_SEEK)
             break;
     }
@@ -577,9 +577,9 @@ static void op_stop(struct async_context *actx)
 
     kill_join_reset_workers(actx);
 
-    demuxing_free(&actx->demuxer);
-    decoding_free(&actx->decoder);
-    filtering_free(&actx->filterer);
+    sxpi_demuxing_free(&actx->demuxer);
+    sxpi_decoding_free(&actx->decoder);
+    sxpi_filtering_free(&actx->filterer);
 
     actx->modules_initialized = 0;
     actx->playing = 0;
@@ -593,7 +593,7 @@ static void *control_thread(void *arg)
 
     LOG(actx, INFO, "starting");
 
-    set_thread_name("sxp/control");
+    sxpi_set_thread_name("sxp/control");
 
     for (;;) {
         enum msg_type type;
@@ -610,7 +610,7 @@ static void *control_thread(void *arg)
         }
         type = msg.type;
 
-        TRACE(actx, "--- handling OP %s", async_get_msg_type_string(type));
+        TRACE(actx, "--- handling OP %s", sxpi_async_get_msg_type_string(type));
 
         switch (type) {
         case MSG_SEEK:
@@ -634,12 +634,12 @@ static void *control_thread(void *arg)
             av_assert0(0);
         }
 
-        TRACE(actx, "<-- OP %s processed", async_get_msg_type_string(type));
+        TRACE(actx, "<-- OP %s processed", sxpi_async_get_msg_type_string(type));
 
         if (ret < 0) {
             LOG(actx, ERROR, "Unable to honor %s message: %s",
-                async_get_msg_type_string(type), av_err2str(ret));
-            msg_free_data(&msg);
+                sxpi_async_get_msg_type_string(type), av_err2str(ret));
+            sxpi_msg_free_data(&msg);
             break;
         }
 
@@ -647,13 +647,13 @@ static void *control_thread(void *arg)
         // if it's a sync OP
         if (type == MSG_INFO || type == MSG_SYNC) {
             TRACE(actx, "forward %s to control out queue",
-                  async_get_msg_type_string(type));
+                  sxpi_async_get_msg_type_string(type));
             ret = av_thread_message_queue_send(actx->ctl_out_queue, &msg, 0);
             if (ret < 0) {
                 // shouldn't happen
                 LOG(actx, ERROR, "Unable to forward %s message to the output async queue: %s",
-                    async_get_msg_type_string(type), av_err2str(ret));
-                msg_free_data(&msg);
+                    sxpi_async_get_msg_type_string(type), av_err2str(ret));
+                sxpi_msg_free_data(&msg);
             }
         }
     }
@@ -668,7 +668,7 @@ static void *control_thread(void *arg)
     return NULL;
 }
 
-int async_init(struct async_context *actx, void *log_ctx,
+int sxpi_async_init(struct async_context *actx, void *log_ctx,
                const char *filename, const struct sxplayer_opts *o)
 {
     int ret;
@@ -700,7 +700,7 @@ int async_init(struct async_context *actx, void *log_ctx,
     return 0;
 }
 
-const char *async_get_msg_type_string(enum msg_type type)
+const char *sxpi_async_get_msg_type_string(enum msg_type type)
 {
     static const char * const s[NB_MSG] = {
         [MSG_FRAME]  = "frame",
@@ -716,7 +716,7 @@ const char *async_get_msg_type_string(enum msg_type type)
 
 static void control_quit(struct async_context *actx)
 {
-    async_stop(actx);
+    sxpi_async_stop(actx);
     sync_control_thread(actx);
     av_thread_message_queue_set_err_send(actx->ctl_in_queue,  AVERROR_EXIT);
     av_thread_message_queue_set_err_send(actx->ctl_out_queue, AVERROR_EXIT);
@@ -727,7 +727,7 @@ static void control_quit(struct async_context *actx)
     JOIN_MODULE_THREAD(control);
 }
 
-int async_started(struct async_context *actx)
+int sxpi_sxpi_async_started(struct async_context *actx)
 {
     int ret = sync_control_thread(actx);
     if (ret < 0)
@@ -735,7 +735,7 @@ int async_started(struct async_context *actx)
     return actx->playing;
 }
 
-void async_free(struct async_context **actxp)
+void sxpi_async_free(struct async_context **actxp)
 {
     struct async_context *actx = *actxp;
 

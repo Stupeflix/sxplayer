@@ -22,7 +22,7 @@
 #include "internal.h"
 #include "log.h"
 
-struct decoder_ctx *decoder_alloc(void)
+struct decoder_ctx *sxpi_decoder_alloc(void)
 {
     struct decoder_ctx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
@@ -35,7 +35,7 @@ struct decoder_ctx *decoder_alloc(void)
     return ctx;
 }
 
-int decoder_init(void *log_ctx,
+int sxpi_decoder_init(void *log_ctx,
                  struct decoder_ctx *ctx,
                  const struct decoder *dec,
                  const AVStream *stream,
@@ -56,7 +56,7 @@ int decoder_init(void *log_ctx,
     }
 
     // We need to copy the stream information because the stream (and its codec
-    // context) can be destroyed any time after the decoder_init() returns
+    // context) can be destroyed any time after the sxpi_decoder_init() returns
     avcodec_parameters_to_context(ctx->avctx, stream->codecpar);
 
     // The MediaCodec decoder needs pkt_timebase in order to rescale the
@@ -77,18 +77,18 @@ int decoder_init(void *log_ctx,
     return 0;
 }
 
-int decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
+int sxpi_decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
 {
     return ctx->dec->push_packet(ctx, pkt);
 }
 
-void decoder_flush(struct decoder_ctx *ctx)
+void sxpi_decoder_flush(struct decoder_ctx *ctx)
 {
     TRACE(ctx, "flush");
     ctx->dec->flush(ctx);
 }
 
-void decoder_free(struct decoder_ctx **ctxp)
+void sxpi_decoder_free(struct decoder_ctx **ctxp)
 {
     struct decoder_ctx *ctx = *ctxp;
     if (!ctx)

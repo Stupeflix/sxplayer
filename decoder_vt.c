@@ -204,7 +204,7 @@ static int push_async_frame(struct decoder_ctx *dec_ctx,
         return AVERROR(ENOMEM);
     }
     TRACE(dec_ctx, "push frame pts=%"PRId64, frame->pts);
-    ret = decoding_queue_frame(dec_ctx->decoding_ctx, frame);
+    ret = sxpi_decoding_queue_frame(dec_ctx->decoding_ctx, frame);
     if (ret < 0)
         av_frame_free(&frame);
     return ret;
@@ -341,7 +341,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
 
     vt->out_w = avctx->width;
     vt->out_h = avctx->height;
-    update_dimensions(&vt->out_w, &vt->out_h, opts->max_pixels);
+    sxpi_update_dimensions(&vt->out_w, &vt->out_h, opts->max_pixels);
     TRACE(dec_ctx, "dimensions: %dx%d -> %dx%d (nb pixels: %d -> %d for a max of %d)\n",
           avctx->width, avctx->height, vt->out_w, vt->out_h,
           avctx->width * avctx->height, vt->out_w * vt->out_h,
@@ -519,7 +519,7 @@ static void vtdec_flush(struct decoder_ctx *dec_ctx)
 
     TRACE(dec_ctx, "decompression session finished delaying frames");
     send_queued_frames(dec_ctx);
-    decoding_queue_frame(dec_ctx->decoding_ctx, NULL);
+    sxpi_decoding_queue_frame(dec_ctx->decoding_ctx, NULL);
     TRACE(dec_ctx, "queue cleared, flush ends");
 }
 
@@ -546,7 +546,7 @@ static void vtdec_uninit(struct decoder_ctx *dec_ctx)
     deccounter_update(-1);
 }
 
-const struct decoder decoder_vt = {
+const struct decoder sxpi_decoder_vt = {
     .name             = "videotoolbox",
     .init             = vtdec_init,
     .push_packet      = vtdec_push_packet,

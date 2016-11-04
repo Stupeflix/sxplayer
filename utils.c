@@ -43,7 +43,7 @@ static const struct {
     {AV_SAMPLE_FMT_FLT,       SXPLAYER_SMPFMT_FLT},
 };
 
-enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt)
+enum AVPixelFormat sxpi_pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt)
 {
     int i;
     for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
@@ -52,7 +52,7 @@ enum AVPixelFormat pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt)
     return AV_PIX_FMT_NONE;
 }
 
-enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
+enum sxplayer_pixel_format sxpi_pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
 {
     int i;
     for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
@@ -61,7 +61,7 @@ enum sxplayer_pixel_format pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
     return -1;
 }
 
-enum sxplayer_pixel_format smp_fmts_ff2sx(enum AVSampleFormat smp_fmt)
+enum sxplayer_pixel_format sxpi_smp_fmts_ff2sx(enum AVSampleFormat smp_fmt)
 {
     int i;
     for (i = 0; i < FF_ARRAY_ELEMS(smp_fmts_mapping); i++)
@@ -70,7 +70,7 @@ enum sxplayer_pixel_format smp_fmts_ff2sx(enum AVSampleFormat smp_fmt)
     return -1;
 }
 
-void set_thread_name(const char *name)
+void sxpi_set_thread_name(const char *name)
 {
 #if defined(__APPLE__)
     pthread_setname_np(name);
@@ -79,7 +79,7 @@ void set_thread_name(const char *name)
 #endif
 }
 
-void update_dimensions(int *width, int *height, int max_pixels)
+void sxpi_update_dimensions(int *width, int *height, int max_pixels)
 {
     if (max_pixels) {
         const int w = *width;

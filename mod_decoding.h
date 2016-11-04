@@ -28,21 +28,21 @@
 
 #include "opts.h"
 
-struct decoding_ctx *decoding_alloc(void);
+struct decoding_ctx *sxpi_decoding_alloc(void);
 
-int decoding_init(void *log_ctx,
-                  struct decoding_ctx *ctx,
-                  AVThreadMessageQueue *pkt_queue,
-                  AVThreadMessageQueue *frames_queue,
-                  const AVStream *stream,
-                  const struct sxplayer_opts *opts);
+int sxpi_decoding_init(void *log_ctx,
+                       struct decoding_ctx *ctx,
+                       AVThreadMessageQueue *pkt_queue,
+                       AVThreadMessageQueue *frames_queue,
+                       const AVStream *stream,
+                       const struct sxplayer_opts *opts);
 
-const AVCodecContext *decoding_get_avctx(struct decoding_ctx *ctx);
+const AVCodecContext *sxpi_decoding_get_avctx(struct decoding_ctx *ctx);
 
-int decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame);
+int sxpi_decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame);
 
-void decoding_run(struct decoding_ctx *ctx);
+void sxpi_decoding_run(struct decoding_ctx *ctx);
 
-void decoding_free(struct decoding_ctx **ctxp);
+void sxpi_decoding_free(struct decoding_ctx **ctxp);
 
 #endif

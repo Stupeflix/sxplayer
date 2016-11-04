@@ -47,15 +47,15 @@ struct decoder {
     int priv_data_size;
 };
 
-struct decoder_ctx *decoder_alloc(void);
-int decoder_init(void *log_ctx,
-                 struct decoder_ctx *ctx,
-                 const struct decoder *dec,
-                 const AVStream *stream,
-                 struct decoding_ctx *decoding_ctx,
-                 const struct sxplayer_opts *opts);
-int decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt);
-void decoder_flush(struct decoder_ctx *ctx);
-void decoder_free(struct decoder_ctx **ctxp);
+struct decoder_ctx *sxpi_decoder_alloc(void);
+int sxpi_decoder_init(void *log_ctx,
+                      struct decoder_ctx *ctx,
+                      const struct decoder *dec,
+                      const AVStream *stream,
+                      struct decoding_ctx *decoding_ctx,
+                      const struct sxplayer_opts *opts);
+int sxpi_decoder_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt);
+void sxpi_decoder_flush(struct decoder_ctx *ctx);
+void sxpi_decoder_free(struct decoder_ctx **ctxp);
 
 #endif

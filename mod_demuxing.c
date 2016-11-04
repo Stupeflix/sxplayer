@@ -40,7 +40,7 @@ struct demuxing_ctx {
     AVThreadMessageQueue *pkt_queue;
 };
 
-struct demuxing_ctx *demuxing_alloc(void)
+struct demuxing_ctx *sxpi_demuxing_alloc(void)
 {
     struct demuxing_ctx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
@@ -50,7 +50,7 @@ struct demuxing_ctx *demuxing_alloc(void)
 
 // XXX: we should probably prefer the stream duration over the format
 // duration
-int64_t demuxing_probe_duration(const struct demuxing_ctx *ctx)
+int64_t sxpi_demuxing_probe_duration(const struct demuxing_ctx *ctx)
 {
     if (!ctx->is_image) {
         int64_t probe_duration64 = ctx->fmt_ctx->duration;
@@ -67,7 +67,7 @@ int64_t demuxing_probe_duration(const struct demuxing_ctx *ctx)
     return AV_NOPTS_VALUE;
 }
 
-double demuxing_probe_rotation(const struct demuxing_ctx *ctx)
+double sxpi_demuxing_probe_rotation(const struct demuxing_ctx *ctx)
 {
     AVStream *st = (AVStream *)ctx->stream; // XXX: Fix FFmpeg.
     AVDictionaryEntry *rotate_tag = av_dict_get(st->metadata, "rotate", NULL, 0);
@@ -86,17 +86,17 @@ double demuxing_probe_rotation(const struct demuxing_ctx *ctx)
     return theta;
 }
 
-const AVStream *demuxing_get_stream(const struct demuxing_ctx *ctx)
+const AVStream *sxpi_demuxing_get_stream(const struct demuxing_ctx *ctx)
 {
     return ctx->stream;
 }
 
-int demuxing_init(void *log_ctx,
-                  struct demuxing_ctx *ctx,
-                  AVThreadMessageQueue *src_queue,
-                  AVThreadMessageQueue *pkt_queue,
-                  const char *filename,
-                  const struct sxplayer_opts *opts)
+int sxpi_demuxing_init(void *log_ctx,
+                       struct demuxing_ctx *ctx,
+                       AVThreadMessageQueue *src_queue,
+                       AVThreadMessageQueue *pkt_queue,
+                       const char *filename,
+                       const struct sxplayer_opts *opts)
 {
     int ret;
     enum AVMediaType media_type;
@@ -191,7 +191,7 @@ static int pull_packet(struct demuxing_ctx *ctx, AVPacket *pkt)
     return ret;
 }
 
-void demuxing_run(struct demuxing_ctx *ctx)
+void sxpi_demuxing_run(struct demuxing_ctx *ctx)
 {
     int ret;
     int in_err, out_err;
@@ -219,7 +219,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
                 LOG(ctx, INFO, "Seek in media at ts=%s", PTS2TIMESTR(seek_to));
                 ret = avformat_seek_file(ctx->fmt_ctx, -1, INT64_MIN, seek_to, seek_to, 0);
                 if (ret < 0) {
-                    msg_free_data(&msg);
+                    sxpi_msg_free_data(&msg);
                     break;
                 }
             }
@@ -227,7 +227,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
             /* Forward the message */
             ret = av_thread_message_queue_send(ctx->pkt_queue, &msg, 0);
             if (ret < 0) {
-                msg_free_data(&msg);
+                sxpi_msg_free_data(&msg);
                 break;
             }
         }
@@ -273,7 +273,7 @@ void demuxing_run(struct demuxing_ctx *ctx)
     av_thread_message_queue_set_err_recv(ctx->pkt_queue, out_err);
 }
 
-void demuxing_free(struct demuxing_ctx **ctxp)
+void sxpi_demuxing_free(struct demuxing_ctx **ctxp)
 {
     struct demuxing_ctx *ctx = *ctxp;
     if (!ctx)

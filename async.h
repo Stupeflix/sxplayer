@@ -27,27 +27,27 @@
 #include "opts.h"
 #include "msg.h"
 
-const char *async_get_msg_type_string(enum msg_type type);
+const char *sxpi_async_get_msg_type_string(enum msg_type type);
 
-void msg_free_data(void *arg);
+void sxpi_msg_free_data(void *arg);
 
-struct async_context *async_alloc_context(void);
+struct async_context *sxpi_async_alloc_context(void);
 
-int async_init(struct async_context *actx, void *log_ctx,
-               const char *filename, const struct sxplayer_opts *o);
+int sxpi_async_init(struct async_context *actx, void *log_ctx,
+                    const char *filename, const struct sxplayer_opts *o);
 
-int async_start(struct async_context *actx);
+int sxpi_async_start(struct async_context *actx);
 
-int async_fetch_info(struct async_context *actx, struct sxplayer_info *info);
+int sxpi_async_fetch_info(struct async_context *actx, struct sxplayer_info *info);
 
-int async_seek(struct async_context *actx, int64_t ts);
+int sxpi_async_seek(struct async_context *actx, int64_t ts);
 
-int async_pop_frame(struct async_context *actx, AVFrame **framep);
+int sxpi_async_pop_frame(struct async_context *actx, AVFrame **framep);
 
-int async_stop(struct async_context *actx);
+int sxpi_async_stop(struct async_context *actx);
 
-int async_started(struct async_context *actx);
+int sxpi_sxpi_async_started(struct async_context *actx);
 
-void async_free(struct async_context **actxp);
+void sxpi_async_free(struct async_context **actxp);
 
 #endif /* ASYNC_H */

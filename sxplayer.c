@@ -145,7 +145,7 @@ static void free_context(struct sxplayer_ctx *s)
         return;
     av_freep(&s->filename);
     av_freep(&s->logname);
-    log_free(&s->log_ctx);
+    sxpi_log_free(&s->log_ctx);
     av_opt_free(s);
     av_freep(&s);
 }
@@ -157,7 +157,7 @@ static void free_temp_context_data(struct sxplayer_ctx *s)
 
     av_frame_free(&s->cached_frame);
 
-    async_free(&s->actx);
+    sxpi_async_free(&s->actx);
 
     s->context_configured = 0;
 }
@@ -165,7 +165,7 @@ static void free_temp_context_data(struct sxplayer_ctx *s)
 void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
                                void (*callback)(void *arg, int level, const char *fmt, va_list vl))
 {
-    log_set_callback(s->log_ctx, arg, callback);
+    sxpi_log_set_callback(s->log_ctx, arg, callback);
 }
 
 struct sxplayer_ctx *sxplayer_create(const char *filename)
@@ -196,8 +196,8 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
 
     av_log_set_level(LOG_LEVEL);
 
-    s->log_ctx = log_alloc();
-    if (!s->log_ctx || log_init(s->log_ctx, s) < 0)
+    s->log_ctx = sxpi_log_alloc();
+    if (!s->log_ctx || sxpi_log_init(s->log_ctx, s) < 0)
         goto fail;
 
     LOG(s, INFO, "libsxplayer %d.%d.%d",
@@ -258,7 +258,7 @@ static int set_context_fields(struct sxplayer_ctx *s)
     int ret;
     struct sxplayer_opts *o = &s->opts;
 
-    if (pix_fmts_sx2ff(o->sw_pix_fmt) == AV_PIX_FMT_NONE) {
+    if (sxpi_pix_fmts_sx2ff(o->sw_pix_fmt) == AV_PIX_FMT_NONE) {
         LOG(s, ERROR, "Invalid software decoding pixel format specified");
         return AVERROR(EINVAL);
     }
@@ -287,11 +287,11 @@ static int set_context_fields(struct sxplayer_ctx *s)
           PTS2TIMESTR(o->trim_duration64));
 
     av_assert0(!s->actx);
-    s->actx = async_alloc_context();
+    s->actx = sxpi_async_alloc_context();
     if (!s->actx)
         return AVERROR(ENOMEM);
 
-    ret = async_init(s->actx, s->log_ctx, s->filename, &s->opts);
+    ret = sxpi_async_init(s->actx, s->log_ctx, s->filename, &s->opts);
     if (ret < 0)
         return ret;
 
@@ -408,10 +408,10 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
         }
         ret->width   = frame->width;
         ret->height  = frame->height;
-        ret->pix_fmt = pix_fmts_ff2sx(frame->format);
+        ret->pix_fmt = sxpi_pix_fmts_ff2sx(frame->format);
     } else {
         ret->nb_samples = frame->nb_samples;
-        ret->pix_fmt = smp_fmts_ff2sx(frame->format);
+        ret->pix_fmt = sxpi_smp_fmts_ff2sx(frame->format);
     }
 
     LOG(s, DEBUG, "return %dx%d frame @ ts=%s",
@@ -445,7 +445,7 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
         frame = s->cached_frame;
         s->cached_frame = NULL;
     } else {
-        int ret = async_pop_frame(s->actx, &frame);
+        int ret = sxpi_async_pop_frame(s->actx, &frame);
         if (ret < 0)
             TRACE(s, "poped a message raising %s", av_err2str(ret));
     }
@@ -504,7 +504,7 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
     if (ret < 0)
         return ret;
 
-    ret = async_seek(s->actx, get_media_time(o, TIME2INT64(reqt)));
+    ret = sxpi_async_seek(s->actx, get_media_time(o, TIME2INT64(reqt)));
     END_FUNC(MAX_ASYNC_OP_TIME);
     return ret;
 }
@@ -522,7 +522,7 @@ int sxplayer_stop(struct sxplayer_ctx *s)
     if (ret < 0)
         return ret;
 
-    ret = async_stop(s->actx);
+    ret = sxpi_async_stop(s->actx);
     END_FUNC(MAX_ASYNC_OP_TIME);
     return ret;
 }
@@ -537,7 +537,7 @@ int sxplayer_start(struct sxplayer_ctx *s)
     if (ret < 0)
         return ret;
 
-    ret = async_start(s->actx);
+    ret = sxpi_async_start(s->actx);
     END_FUNC(MAX_ASYNC_OP_TIME);
     return ret;
 }
@@ -595,10 +595,10 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
          * before we start the decoding process in order to save one seek and
          * some decoding (a seek for the initial skip, then another one soon
          * after to reach the requested time). */
-        if (!async_started(s->actx) && vt > o->skip64) {
+        if (!sxpi_sxpi_async_started(s->actx) && vt > o->skip64) {
             TRACE(s, "no prefetch, but requested time (%s) beyond initial skip (%s)",
                   PTS2TIMESTR(vt), PTS2TIMESTR(o->skip64));
-            async_seek(s->actx, vt);
+            sxpi_async_seek(s->actx, vt);
         }
 
         TRACE(s, "no frame ever pushed yet, pop a candidate");
@@ -652,7 +652,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
         av_frame_free(&s->cached_frame);
 
-        ret = async_seek(s->actx, vt);
+        ret = sxpi_async_seek(s->actx, vt);
         if (ret < 0) {
             av_frame_free(&candidate);
             return ret_frame(s, NULL);
@@ -706,7 +706,7 @@ int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)
     ret = configure_context(s);
     if (ret < 0)
         goto end;
-    ret = async_fetch_info(s->actx, info);
+    ret = sxpi_async_fetch_info(s->actx, info);
     if (ret < 0)
         goto end;
     TRACE(s, "media info: %dx%d %f", info->width, info->height, info->duration);

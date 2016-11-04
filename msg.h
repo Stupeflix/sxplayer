@@ -37,6 +37,6 @@ struct message {
     enum msg_type type;
 };
 
-void msg_free_data(void *arg);
+void sxpi_msg_free_data(void *arg);
 
 #endif
