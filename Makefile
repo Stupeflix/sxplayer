@@ -30,7 +30,7 @@ TRACE  ?= no
 
 TARGET_OS ?= $(shell uname -s)
 
-VERSION_SCRIPT = --version-script
+PROJECT_LDFLAGS = -Wl,--version-script,lib$(NAME).ver
 
 DYLIBSUFFIX = so
 ifeq ($(TARGET_OS),Darwin)
@@ -38,7 +38,7 @@ ifeq ($(TARGET_OS),Darwin)
 	PROJECT_LIBS            += $(DARWIN_LIBS)
 	PROJECT_PKG_CONFIG_LIBS += $(DARWIN_PKG_CONFIG_LIBS)
 	PROJECT_OBJS            += $(DARWIN_OBJS)
-	VERSION_SCRIPT           = -exported_symbols_list
+	PROJECT_LDFLAGS =
 else
 ifeq ($(TARGET_OS),Android)
 	PROJECT_LIBS            += $(ANDROID_LIBS)
@@ -69,7 +69,7 @@ ifeq ($(TRACE),yes)
 endif
 CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PROJECT_PKG_CONFIG_LIBS)) $(CFLAGS)
 LDLIBS := $(shell $(PKG_CONFIG) --libs   $(PROJECT_PKG_CONFIG_LIBS)) $(LDLIBS) $(PROJECT_LIBS)
-LDFLAGS := -Wl,$(VERSION_SCRIPT),lib$(NAME).ver
+LDFLAGS := $(PROJECT_LDFLAGS)
 
 PROGOBJS = player.o
 TESTPROG = test-prog
