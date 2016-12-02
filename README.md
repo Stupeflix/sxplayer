@@ -17,10 +17,10 @@ LGPL v2.1, see `LICENSE`.
 
 The only dependency is FFmpeg.
 
-`make` is enough to build the `libsxplayer.a`.
+`make` is enough to build `libsxplayer.a`.
 
-If you prefer a dynamic library, you use the variable `SHARED`, such as `make
-SHARED=yes`.
+If you prefer a dynamic library, you can use the variable `SHARED`, such as
+`make SHARED=yes`.
 
 If you need symbol debugging, you can use `make DEBUG=yes`.
 
