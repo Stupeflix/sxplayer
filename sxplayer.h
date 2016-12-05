@@ -24,8 +24,8 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-#define SXPLAYER_VERSION_MAJOR 7
-#define SXPLAYER_VERSION_MINOR 3
+#define SXPLAYER_VERSION_MAJOR 8
+#define SXPLAYER_VERSION_MINOR 0
 #define SXPLAYER_VERSION_MICRO 0
 
 #define SXPLAYER_GET_VERSION(major, minor, micro) ((major)<<16 | (minor)<<8 | (micro))
@@ -119,6 +119,20 @@ struct sxplayer_info {
 struct sxplayer_ctx *sxplayer_create(const char *filename);
 
 /**
+ * Type of the user log callback
+ *
+ * @param arg       opaque user argument
+ * @param level     log level of the message (SXPLAYER_LOG_*)
+ * @param filename  source filename
+ * @param ln        line number in the source file
+ * @param fn        function name in the source
+ * @param fmt       log string format
+ * @param vl        variable argument list associated with the format
+ */
+typedef void (*sxplayer_log_callback_type)(void *arg, int level, const char *filename,
+                                           int ln, const char *fn, const char *fmt, va_list vl);
+
+/**
  * Set user logging callback
  *
  * Setting the logging callback disables the local logging, and every log
@@ -129,8 +143,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename);
  *                  the callback
  * @param callback  custom user logging callback
  */
-void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
-                               void (*callback)(void *arg, int level, const char *fmt, va_list vl));
+void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer_log_callback_type callback);
 
 /**
  * Set an option.

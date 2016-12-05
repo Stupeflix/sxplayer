@@ -27,12 +27,13 @@
 struct log_ctx {
     int64_t last_time;
     pthread_mutex_t lock;
+    void *avlog;
     void *user_arg;
-    void (*callback)(void *arg, int level, const char *fmt, va_list vl);
+    sxplayer_log_callback_type callback;
 };
 
 void sxpi_log_set_callback(struct log_ctx *ctx, void *arg,
-                      void (*callback)(void *arg, int level, const char *fmt, va_list vl))
+                           sxplayer_log_callback_type callback)
 {
     ctx->user_arg = arg;
     ctx->callback = callback;
@@ -46,21 +47,44 @@ struct log_ctx *sxpi_log_alloc(void)
     return ctx;
 }
 
-static void default_callback(void *arg, int level, const char *fmt, va_list vl)
+static void default_callback(void *arg, int level, const char *filename, int ln,
+                             const char *fn, const char *fmt, va_list vl)
 {
-    static const int av_log_levels[] = {
+    char logline[512];
+    struct log_ctx *ctx = arg;
+    static const int avlog_levels[] = {
         [SXPLAYER_LOG_VERBOSE] = AV_LOG_VERBOSE,
         [SXPLAYER_LOG_DEBUG]   = AV_LOG_DEBUG,
         [SXPLAYER_LOG_INFO]    = AV_LOG_INFO,
         [SXPLAYER_LOG_WARNING] = AV_LOG_WARNING,
         [SXPLAYER_LOG_ERROR]   = AV_LOG_ERROR,
     };
-    av_vlog(arg, av_log_levels[level], fmt, vl);
+    const int avlog_level = avlog_levels[level];
+    void *avlog = ctx->avlog;
+
+    vsnprintf(logline, sizeof(logline), fmt, vl);
+
+    if (ENABLE_DBG) {
+        int64_t t;
+        pthread_mutex_lock(&ctx->lock);
+        t = av_gettime();
+        if (!ctx->last_time)
+            ctx->last_time = t;
+        av_log(avlog, avlog_level, "[%f] %s:%d %s: %s\n",
+               (t - ctx->last_time) / 1000000.,
+               filename, ln, fn, logline);
+        ctx->last_time = t;
+        pthread_mutex_unlock(&ctx->lock);
+    } else {
+        av_log(avlog, avlog_level, "%s:%d %s: %s\n",
+               filename, ln, fn, logline);
+    }
 }
 
 int sxpi_log_init(struct log_ctx *ctx, void *avlog)
 {
-    sxpi_log_set_callback(ctx, avlog, default_callback);
+    ctx->avlog = avlog;
+    sxpi_log_set_callback(ctx, ctx, default_callback);
     return AVERROR(pthread_mutex_init(&ctx->lock, NULL));
 }
 
@@ -73,39 +97,13 @@ void sxpi_log_free(struct log_ctx **ctxp)
     av_freep(ctxp);
 }
 
-static void exec_log_cb(struct log_ctx *ctx, int log_level, const char *fmt, ...)
+void sxpi_log_print(void *log_ctx, int log_level, const char *filename,
+                    int ln, const char *fn, const char *fmt, ...)
 {
     va_list vl;
+    struct log_ctx *ctx = log_ctx;
 
     va_start(vl, fmt);
-    ctx->callback(ctx->user_arg, log_level, fmt, vl);
+    ctx->callback(ctx->user_arg, log_level, filename, ln, fn, fmt, vl);
     va_end(vl);
-}
-
-void sxpi_log_print(void *log_ctx, int log_level, const char *filename,
-               int ln, const char *fn, const char *fmt, ...)
-{
-    struct log_ctx *ctx = log_ctx;
-    va_list arg_list;
-    char logline[512];
-
-    va_start(arg_list, fmt);
-    vsnprintf(logline, sizeof(logline), fmt, arg_list);
-    va_end(arg_list);
-
-    if (ENABLE_DBG) {
-        int64_t t;
-        pthread_mutex_lock(&ctx->lock);
-        t = av_gettime();
-        if (!ctx->last_time)
-            ctx->last_time = t;
-        exec_log_cb(ctx, log_level, "[%f] %s:%d %s: %s\n",
-                    (t - ctx->last_time) / 1000000.,
-                    filename, ln, fn, logline);
-        ctx->last_time = t;
-        pthread_mutex_unlock(&ctx->lock);
-    } else {
-        exec_log_cb(ctx, log_level, "%s:%d %s: %s\n",
-                    filename, ln, fn, logline);
-    }
 }

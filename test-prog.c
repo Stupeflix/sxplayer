@@ -554,21 +554,22 @@ done:
     return ret;
 }
 
-static const char *filename = "/i/do/not/exist";
+static const char *fake_filename = "/i/do/not/exist";
 
-static void log_callback(void *arg, int level, const char *fmt, va_list vl)
+static void log_callback(void *arg, int level, const char *filename, int ln,
+                         const char *fn, const char *fmt, va_list vl)
 {
-    av_assert0(arg == filename);
-    printf("fmt=%s level=%d\n", fmt, level);
+    av_assert0(arg == fake_filename);
+    printf("level=%d filename=%s ln=%d fn=%s fmt=%s\n", level, filename, ln, fn, fmt);
 }
 
 static int run_notavail_file_test(void)
 {
-    struct sxplayer_ctx *s = sxplayer_create(filename);
+    struct sxplayer_ctx *s = sxplayer_create(fake_filename);
 
     if (!s)
         return -1;
-    sxplayer_set_log_callback(s, (void*)filename, log_callback);
+    sxplayer_set_log_callback(s, (void*)fake_filename, log_callback);
     sxplayer_release_frame(sxplayer_get_frame(s, -1));
     sxplayer_release_frame(sxplayer_get_frame(s, 1.0));
     sxplayer_release_frame(sxplayer_get_frame(s, 3.0));

@@ -61,7 +61,7 @@ struct log_ctx *sxpi_log_alloc(void);
 int sxpi_log_init(struct log_ctx *ctx, void *avlog);
 
 void sxpi_log_set_callback(struct log_ctx *ctx, void *arg,
-                           void (*callback)(void *arg, int level, const char *fmt, va_list vl));
+                           sxplayer_log_callback_type callback);
 
 void sxpi_log_print(void *log_ctx, int log_level, const char *filename,
                     int ln, const char *fn, const char *fmt, ...) av_printf_format(6, 7);

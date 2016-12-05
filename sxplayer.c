@@ -163,7 +163,7 @@ static void free_temp_context_data(struct sxplayer_ctx *s)
 }
 
 void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
-                               void (*callback)(void *arg, int level, const char *fmt, va_list vl))
+                               sxplayer_log_callback_type callback)
 {
     sxpi_log_set_callback(s->log_ctx, arg, callback);
 }
