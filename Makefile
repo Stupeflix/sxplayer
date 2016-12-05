@@ -30,7 +30,9 @@ TRACE  ?= no
 
 TARGET_OS ?= $(shell uname -s)
 
-PROJECT_LDFLAGS = -Wl,--version-script,lib$(NAME).ver
+EXPORTED_SYMBOLS_FILE = lib$(NAME).symexport
+
+VERSION_SCRIPT = --version-script
 
 DYLIBSUFFIX = so
 ifeq ($(TARGET_OS),Darwin)
@@ -38,7 +40,7 @@ ifeq ($(TARGET_OS),Darwin)
 	PROJECT_LIBS            += $(DARWIN_LIBS)
 	PROJECT_PKG_CONFIG_LIBS += $(DARWIN_PKG_CONFIG_LIBS)
 	PROJECT_OBJS            += $(DARWIN_OBJS)
-	PROJECT_LDFLAGS =
+	VERSION_SCRIPT = -exported_symbols_list
 else
 ifeq ($(TARGET_OS),Android)
 	PROJECT_LIBS            += $(ANDROID_LIBS)
@@ -69,7 +71,6 @@ ifeq ($(TRACE),yes)
 endif
 CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PROJECT_PKG_CONFIG_LIBS)) $(CFLAGS)
 LDLIBS := $(shell $(PKG_CONFIG) --libs   $(PROJECT_PKG_CONFIG_LIBS)) $(LDLIBS) $(PROJECT_LIBS)
-LDFLAGS := $(PROJECT_LDFLAGS)
 
 PROGOBJS = player.o
 TESTPROG = test-prog
@@ -78,11 +79,19 @@ TESTOBJS = $(TESTPROG).o
 ALLOBJS = $(OBJS) $(PROGOBJS) $(TESTOBJS)
 ALLDEPS = $(ALLOBJS:.o=.d)
 
-$(LIBNAME): $(OBJS)
+$(LIBNAME): LDFLAGS += -Wl,$(VERSION_SCRIPT),$(EXPORTED_SYMBOLS_FILE)
+$(LIBNAME): $(EXPORTED_SYMBOLS_FILE) $(OBJS)
 ifeq ($(SHARED),yes)
-	$(CC) $(LDFLAGS) $^ -shared -o $@ $(LDLIBS)
+	$(CC) $(LDFLAGS) $(OBJS) -shared -o $@ $(LDLIBS)
 else
 	$(AR) rcs $@ $^
+endif
+
+$(EXPORTED_SYMBOLS_FILE):
+ifeq ($(TARGET_OS),Darwin)
+	$(shell printf "_$(NAME)_*\n" > $(EXPORTED_SYMBOLS_FILE))
+else
+	$(shell printf "LIBSXPLAYER {\n\tglobal: $(NAME)_*;\n\tlocal: *;\n};\n" > $(EXPORTED_SYMBOLS_FILE))
 endif
 
 PLAYER_LIBS =
@@ -99,7 +108,7 @@ $(TESTPROG): $(OBJS) $(TESTOBJS)
 all: $(LIBNAME) $(PCNAME) $(NAME)
 
 clean:
-	$(RM) lib$(NAME).so lib$(NAME).dylib lib$(NAME).a $(NAME).hpp $(NAME) $(OBJS) $(ALLDEPS) $(TESTPROG) $(TESTOBJS) $(PROGOBJS) $(PCNAME)
+	$(RM) lib$(NAME).so lib$(NAME).dylib lib$(NAME).a $(NAME).hpp $(NAME) $(OBJS) $(ALLDEPS) $(TESTPROG) $(TESTOBJS) $(PROGOBJS) $(PCNAME) $(EXPORTED_SYMBOLS_FILE)
 $(PCNAME): $(PCNAME).tpl
 ifeq ($(SHARED),yes)
 	sed -e "s#PREFIX#$(PREFIX)#;s#DEP_LIBS##;s#DEP_PRIVATE_LIBS#$(LDLIBS)#" $^ > $@
