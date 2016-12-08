@@ -19,5 +19,5 @@ sed -e "s/^#define SXPLAYER_VERSION_MAJOR.*/#define SXPLAYER_VERSION_MAJOR $MAJO
     -e "s/^#define SXPLAYER_VERSION_MICRO.*/#define SXPLAYER_VERSION_MICRO $MICRO/" \
     -i sxplayer.h
 
-git commit -a -m "Release $VERSION"
+git commit -a --allow-empty -m "Release $VERSION"
 git tag "v$VERSION"
