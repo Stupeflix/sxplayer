@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if [ $# -ne 1 ]; then
+	echo "Usage $0 <major.minor.micro>"
+	exit 1
+fi
+
 extract(){
 	echo $1 | cut -d. -f $2
 }
