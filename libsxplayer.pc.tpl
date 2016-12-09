@@ -5,7 +5,7 @@ libdir=${exec_prefix}/lib
 
 Name: sxplayer
 Description: Stupeflix Player library
-Version: 8.0.0
+Version: 8.0.1
 Cflags: -I${includedir}
 Libs: -L${libdir} -lsxplayer DEP_LIBS
 Libs.private: DEP_PRIVATE_LIBS
