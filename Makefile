@@ -84,7 +84,7 @@ $(LIBNAME): $(EXPORTED_SYMBOLS_FILE) $(OBJS)
 ifeq ($(SHARED),yes)
 	$(CC) $(LDFLAGS) $(OBJS) -shared -o $@ $(LDLIBS)
 else
-	$(AR) rcs $@ $^
+	$(AR) rcs $@ $(OBJS)
 endif
 
 $(EXPORTED_SYMBOLS_FILE):
