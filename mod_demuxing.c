@@ -98,7 +98,7 @@ int sxpi_demuxing_init(void *log_ctx,
                        const char *filename,
                        const struct sxplayer_opts *opts)
 {
-    int ret;
+    int i, ret;
     enum AVMediaType media_type;
 
     ctx->log_ctx = log_ctx;
@@ -152,6 +152,12 @@ int sxpi_demuxing_init(void *log_ctx,
     ctx->stream = ctx->fmt_ctx->streams[ctx->stream_idx];
     ctx->is_image = strstr(ctx->fmt_ctx->iformat->name, "image2") ||
                     strstr(ctx->fmt_ctx->iformat->name, "_pipe");
+
+    /* Automatically discard all the other streams so we don't have to filter
+     * them out most of the time */
+    for (i = 0; i < ctx->fmt_ctx->nb_streams; i++)
+        if (i != ctx->stream_idx)
+            ctx->fmt_ctx->streams[i]->discard = AVDISCARD_ALL;
 
     av_dump_format(ctx->fmt_ctx, 0, filename, 0);
 
