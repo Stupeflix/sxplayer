@@ -158,73 +158,57 @@ static int ffdec_init_hw(struct decoder_ctx *ctx, const struct sxplayer_opts *op
     return ffdec_init(ctx, 1);
 }
 
-static int decode_packet(struct decoder_ctx *ctx, const AVPacket *pkt, int *got_frame)
-{
-    int ret;
-    int decoded = pkt->size;
-    AVCodecContext *avctx = ctx->avctx;
-    AVFrame *dec_frame = av_frame_alloc();
-
-    *got_frame = 0;
-
-    TRACE(ctx, "decode packet of size %d", pkt->size);
-
-    if (!dec_frame)
-        return AVERROR(ENOMEM);
-
-    switch (avctx->codec_type) {
-    case AVMEDIA_TYPE_VIDEO:
-        ret = avcodec_decode_video2(avctx, dec_frame, got_frame, pkt);
-        break;
-    case AVMEDIA_TYPE_AUDIO:
-        ret = avcodec_decode_audio4(avctx, dec_frame, got_frame, pkt);
-        break;
-    default:
-        av_assert0(0);
-    }
-
-    if (ret < 0) {
-        LOG(ctx, ERROR, "Error decoding %s packet: %s",
-            av_get_media_type_string(avctx->codec_type),
-            av_err2str(ret));
-        av_frame_free(&dec_frame);
-        return pkt->size;
-    }
-
-    TRACE(ctx, "decoded %d/%d bytes from packet -> got_frame=%d", ret, pkt->size, *got_frame);
-    decoded = FFMIN(ret, pkt->size);
-
-    if (*got_frame) {
-        ret = sxpi_decoding_queue_frame(ctx->decoding_ctx, dec_frame);
-        if (ret < 0) {
-            TRACE(ctx, "could not queue frame: %s", av_err2str(ret));
-            av_frame_free(&dec_frame);
-            return ret;
-        }
-    } else {
-        av_frame_free(&dec_frame);
-    }
-    return decoded;
-}
-
-
 static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
 {
     int ret;
     const int flush = !pkt->size;
-    AVPacket avpkt = *pkt;
-    int got_frame;
+    AVCodecContext *avctx = ctx->avctx;
 
-    TRACE(ctx, "received packet of size %d", pkt->size);
-    do {
-        ret = decode_packet(ctx, &avpkt, &got_frame);
-        if (ret < 0)
-            break;
-        avpkt.data += ret;
-        avpkt.size -= ret;
-    } while (avpkt.size > 0 || (flush && got_frame));
-    if (ret == 0 && flush && !got_frame)
-        return sxpi_decoding_queue_frame(ctx->decoding_ctx, NULL);
+    av_assert0(avctx->codec_type == AVMEDIA_TYPE_VIDEO ||
+               avctx->codec_type == AVMEDIA_TYPE_AUDIO);
+
+    TRACE(ctx, "Received packet of size %d", pkt->size);
+
+    ret = avcodec_send_packet(avctx, pkt);
+    if (ret < 0) {
+        LOG(ctx, ERROR, "Error sending packet to %s decoder: %s",
+            av_get_media_type_string(avctx->codec_type),
+            av_err2str(ret));
+        return ret;
+    }
+
+    while (ret >= 0) {
+        AVFrame *dec_frame = av_frame_alloc();
+
+        if (!dec_frame)
+            return AVERROR(ENOMEM);
+
+        ret = avcodec_receive_frame(avctx, dec_frame);
+        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+            LOG(ctx, ERROR, "Error receiving frame from %s decoder: %s",
+                av_get_media_type_string(avctx->codec_type),
+                av_err2str(ret));
+                av_frame_free(&dec_frame);
+            return ret;
+        }
+
+        if (ret >= 0) {
+            ret = sxpi_decoding_queue_frame(ctx->decoding_ctx, dec_frame);
+            if (ret < 0) {
+                TRACE(ctx, "Could not queue frame: %s", av_err2str(ret));
+                av_frame_free(&dec_frame);
+                return ret;
+            }
+        } else {
+            av_frame_free(&dec_frame);
+        }
+    }
+    if (ret == AVERROR(EAGAIN))
+        ret = 0;
+
+    if (flush)
+        ret = sxpi_decoding_queue_frame(ctx->decoding_ctx, NULL);
+
     return ret;
 }
 
