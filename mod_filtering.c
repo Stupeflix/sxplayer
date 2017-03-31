@@ -52,8 +52,6 @@ struct filtering_ctx {
     int audio_texture;
 
     AVFilterGraph *filter_graph;
-    AVFrame *audio_texture_frame;
-    AVFrame *tmp_audio_frame;
     enum AVPixelFormat last_frame_format;
     AVFilterContext *buffersink_ctx;        // sink of the graph (from where we pull)
     AVFilterContext *buffersrc_ctx;         // source of the graph (where we push)
@@ -354,13 +352,6 @@ int sxpi_filtering_init(void *log_ctx,
     if (ctx->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
         int i;
 
-        ctx->audio_texture_frame = get_audio_frame();
-        if (!ctx->audio_texture_frame)
-            return AVERROR(ENOMEM);
-        ctx->tmp_audio_frame = av_frame_alloc();
-        if (!ctx->tmp_audio_frame)
-            return AVERROR(ENOMEM);
-
         /* Pre-calc windowing function */
         ctx->window_func_lut = av_malloc_array(AUDIO_NBSAMPLES, sizeof(*ctx->window_func_lut));
         if (!ctx->window_func_lut)
@@ -437,12 +428,20 @@ static int pull_frame(struct filtering_ctx *ctx, AVFrame *outframe)
 {
     int ret;
     const int do_audio_texture = ctx->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture;
-    AVFrame *filtered_frame = do_audio_texture ? ctx->tmp_audio_frame : outframe;
+    AVFrame *filtered_frame = outframe;
 
     TRACE(ctx, "pulling frame from filtergraph");
 
+    if (do_audio_texture) {
+        filtered_frame = av_frame_alloc();
+        if (!filtered_frame)
+            return AVERROR(ENOMEM);
+    }
+
     ret = av_buffersink_get_frame(ctx->buffersink_ctx, filtered_frame);
     if (ret < 0) {
+        if (do_audio_texture)
+            av_frame_free(&filtered_frame);
         if (ret != AVERROR_EOF)
             LOG(ctx, ERROR, "unable to pull frame from filtergraph: %s", av_err2str(ret));
         return ret;
@@ -455,9 +454,11 @@ static int pull_frame(struct filtering_ctx *ctx, AVFrame *outframe)
           PTS2TIMESTR(filtered_frame->pts));
 
     if (do_audio_texture) {
-        audio_frame_to_sound_texture(ctx, ctx->audio_texture_frame, filtered_frame);
-        av_frame_unref(filtered_frame);
-        av_frame_ref(outframe, ctx->audio_texture_frame);
+        AVFrame *audio_texture_frame = get_audio_frame();
+        audio_frame_to_sound_texture(ctx, audio_texture_frame, filtered_frame);
+        av_frame_free(&filtered_frame);
+        av_frame_move_ref(outframe, audio_texture_frame);
+        av_free(audio_texture_frame);
     }
 
     return 0;
@@ -616,8 +617,6 @@ void sxpi_filtering_free(struct filtering_ctx **fp)
         return;
 
     if (ctx->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
-        av_frame_free(&ctx->audio_texture_frame);
-        av_frame_free(&ctx->tmp_audio_frame);
         av_freep(&ctx->window_func_lut);
         av_freep(&ctx->rdft_data[0]);
         av_freep(&ctx->rdft_data[1]);
