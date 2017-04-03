@@ -397,8 +397,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->data = frame->data[0];
     ret->linesize = frame->linesize[0];
     ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
-    if (o->avselect == SXPLAYER_SELECT_VIDEO ||
-        (o->avselect == SXPLAYER_SELECT_AUDIO && o->audio_texture)) {
+    if (o->avselect == SXPLAYER_SELECT_VIDEO) {
         if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
             ret->data = frame->data[3];
 #if HAVE_MEDIACODEC_HWACCEL
@@ -409,6 +408,10 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
         ret->width   = frame->width;
         ret->height  = frame->height;
         ret->pix_fmt = sxpi_pix_fmts_ff2sx(frame->format);
+    } else if (o->avselect == SXPLAYER_SELECT_AUDIO && o->audio_texture) {
+        ret->width   = frame->width;
+        ret->height  = frame->height;
+        ret->pix_fmt = SXPLAYER_SMPFMT_FLT;
     } else {
         ret->nb_samples = frame->nb_samples;
         ret->pix_fmt = sxpi_smp_fmts_ff2sx(frame->format);
