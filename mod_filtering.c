@@ -442,7 +442,7 @@ static int pull_frame(struct filtering_ctx *ctx, AVFrame *outframe)
     if (ret < 0) {
         if (do_audio_texture)
             av_frame_free(&filtered_frame);
-        if (ret != AVERROR_EOF)
+        if (ret != AVERROR_EOF && ret != AVERROR(EAGAIN))
             LOG(ctx, ERROR, "unable to pull frame from filtergraph: %s", av_err2str(ret));
         return ret;
     }
@@ -587,7 +587,7 @@ void sxpi_filtering_run(struct filtering_ctx *ctx)
                 break;
 
             ret = pull_send_frame(ctx);
-            if (ret < 0)
+            if (ret < 0 && ret != AVERROR(EAGAIN))
                 break;
         }
     }
