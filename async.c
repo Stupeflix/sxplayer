@@ -96,6 +96,7 @@ static int send_wait_ctl_message(struct async_context *actx,
         return ret;
     }
     TRACE(actx, "wait %s", msg_type_str);
+    memset(msg, 0, sizeof(*msg));
     for (;;) {
         ret = av_thread_message_queue_recv(actx->ctl_out_queue, msg, 0);
         if (ret < 0 || msg->type == message_type)
@@ -425,6 +426,7 @@ static int op_start(struct async_context *actx)
 
     if (seek_to != AV_NOPTS_VALUE) {
         TRACE(actx, "wait for seek (to %s) to come back", PTS2TIMESTR(seek_to));
+        memset(&msg, 0, sizeof(msg));
         do {
             ret = av_thread_message_queue_recv(actx->sink_queue, &msg, 0);
             if (ret < 0) {
@@ -555,6 +557,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
     }
 
     // We were able to send a seek request, now we wait for it to return
+    memset(seek_msg, 0, sizeof(*seek_msg));
     for (;;) {
         TRACE(actx, "seek request sent, wait for its return");
         ret = av_thread_message_queue_recv(actx->sink_queue, seek_msg, 0);
