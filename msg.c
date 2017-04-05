@@ -32,6 +32,7 @@ void sxpi_msg_free_data(void *arg)
     case MSG_FRAME: {
         AVFrame *frame = msg->data;
         av_frame_free(&frame);
+        msg->data = NULL;
         break;
     }
     case MSG_PACKET:
