@@ -333,11 +333,11 @@ static void *name##_thread(void *arg)                                           
             if (ENABLE_DBG) {                                                   \
                 size_t stack_size;                                              \
                 pthread_attr_getstacksize(&attr, &stack_size);                  \
-                TRACE(actx, "stack size before: %zd", stack_size);              \
+                TRACE(actx, "stack size before: %d", (int)stack_size);          \
                 pthread_attr_setstacksize(&attr, actx->thread_stack_size);      \
                 stack_size = 0;                                                 \
                 pthread_attr_getstacksize(&attr, &stack_size);                  \
-                TRACE(actx, "stack size after: %zd", stack_size);               \
+                TRACE(actx, "stack size after: %d", (int)stack_size);           \
             } else {                                                            \
                 pthread_attr_setstacksize(&attr, actx->thread_stack_size);      \
             }                                                                   \
