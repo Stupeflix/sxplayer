@@ -46,6 +46,10 @@ ifeq ($(TARGET_OS),Android)
 	PROJECT_LIBS            += $(ANDROID_LIBS)
 	PROJECT_PKG_CONFIG_LIBS += $(ANDROID_PKG_CONFIG_LIBS)
 	PROJECT_OBJS            += $(ANDROID_OBJS)
+else
+ifeq ($(TARGET_OS),MinGW-w64)
+	DYLIBSUFFIX = dll
+endif # mingw
 endif # android
 endif # darwin
 
@@ -108,7 +112,8 @@ $(TESTPROG): $(OBJS) $(TESTOBJS)
 all: $(LIBNAME) $(PCNAME) $(NAME)
 
 clean:
-	$(RM) lib$(NAME).so lib$(NAME).dylib lib$(NAME).a $(NAME).hpp $(NAME) $(OBJS) $(ALLDEPS) $(TESTPROG) $(TESTOBJS) $(PROGOBJS) $(PCNAME) $(EXPORTED_SYMBOLS_FILE)
+	$(RM) lib$(NAME).so lib$(NAME).dylib lib$(NAME).a lib$(NAME).dll
+	$(RM) $(NAME).hpp $(NAME) $(OBJS) $(ALLDEPS) $(TESTPROG) $(TESTOBJS) $(PROGOBJS) $(PCNAME) $(EXPORTED_SYMBOLS_FILE)
 $(PCNAME): $(PCNAME).tpl
 ifeq ($(SHARED),yes)
 	sed -e "s#PREFIX#$(PREFIX)#;s#DEP_LIBS##;s#DEP_PRIVATE_LIBS#$(LDLIBS)#" $^ > $@
@@ -124,6 +129,9 @@ install: $(LIBNAME) $(PCNAME) $(NAME).hpp
 	install -d $(DESTDIR)$(PREFIX)/lib
 	install -d $(DESTDIR)$(PREFIX)/lib/pkgconfig
 	install -d $(DESTDIR)$(PREFIX)/include
+ifeq ($(TARGET_OS),MinGW-w64)
+	install -m 644 $(LIBNAME) $(DESTDIR)$(PREFIX)/bin
+endif
 	install -m 644 $(LIBNAME) $(DESTDIR)$(PREFIX)/lib
 	install -m 644 $(PCNAME) $(DESTDIR)$(PREFIX)/lib/pkgconfig
 	install -m 644 $(NAME).h $(DESTDIR)$(PREFIX)/include/$(NAME).h
