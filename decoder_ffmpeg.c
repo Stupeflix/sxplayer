@@ -86,6 +86,7 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
 
     ctx->use_hwaccel = 0;
     av_opt_set_int(avctx, "refcounted_frames", 1, 0);
+    av_opt_set(avctx, "threads", "auto", 0);
 
     if (hw) {
         if (avctx->codec_id == AV_CODEC_ID_H264  ||
