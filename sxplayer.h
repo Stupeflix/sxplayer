@@ -109,6 +109,7 @@ struct sxplayer_info {
     int width;
     int height;
     double duration;
+    int is_image;
 };
 
 /**

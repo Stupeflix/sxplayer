@@ -39,6 +39,7 @@
 struct info_message {
     int width, height;
     int64_t duration;
+    int is_image;
 };
 
 struct async_context {
@@ -170,6 +171,7 @@ int sxpi_async_fetch_info(struct async_context *actx, struct sxplayer_info *info
     info->width    = actx->info.width;
     info->height   = actx->info.height;
     info->duration = actx->info.duration * av_q2d(AV_TIME_BASE_Q);
+    info->is_image = actx->info.is_image;
     return 0;
 }
 
@@ -466,10 +468,12 @@ static int op_info(struct async_context *actx, struct message *msg)
     if (duration == AV_NOPTS_VALUE)
         duration = 0;
     const AVStream *st = sxpi_demuxing_get_stream(actx->demuxer);
+    const int is_image = sxpi_demuxing_is_image(actx->demuxer);
     struct info_message info = {
         .width    = st->codecpar->width,
         .height   = st->codecpar->height,
         .duration = duration,
+        .is_image = is_image,
     };
 
     msg->data = av_memdup(&info, sizeof(info));

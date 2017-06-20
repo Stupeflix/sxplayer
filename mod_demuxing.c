@@ -91,6 +91,11 @@ const AVStream *sxpi_demuxing_get_stream(const struct demuxing_ctx *ctx)
     return ctx->stream;
 }
 
+int sxpi_demuxing_is_image(const struct demuxing_ctx *ctx)
+{
+    return ctx->is_image;
+}
+
 int sxpi_demuxing_init(void *log_ctx,
                        struct demuxing_ctx *ctx,
                        AVThreadMessageQueue *src_queue,

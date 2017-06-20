@@ -39,6 +39,7 @@ int sxpi_demuxing_init(void *log_ctx,
 int64_t sxpi_demuxing_probe_duration(const struct demuxing_ctx *ctx);
 double sxpi_demuxing_probe_rotation(const struct demuxing_ctx *ctx);
 const AVStream *sxpi_demuxing_get_stream(const struct demuxing_ctx *ctx);
+int sxpi_demuxing_is_image(const struct demuxing_ctx *ctx);
 
 void sxpi_demuxing_run(struct demuxing_ctx *ctx);
 
