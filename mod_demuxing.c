@@ -157,6 +157,8 @@ int sxpi_demuxing_init(void *log_ctx,
     ctx->stream = ctx->fmt_ctx->streams[ctx->stream_idx];
     ctx->is_image = strstr(ctx->fmt_ctx->iformat->name, "image2") ||
                     strstr(ctx->fmt_ctx->iformat->name, "_pipe");
+    LOG(ctx, INFO, "Selected %s stream %d",
+        av_get_media_type_string(media_type), ctx->stream_idx);
 
     /* Automatically discard all the other streams so we don't have to filter
      * them out most of the time */
