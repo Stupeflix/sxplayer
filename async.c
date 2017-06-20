@@ -285,18 +285,18 @@ static int initialize_modules_once(struct async_context *actx,
     TRACE(actx, "initialize modules");
 
     if ((ret = sxpi_demuxing_init(actx->log_ctx,
-                             actx->demuxer,
-                             actx->src_queue, actx->pkt_queue,
-                             actx->filename, opts)) < 0 ||
+                                  actx->demuxer,
+                                  actx->src_queue, actx->pkt_queue,
+                                  actx->filename, opts)) < 0 ||
         (ret = sxpi_decoding_init(actx->log_ctx,
-                             actx->decoder,
-                             actx->pkt_queue, actx->frames_queue,
-                             sxpi_demuxing_get_stream(actx->demuxer), opts)) < 0 ||
+                                  actx->decoder,
+                                  actx->pkt_queue, actx->frames_queue,
+                                  sxpi_demuxing_get_stream(actx->demuxer), opts)) < 0 ||
         (ret = sxpi_filtering_init(actx->log_ctx,
-                              actx->filterer,
-                              actx->frames_queue, actx->sink_queue,
-                              sxpi_decoding_get_avctx(actx->decoder),
-                              sxpi_demuxing_probe_rotation(actx->demuxer), opts)) < 0)
+                                   actx->filterer,
+                                   actx->frames_queue, actx->sink_queue,
+                                   sxpi_decoding_get_avctx(actx->decoder),
+                                   sxpi_demuxing_probe_rotation(actx->demuxer), opts)) < 0)
         return ret;
 
     actx->modules_initialized = 1;
