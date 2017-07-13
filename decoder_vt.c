@@ -369,7 +369,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
         return AVERROR(ENOSYS);
     case kVTVideoDecoderMalfunctionErr:
         return AVERROR(EINVAL);
-    case kVTVideoDecoderBadDataErr :
+    case kVTVideoDecoderBadDataErr:
         return AVERROR_INVALIDDATA;
     case 0:
         return 0;
