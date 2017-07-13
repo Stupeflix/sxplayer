@@ -376,6 +376,9 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
     case kVTVideoDecoderBadDataErr:
         LOG(dec_ctx, ERROR, "Bad Data");
         return AVERROR_INVALIDDATA;
+    case kVTCouldNotFindVideoDecoderErr:
+        LOG(dec_ctx, ERROR, "Could not find video decoder");
+        return AVERROR_DECODER_NOT_FOUND;
     case 0:
         return 0;
     default:
