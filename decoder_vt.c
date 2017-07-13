@@ -365,15 +365,21 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
 
     switch (status) {
     case kVTVideoDecoderNotAvailableNowErr:
+        LOG(dec_ctx, ERROR, "Video decoder not available now");
+        return AVERROR(ENOSYS);
     case kVTVideoDecoderUnsupportedDataFormatErr:
+        LOG(dec_ctx, ERROR, "Unsupported data format");
         return AVERROR(ENOSYS);
     case kVTVideoDecoderMalfunctionErr:
+        LOG(dec_ctx, ERROR, "Malfunction detected");
         return AVERROR(EINVAL);
     case kVTVideoDecoderBadDataErr:
+        LOG(dec_ctx, ERROR, "Bad Data");
         return AVERROR_INVALIDDATA;
     case 0:
         return 0;
     default:
+        LOG(dec_ctx, ERROR, "Unknown error %d", status);
         return AVERROR_UNKNOWN;
     }
 }
