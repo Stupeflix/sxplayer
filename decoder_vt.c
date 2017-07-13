@@ -127,7 +127,16 @@ static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
                                              &kCFTypeDictionaryKeyCallBacks,
                                              &kCFTypeDictionaryValueCallBacks);
 
+        switch (avctx->codec_id) {
+        case AV_CODEC_ID_H264:
         dict_set_data(avc_info, CFSTR("avcC"), avctx->extradata, avctx->extradata_size);
+            break;
+        case AV_CODEC_ID_HEVC:
+            dict_set_data(avc_info, CFSTR("hvcC"), avctx->extradata, avctx->extradata_size);
+            break;
+        default:
+            av_assert0(0);
+        }
 
         CFDictionarySetValue(config_info,
                 kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms,
@@ -323,6 +332,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
 
     switch (avctx->codec_id) {
     case AV_CODEC_ID_H264:       cm_codec_type = kCMVideoCodecType_H264;       break;
+    case AV_CODEC_ID_HEVC:       cm_codec_type = kCMVideoCodecType_HEVC;       break;
     default:
         return AVERROR_DECODER_NOT_FOUND;
     }
