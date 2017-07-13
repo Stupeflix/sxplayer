@@ -129,7 +129,7 @@ static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
 
         switch (avctx->codec_id) {
         case AV_CODEC_ID_H264:
-        dict_set_data(avc_info, CFSTR("avcC"), avctx->extradata, avctx->extradata_size);
+            dict_set_data(avc_info, CFSTR("avcC"), avctx->extradata, avctx->extradata_size);
             break;
         case AV_CODEC_ID_HEVC:
             dict_set_data(avc_info, CFSTR("hvcC"), avctx->extradata, avctx->extradata_size);
