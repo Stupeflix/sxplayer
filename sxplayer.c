@@ -650,9 +650,18 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
         /* If we never returned a frame and got a candidate, we do not free it
          * immediately, because after the seek we might not actually get
-         * anything. Typical case: images where we request a random timestamp. */
-        if (diff > 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE)
+         * anything. Typical case: images where we request a random timestamp.
+         *
+         * There is however an exception if the frame is from MediaCodec. Since
+         * the MediaCodec flush command discard both input and output buffers,
+         * we need to release any frame we retain before performing a seek
+         * otherwise the ffmpeg MediaCodec decoder will never send the command
+         * to the codec and will queue input packets until it reaches EOF.
+         */
+        if ((candidate && candidate->format == AV_PIX_FMT_MEDIACODEC) ||
+            (diff > 0 && s->last_pushed_frame_ts != AV_NOPTS_VALUE)) {
             av_frame_free(&candidate);
+        }
 
         av_frame_free(&s->cached_frame);
 
