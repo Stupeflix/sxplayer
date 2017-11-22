@@ -546,12 +546,6 @@ int sxplayer_start(struct sxplayer_ctx *s)
     return ret;
 }
 
-int sxplayer_prefetch(struct sxplayer_ctx *s)
-{
-    LOG(s, WARNING, "sxplayer_prefetch() is deprecated, use sxplayer_start() instead");
-    return sxplayer_start(s);
-}
-
 struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 {
     int ret;
@@ -570,7 +564,7 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
         return ret_frame(s, NULL);
 
     if (t < 0) {
-        sxplayer_prefetch(s);
+        sxplayer_start(s);
         return ret_frame(s, NULL);
     }
 
