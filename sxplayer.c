@@ -691,6 +691,10 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
         }
         av_frame_free(&candidate);
         candidate = next;
+        if (candidate->pts == vt) {
+            TRACE(s, "grabbed exact frame %s", PTS2TIMESTR(candidate->pts));
+            break;
+        }
     }
 
     return ret_frame(s, candidate);
