@@ -674,13 +674,19 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
         TRACE(s, "grab another frame");
         AVFrame *next = pop_frame(s);
         av_assert0(!s->cached_frame);
-        if (!next)
+        if (!next) {
+            TRACE(s, "no more frame");
             break;
+        }
         if (next->pts > vt) {
-            if (!candidate && !next_is_cached_frame && s->last_pushed_frame_ts == AV_NOPTS_VALUE)
+            TRACE(s, "grabbed frame is in the future %s > %s", PTS2TIMESTR(next->pts), PTS2TIMESTR(vt));
+            if (!candidate && !next_is_cached_frame && s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
                 candidate = next;
-            else
+                TRACE(s, "we need to return a frame, select this future frame anyway");
+            } else {
                 s->cached_frame = next;
+                TRACE(s, "cache frame %s for next call", PTS2TIMESTR(next->pts));
+            }
             break;
         }
         av_frame_free(&candidate);
