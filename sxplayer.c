@@ -397,6 +397,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->internal = frame;
     ret->data = frame->data[0];
     ret->linesize = frame->linesize[0];
+    ret->ms       = frame_ts;
     ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
     if (o->avselect == SXPLAYER_SELECT_VIDEO) {
         if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
@@ -476,11 +477,10 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
 #define SYNTH_FRAME 0
 
 #if SYNTH_FRAME
-static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, double t)
+static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, int64_t t64)
 {
     AVFrame *frame = av_frame_alloc();
-    const int64_t t64 = TIME2INT64(t);
-    const int frame_id = lrint(t * 60);
+    const int frame_id = lrint(t64 * 60 / 1000000);
 
     frame->format = AV_PIX_FMT_RGBA;
     frame->width = frame->height = 1;
@@ -546,24 +546,23 @@ int sxplayer_start(struct sxplayer_ctx *s)
     return ret;
 }
 
-struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
+struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64)
 {
     int ret;
     int64_t diff;
-    const int64_t t64 = TIME2INT64(t);
     const struct sxplayer_opts *o = &s->opts;
 
-    START_FUNC_T("GET FRAME", t);
+    START_FUNC_T("GET FRAME", t64 / 1000000.);
 
 #if SYNTH_FRAME
-    return ret_synth_frame(s, t);
+    return ret_synth_frame(s, t64);
 #endif
 
     ret = configure_context(s);
     if (ret < 0)
         return ret_frame(s, NULL);
 
-    if (t < 0) {
+    if (t64 < 0) {
         sxplayer_start(s);
         return ret_frame(s, NULL);
     }
@@ -687,6 +686,11 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
     }
 
     return ret_frame(s, candidate);
+}
+
+struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
+{
+    return sxplayer_get_frame_ms(s, TIME2INT64(t));
 }
 
 struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)

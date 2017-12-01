@@ -102,6 +102,7 @@ struct sxplayer_frame {
     int pix_fmt;        // sxplayer_pixel_format
     void *mvs;          // motions vectors (AVMotionVector*)
     int nb_mvs;         // number of motions vectors
+    int64_t ms;         // video timestamp in microseconds
     void *internal;     // sxplayer internal frame context frame, do not alter
 };
 
@@ -200,6 +201,11 @@ int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info);
  * previously requested (start, seek, stop) is honored before returning.
  */
 struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
+
+/**
+ * Same as sxplayer_get_frame, but with timestamp expressed in microseconds.
+ */
+struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t ms);
 
 /**
  * Request a playback start to the player.
