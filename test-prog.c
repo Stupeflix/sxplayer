@@ -649,6 +649,37 @@ static int test_high_refresh_rate(const char *filename)
     return 0;
 }
 
+static int run_test_ms(const char *filename)
+{
+    struct sxplayer_ctx *s1 = sxplayer_create(filename);
+    struct sxplayer_ctx *s2 = sxplayer_create(filename);
+    struct sxplayer_frame *f1, *f2;
+
+    if (!s1 || !s2)
+        return -1;
+
+    f1 = sxplayer_get_frame(s1, 3.0);
+    f2 = sxplayer_get_frame_ms(s2, 3*1000000);
+    if (!f1 || !f2)
+        return -1;
+
+    if (f1->ts != f2->ts) {
+        fprintf(stderr, "%g != %g\n", f1->ts, f2->ts);
+        return -1;
+    }
+
+    if (f1->ms != f2->ms) {
+        fprintf(stderr, "%"PRId64" != %"PRId64"\n", f1->ms, f2->ms);
+        return -1;
+    }
+
+    sxplayer_release_frame(f1);
+    sxplayer_release_frame(f2);
+    sxplayer_free(&s1);
+    sxplayer_free(&s2);
+    return 0;
+}
+
 int main(int ac, char **av)
 {
     int i;
@@ -695,6 +726,8 @@ int main(int ac, char **av)
         run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO, 60.0, 10.0))
         return -1;
 
+    if (run_test_ms(av[1]) < 0)
+        return -1;
 
     for (i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)
         if (run_tests_all_combs(av[1], tests_flags[i]) < 0)
