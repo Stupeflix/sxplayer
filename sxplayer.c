@@ -183,6 +183,8 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
         {"avfilter",   LIBAVFILTER_VERSION_INT,   avfilter_version()},
     };
 
+    av_assert0(AV_TIME_BASE == 1000000);
+
     s = av_mallocz(sizeof(*s));
     if (!s)
         return NULL;
