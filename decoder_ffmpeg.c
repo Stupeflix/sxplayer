@@ -32,45 +32,8 @@
 #include "log.h"
 
 #if HAVE_MEDIACODEC_HWACCEL
-
 #include <libavcodec/mediacodec.h>
-
-static enum AVPixelFormat mediacodec_hwaccel_get_format(AVCodecContext *avctx, const enum AVPixelFormat *pix_fmts)
-{
-    struct decoder_ctx *ctx = avctx->opaque;
-    const enum AVPixelFormat *p = NULL;
-
-    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
-        AVMediaCodecContext *mediacodec_ctx = NULL;
-        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(*p);
-
-        if (!(desc->flags & AV_PIX_FMT_FLAG_HWACCEL))
-            break;
-
-        if (*p != AV_PIX_FMT_MEDIACODEC)
-            continue;
-
-        if (ctx->opaque) {
-            mediacodec_ctx = av_mediacodec_alloc_context();
-            if (!mediacodec_ctx) {
-                fprintf(stderr, "Failed to allocate hwaccel ctx\n");
-                continue;
-            }
-
-            if (av_mediacodec_default_init(avctx, mediacodec_ctx, ctx->opaque) < 0) {
-                fprintf(stderr, "Failed to init hwaccel ctx\n");
-                av_freep(&mediacodec_ctx);
-                continue;
-            }
-
-            ctx->use_hwaccel = 1;
-        }
-        break;
-    }
-
-    return *p;
-}
-
+#include <libavutil/hwcontext_mediacodec.h>
 #endif
 
 static int ffdec_init(struct decoder_ctx *ctx, int hw)
@@ -121,9 +84,23 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
             av_dict_set_int(&opts, "delay_flush", 1, 0);
 
 #if HAVE_MEDIACODEC_HWACCEL
-            avctx->opaque = ctx;
-            avctx->get_format = mediacodec_hwaccel_get_format;
+            AVBufferRef *hw_device_ctx_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_MEDIACODEC);
+            if (!hw_device_ctx_ref)
+                return -1;
+
+            AVHWDeviceContext *hw_device_ctx = (AVHWDeviceContext *)hw_device_ctx_ref->data;
+            AVMediaCodecDeviceContext *hw_ctx = hw_device_ctx->hwctx;
+            hw_ctx->surface = ctx->opaque;
+
+            ret = av_hwdevice_ctx_init(hw_device_ctx_ref);
+            if (ret < 0) {
+                av_buffer_unref(&hw_device_ctx_ref);
+                return ret;
+            }
+
+            avctx->hw_device_ctx = hw_device_ctx_ref;
             avctx->thread_count = 1;
+            ctx->use_hwaccel = 1;
 #endif
             dec = codec;
         } else {
@@ -138,7 +115,7 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
     if (ret < 0) {
 #if HAVE_MEDIACODEC_HWACCEL
         if (ctx->use_hwaccel) {
-            av_mediacodec_default_free(avctx);
+            av_buffer_unref(&avctx->hw_device_ctx);
             ctx->use_hwaccel = 0;
         }
 #endif
@@ -228,17 +205,6 @@ static void ffdec_flush(struct decoder_ctx *ctx)
     avcodec_flush_buffers(avctx);
 }
 
-
-static void ffdec_uninit_hw(struct decoder_ctx *ctx)
-{
-    if (ctx->use_hwaccel) {
-#if HAVE_MEDIACODEC_HWACCEL
-        AVCodecContext *avctx = ctx->avctx;
-        av_mediacodec_default_free(avctx);
-#endif
-    }
-}
-
 const struct decoder sxpi_decoder_ffmpeg_sw = {
     .name        = "ffmpeg_sw",
     .init        = ffdec_init_sw,
@@ -251,5 +217,4 @@ const struct decoder sxpi_decoder_ffmpeg_hw = {
     .init        = ffdec_init_hw,
     .push_packet = ffdec_push_packet,
     .flush       = ffdec_flush,
-    .uninit      = ffdec_uninit_hw,
 };
