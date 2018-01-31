@@ -126,19 +126,6 @@ int sxpi_demuxing_init(void *log_ctx,
         return ret;
     }
 
-    /* Evil hack: we make sure avformat_find_stream_info() doesn't decode any
-     * video, because it will use the software decoder, which will be slow and
-     * use an indecent amount of memory (15-20MB). It slows down startup
-     * significantly on embedded platforms and risks a kill from the OOM
-     * because of the large and fast amount of allocated memory.
-     *
-     * The max_analyze_duration is accessible through avoptions, but a negative
-     * value isn't actually in the allowed range, so we directly mess with the
-     * field. We can't unfortunately set it to 0, because at the moment of
-     * writing this code 0 (which is the default value) means "auto", which
-     * will be then set to something like 5 seconds for video. */
-    ctx->fmt_ctx->max_analyze_duration = -1;
-
     TRACE(ctx, "find stream info");
     ret = avformat_find_stream_info(ctx->fmt_ctx, NULL);
     if (ret < 0) {
