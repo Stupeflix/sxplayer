@@ -163,6 +163,7 @@ static int ffdec_init_hw(struct decoder_ctx *ctx, const struct sxplayer_opts *op
 static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
 {
     int ret;
+    int pkt_consumed = 0;
     const int flush = !pkt->size;
     AVCodecContext *avctx = ctx->avctx;
 
@@ -171,12 +172,17 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
 
     TRACE(ctx, "Received packet of size %d", pkt->size);
 
+    while (!pkt_consumed) {
     ret = avcodec_send_packet(avctx, pkt);
-    if (ret < 0) {
+    if (ret == AVERROR(EAGAIN)) {
+        ret = 0;
+    } else if (ret < 0) {
         LOG(ctx, ERROR, "Error sending packet to %s decoder: %s",
             av_get_media_type_string(avctx->codec_type),
             av_err2str(ret));
         return ret;
+    } else {
+        pkt_consumed = 1;
     }
 
     while (ret >= 0) {
@@ -205,6 +211,8 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
             av_frame_free(&dec_frame);
         }
     }
+    }
+
     if (ret == AVERROR(EAGAIN))
         ret = 0;
 
