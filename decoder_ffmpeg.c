@@ -173,44 +173,44 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
     TRACE(ctx, "Received packet of size %d", pkt->size);
 
     while (!pkt_consumed) {
-    ret = avcodec_send_packet(avctx, pkt);
-    if (ret == AVERROR(EAGAIN)) {
-        ret = 0;
-    } else if (ret < 0) {
-        LOG(ctx, ERROR, "Error sending packet to %s decoder: %s",
-            av_get_media_type_string(avctx->codec_type),
-            av_err2str(ret));
-        return ret;
-    } else {
-        pkt_consumed = 1;
-    }
-
-    while (ret >= 0) {
-        AVFrame *dec_frame = av_frame_alloc();
-
-        if (!dec_frame)
-            return AVERROR(ENOMEM);
-
-        ret = avcodec_receive_frame(avctx, dec_frame);
-        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-            LOG(ctx, ERROR, "Error receiving frame from %s decoder: %s",
+        ret = avcodec_send_packet(avctx, pkt);
+        if (ret == AVERROR(EAGAIN)) {
+            ret = 0;
+        } else if (ret < 0) {
+            LOG(ctx, ERROR, "Error sending packet to %s decoder: %s",
                 av_get_media_type_string(avctx->codec_type),
                 av_err2str(ret));
-                av_frame_free(&dec_frame);
             return ret;
+        } else {
+            pkt_consumed = 1;
         }
 
-        if (ret >= 0) {
-            ret = sxpi_decoding_queue_frame(ctx->decoding_ctx, dec_frame);
-            if (ret < 0) {
-                TRACE(ctx, "Could not queue frame: %s", av_err2str(ret));
-                av_frame_free(&dec_frame);
+        while (ret >= 0) {
+            AVFrame *dec_frame = av_frame_alloc();
+
+            if (!dec_frame)
+                return AVERROR(ENOMEM);
+
+            ret = avcodec_receive_frame(avctx, dec_frame);
+            if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+                LOG(ctx, ERROR, "Error receiving frame from %s decoder: %s",
+                    av_get_media_type_string(avctx->codec_type),
+                    av_err2str(ret));
+                    av_frame_free(&dec_frame);
                 return ret;
             }
-        } else {
-            av_frame_free(&dec_frame);
+
+            if (ret >= 0) {
+                ret = sxpi_decoding_queue_frame(ctx->decoding_ctx, dec_frame);
+                if (ret < 0) {
+                    TRACE(ctx, "Could not queue frame: %s", av_err2str(ret));
+                    av_frame_free(&dec_frame);
+                    return ret;
+                }
+            } else {
+                av_frame_free(&dec_frame);
+            }
         }
-    }
     }
 
     if (ret == AVERROR(EAGAIN))
