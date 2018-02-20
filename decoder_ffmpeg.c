@@ -83,6 +83,9 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
     AVCodecContext *avctx = ctx->avctx;
     AVCodec *dec = avcodec_find_decoder(avctx->codec_id);
 
+    if (!strcmp(dec->name, "aac"))
+        dec = avcodec_find_decoder_by_name("aac_mediacodec");
+
     TRACE(ctx, "initialize context");
 
     ctx->use_hwaccel = 0;

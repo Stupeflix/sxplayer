@@ -227,6 +227,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     }
 
     TRACE(ctx, "graph buffer source args: %s", args);
+    LOG(ctx, ERROR, "graph buffer source args: %s", args);
 
     ret = avfilter_graph_create_filter(&ctx->buffersrc_ctx, buffersrc,
                                        outputs->name, args, NULL, ctx->filter_graph);
