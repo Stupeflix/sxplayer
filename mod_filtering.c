@@ -52,7 +52,14 @@ struct filtering_ctx {
     int audio_texture;
 
     AVFilterGraph *filter_graph;
+
     enum AVPixelFormat last_frame_format;
+    int last_frame_width;
+    int last_frame_height;
+    int last_frame_channels;
+    int last_frame_sample_rate;
+    int last_frame_channel_layout;
+
     AVFilterContext *buffersink_ctx;        // sink of the graph (from where we pull)
     AVFilterContext *buffersrc_ctx;         // source of the graph (where we push)
     float *window_func_lut;                 // audio window function lookup table
@@ -519,6 +526,11 @@ void sxpi_filtering_run(struct filtering_ctx *ctx)
 
     // we want to force the reconstruction of the filtergraph
     ctx->last_frame_format = AV_PIX_FMT_NONE;
+    ctx->last_frame_width = 0;
+    ctx->last_frame_height = 0;
+    ctx->last_frame_channels = 0;
+    ctx->last_frame_sample_rate = 0;
+    ctx->last_frame_channel_layout = 0;
 
     for (;;) {
         AVFrame *frame;
@@ -536,6 +548,11 @@ void sxpi_filtering_run(struct filtering_ctx *ctx)
             TRACE(ctx, "message is a seek, destroy filtergraph and forward message to out queue");
             avfilter_graph_free(&ctx->filter_graph);
             ctx->last_frame_format = AV_PIX_FMT_NONE;
+            ctx->last_frame_width = 0;
+            ctx->last_frame_height = 0;
+            ctx->last_frame_channels = 0;
+            ctx->last_frame_sample_rate = 0;
+            ctx->last_frame_channel_layout = 0;
             av_thread_message_flush(ctx->out_queue);
             ret = av_thread_message_queue_send(ctx->out_queue, &msg, 0);
             if (ret < 0) {
@@ -553,10 +570,20 @@ void sxpi_filtering_run(struct filtering_ctx *ctx)
                                                               : av_get_sample_fmt_name(frame->format),
               PTS2TIMESTR(frame->pts));
 
+
         /* lazy filtergraph configuration */
-        // XXX: check width/height/samplerate/etc changes?
-        if (ctx->last_frame_format != frame->format) {
+        if (ctx->last_frame_format != frame->format ||
+            ctx->last_frame_width  != frame->width ||
+            ctx->last_frame_height != frame->height ||
+            ctx->last_frame_channels != frame->channels ||
+            ctx->last_frame_sample_rate != frame->sample_rate ||
+            ctx->last_frame_channel_layout != frame->channel_layout) {
             ctx->last_frame_format = frame->format;
+            ctx->last_frame_width = frame->width;
+            ctx->last_frame_height = frame->height;
+            ctx->last_frame_channels = frame->channels;
+            ctx->last_frame_sample_rate = frame->sample_rate;
+            ctx->last_frame_channel_layout = frame->channel_layout;
             ret = setup_filtergraph(ctx);
             if (ret < 0)
                 break;
