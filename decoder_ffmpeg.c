@@ -80,6 +80,7 @@ static enum AVPixelFormat mediacodec_hwaccel_get_format(AVCodecContext *avctx, c
 static int ffdec_init(struct decoder_ctx *ctx, int hw)
 {
     int ret;
+    AVDictionary *opts = NULL;
     AVCodecContext *avctx = ctx->avctx;
     AVCodec *dec = avcodec_find_decoder(avctx->codec_id);
 
@@ -121,6 +122,8 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
             if (!codec)
                 return AVERROR_DECODER_NOT_FOUND;
 
+            av_dict_set_int(&opts, "delay_flush", 1, 0);
+
 #if HAVE_MEDIACODEC_HWACCEL
             avctx->opaque = ctx;
             avctx->get_format = mediacodec_hwaccel_get_format;
@@ -134,7 +137,8 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
 
     TRACE(ctx, "codec open");
 
-    ret = avcodec_open2(avctx, dec, NULL);
+    ret = avcodec_open2(avctx, dec, &opts);
+    av_dict_free(&opts);
     if (ret < 0) {
 #if HAVE_MEDIACODEC_HWACCEL
         if (ctx->use_hwaccel) {
