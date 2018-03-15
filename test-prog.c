@@ -317,6 +317,7 @@ static int run_image_test(const char *filename)
 
     if (!s)
         return -1;
+    sxplayer_set_option(s, "auto_hwaccel", 0);
     f = sxplayer_get_frame(s, 53.0);
     if (!f) {
         fprintf(stderr, "didn't get an image\n");
@@ -350,6 +351,7 @@ static int run_image_seek_test(const char *filename)
 
     if (!s)
         return -1;
+    sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_seek(s, 10.2);
     f = sxplayer_get_frame(s, 10.5);
     if (!f) {
@@ -482,6 +484,7 @@ static int run_seek_test_after_eos(const char *filename, int avselect, double sk
     struct sxplayer_frame *frame = NULL;
     static const float ts[] = { 0.0, 0.5, 7.65 };
 
+    sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_set_option(s, "avselect", avselect);
     sxplayer_set_option(s, "audio_texture", 0);
     sxplayer_set_option(s, "skip", skip);
@@ -502,6 +505,7 @@ static int run_seek_test_after_eos(const char *filename, int avselect, double sk
     for (k = 0; k < 4; k++) {
         for (j = 0; j < sizeof(ts)/sizeof(*ts); j++) {
             s = sxplayer_create(filename);
+            sxplayer_set_option(s, "auto_hwaccel", 0);
             sxplayer_set_option(s, "avselect", avselect);
             sxplayer_set_option(s, "audio_texture", 0);
             sxplayer_set_option(s, "skip", skip);
@@ -569,6 +573,7 @@ static int run_notavail_file_test(void)
 
     if (!s)
         return -1;
+    sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_set_log_callback(s, (void*)fake_filename, log_callback);
     sxplayer_release_frame(sxplayer_get_frame(s, -1));
     sxplayer_release_frame(sxplayer_get_frame(s, 1.0));
@@ -584,6 +589,7 @@ static int run_misc_events(const char *filename)
 
     if (!s)
         return -1;
+    sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_seek(s, 12.7);
     sxplayer_seek(s, 21.0);
     sxplayer_seek(s, 5.3);
@@ -629,6 +635,7 @@ static const int tests_flags[] = {
 static int test_high_refresh_rate(const char *filename)
 {
     struct sxplayer_ctx *s = sxplayer_create(filename);
+    sxplayer_set_option(s, "auto_hwaccel", 0);
     struct sxplayer_frame *f;
     const double t = 1/60.;
 
@@ -658,6 +665,8 @@ static int run_test_ms(const char *filename)
     if (!s1 || !s2)
         return -1;
 
+    sxplayer_set_option(s1, "auto_hwaccel", 0);
+    sxplayer_set_option(s2, "auto_hwaccel", 0);
     f1 = sxplayer_get_frame(s1, 3.0);
     f2 = sxplayer_get_frame_ms(s2, 3*1000000);
     if (!f1 || !f2)
