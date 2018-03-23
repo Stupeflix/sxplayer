@@ -421,17 +421,20 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
         ret->width   = frame->width;
         ret->height  = frame->height;
         ret->pix_fmt = sxpi_pix_fmts_ff2sx(frame->format);
+        LOG(s, DEBUG, "return %dx%d video frame @ ts=%s",
+            frame->width, frame->height, av_ts2timestr(frame_ts, &s->st_timebase));
     } else if (o->avselect == SXPLAYER_SELECT_AUDIO && o->audio_texture) {
         ret->width   = frame->width;
         ret->height  = frame->height;
         ret->pix_fmt = SXPLAYER_SMPFMT_FLT;
+        LOG(s, DEBUG, "return %dx%d audio tex frame @ ts=%s",
+            frame->width, frame->height, av_ts2timestr(frame_ts, &s->st_timebase));
     } else {
         ret->nb_samples = frame->nb_samples;
         ret->pix_fmt = sxpi_smp_fmts_ff2sx(frame->format);
+        LOG(s, DEBUG, "return %d samples audio frame @ ts=%s",
+            frame->nb_samples, av_ts2timestr(frame_ts, &s->st_timebase));
     }
-
-    LOG(s, DEBUG, "return %dx%d frame @ ts=%s",
-        frame->width, frame->height, av_ts2timestr(frame_ts, &s->st_timebase));
 
 end:
     END_FUNC(MAX_SYNC_OP_TIME);
