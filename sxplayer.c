@@ -407,6 +407,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->internal = frame;
     ret->data = frame->data[0];
     ret->linesize = frame->linesize[0];
+    ret->pts      = frame_ts;
     ret->ms       = av_rescale_q(frame_ts, AV_TIME_BASE_Q, s->st_timebase);
     ret->ts       = frame_ts * av_q2d(s->st_timebase);
     if (o->avselect == SXPLAYER_SELECT_VIDEO) {
