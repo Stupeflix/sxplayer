@@ -62,7 +62,7 @@ int sxpi_decoder_init(void *log_ctx,
     // The MediaCodec decoder needs pkt_timebase in order to rescale the
     // timestamps that will be forwarded to the output surface
     if (HAVE_MEDIACODEC_HWACCEL && !strcmp(dec->name, "ffmpeg_hw"))
-        av_codec_set_pkt_timebase(ctx->avctx, stream->time_base);
+        ctx->avctx->pkt_timebase = stream->time_base;
 
     ret = dec->init(ctx, opts);
     if (ret < 0) {

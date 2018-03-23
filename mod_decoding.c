@@ -142,7 +142,7 @@ int sxpi_decoding_init(void *log_ctx,
 
 static int64_t get_best_effort_ts(const AVFrame *f)
 {
-    const int64_t t = av_frame_get_best_effort_timestamp(f);
+    const int64_t t = f->best_effort_timestamp;
     return t != AV_NOPTS_VALUE ? t : f->pts;
 }
 

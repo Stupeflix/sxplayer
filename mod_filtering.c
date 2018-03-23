@@ -179,7 +179,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
 {
     int ret = 0;
     char args[512];
-    AVFilter *buffersrc, *buffersink;
+    const AVFilter *buffersrc, *buffersink;
     AVFilterInOut *outputs, *inputs;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
     const AVCodecParameters *codecpar = ctx->codecpar;
