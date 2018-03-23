@@ -40,6 +40,7 @@ struct info_message {
     int width, height;
     int64_t duration;
     int is_image;
+    AVRational timebase;
 };
 
 struct async_context {
@@ -172,6 +173,8 @@ int sxpi_async_fetch_info(struct async_context *actx, struct sxplayer_info *info
     info->height   = actx->info.height;
     info->duration = actx->info.duration * av_q2d(AV_TIME_BASE_Q);
     info->is_image = actx->info.is_image;
+    info->timebase[0] = actx->info.timebase.num;
+    info->timebase[1] = actx->info.timebase.den;
     return 0;
 }
 
@@ -474,7 +477,14 @@ static int op_info(struct async_context *actx, struct message *msg)
         .height   = st->codecpar->height,
         .duration = duration,
         .is_image = is_image,
+        .timebase = st->time_base,
     };
+
+    if (!info.timebase.num || !info.timebase.den) {
+        LOG(actx, WARNING, "Invalid timebase %d/%d, assuming 1/1",
+            info.timebase.num, info.timebase.den);
+        info.timebase = av_make_q(1, 1);
+    }
 
     msg->data = av_memdup(&info, sizeof(info));
     if (!msg->data)

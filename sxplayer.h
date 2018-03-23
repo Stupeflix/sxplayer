@@ -111,6 +111,7 @@ struct sxplayer_info {
     int height;
     double duration;
     int is_image;
+    int timebase[2];    // stream timebase
 };
 
 /**

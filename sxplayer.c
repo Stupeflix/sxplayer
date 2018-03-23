@@ -732,7 +732,9 @@ int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)
     ret = sxpi_async_fetch_info(s->actx, info);
     if (ret < 0)
         goto end;
-    TRACE(s, "media info: %dx%d %f", info->width, info->height, info->duration);
+    TRACE(s, "media info: %dx%d %f tb:%d/%d",
+          info->width, info->height, info->duration,
+          info->timebase[0], info->timebase[1]);
 
 end:
     END_FUNC(1.0);
