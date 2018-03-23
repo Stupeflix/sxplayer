@@ -366,6 +366,9 @@ static int test_next_frame(const char *filename)
     int i = 0, ret = 0, r;
     struct sxplayer_ctx *s = sxplayer_create(filename);
 
+    if (!s)
+        return -1;
+
     sxplayer_set_option(s, "auto_hwaccel", 0);
 
     for (r = 0; r < 2; r++) {
@@ -399,6 +402,9 @@ static int run_audio_test(const char *filename)
 {
     int i = 0, ret = 0, r, smp = 0;
     struct sxplayer_ctx *s = sxplayer_create(filename);
+
+    if (!s)
+        return -1;
 
     sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_set_option(s, "avselect", SXPLAYER_SELECT_AUDIO);
@@ -437,6 +443,9 @@ static int run_audio_seek_test(const char *filename)
     double last_ts = 0.0;
     struct sxplayer_ctx *s = sxplayer_create(filename);
     struct sxplayer_frame *frame = NULL;
+
+    if (!s)
+        return -1;
 
     sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_set_option(s, "avselect", SXPLAYER_SELECT_AUDIO);
@@ -481,6 +490,9 @@ static int run_seek_test_after_eos(const char *filename, int avselect, double sk
     struct sxplayer_frame *frame = NULL;
     static const float ts[] = { 0.0, 0.5, 7.65 };
 
+    if (!s)
+        return -1;
+
     sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_set_option(s, "avselect", avselect);
     sxplayer_set_option(s, "audio_texture", 0);
@@ -502,6 +514,9 @@ static int run_seek_test_after_eos(const char *filename, int avselect, double sk
     for (int k = 0; k < 4; k++) {
         for (int j = 0; j < sizeof(ts)/sizeof(*ts); j++) {
             s = sxplayer_create(filename);
+            if (!s)
+                return -1;
+
             sxplayer_set_option(s, "auto_hwaccel", 0);
             sxplayer_set_option(s, "avselect", avselect);
             sxplayer_set_option(s, "audio_texture", 0);
