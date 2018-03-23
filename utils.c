@@ -45,8 +45,7 @@ static const struct {
 
 enum AVPixelFormat sxpi_pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt)
 {
-    int i;
-    for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
+    for (int i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
         if (pix_fmts_mapping[i].sx == pix_fmt)
             return pix_fmts_mapping[i].ff;
     return AV_PIX_FMT_NONE;
@@ -54,8 +53,7 @@ enum AVPixelFormat sxpi_pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt)
 
 enum sxplayer_pixel_format sxpi_pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
 {
-    int i;
-    for (i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
+    for (int i = 0; i < FF_ARRAY_ELEMS(pix_fmts_mapping); i++)
         if (pix_fmts_mapping[i].ff == pix_fmt)
             return pix_fmts_mapping[i].sx;
     return -1;
@@ -63,8 +61,7 @@ enum sxplayer_pixel_format sxpi_pix_fmts_ff2sx(enum AVPixelFormat pix_fmt)
 
 enum sxplayer_pixel_format sxpi_smp_fmts_ff2sx(enum AVSampleFormat smp_fmt)
 {
-    int i;
-    for (i = 0; i < FF_ARRAY_ELEMS(smp_fmts_mapping); i++)
+    for (int i = 0; i < FF_ARRAY_ELEMS(smp_fmts_mapping); i++)
         if (smp_fmts_mapping[i].ff == smp_fmt)
             return smp_fmts_mapping[i].sx;
     return -1;

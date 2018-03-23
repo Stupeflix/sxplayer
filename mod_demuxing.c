@@ -103,7 +103,6 @@ int sxpi_demuxing_init(void *log_ctx,
                        const char *filename,
                        const struct sxplayer_opts *opts)
 {
-    int i, ret;
     enum AVMediaType media_type;
 
     ctx->log_ctx = log_ctx;
@@ -120,7 +119,7 @@ int sxpi_demuxing_init(void *log_ctx,
     }
 
     TRACE(ctx, "opening %s", filename);
-    ret = avformat_open_input(&ctx->fmt_ctx, filename, NULL, NULL);
+    int ret = avformat_open_input(&ctx->fmt_ctx, filename, NULL, NULL);
     if (ret < 0) {
         LOG(ctx, ERROR, "Unable to open input file '%s'", filename);
         return ret;
@@ -149,7 +148,7 @@ int sxpi_demuxing_init(void *log_ctx,
 
     /* Automatically discard all the other streams so we don't have to filter
      * them out most of the time */
-    for (i = 0; i < ctx->fmt_ctx->nb_streams; i++)
+    for (int i = 0; i < ctx->fmt_ctx->nb_streams; i++)
         if (i != ctx->stream_idx)
             ctx->fmt_ctx->streams[i]->discard = AVDISCARD_ALL;
 

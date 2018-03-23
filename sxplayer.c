@@ -175,8 +175,6 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg,
 
 struct sxplayer_ctx *sxplayer_create(const char *filename)
 {
-    int i;
-    struct sxplayer_ctx *s;
     const struct {
         const char *libname;
         unsigned build_version;
@@ -190,7 +188,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
 
     av_assert0(AV_TIME_BASE == 1000000);
 
-    s = av_mallocz(sizeof(*s));
+    struct sxplayer_ctx *s = av_mallocz(sizeof(*s));
     if (!s)
         return NULL;
 
@@ -211,7 +209,7 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
         SXPLAYER_VERSION_MAJOR, SXPLAYER_VERSION_MINOR, SXPLAYER_VERSION_MICRO);
 
 #define VFMT(v) (v)>>16, (v)>>8 & 0xff, (v) & 0xff
-    for (i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {
+    for (int i = 0; i < FF_ARRAY_ELEMS(fflibs); i++) {
         const unsigned bversion = fflibs[i].build_version;
         const unsigned rversion = fflibs[i].runtime_version;
         LOG(s, INFO, "lib%-12s build:%3d.%3d.%3d runtime:%3d.%3d.%3d",
@@ -263,7 +261,6 @@ static int64_t get_media_time(const struct sxplayer_opts *o, int64_t t)
 
 static int set_context_fields(struct sxplayer_ctx *s)
 {
-    int ret;
     struct sxplayer_opts *o = &s->opts;
 
     if (sxpi_pix_fmts_sx2ff(o->sw_pix_fmt) == AV_PIX_FMT_NONE) {
@@ -299,7 +296,7 @@ static int set_context_fields(struct sxplayer_ctx *s)
     if (!s->actx)
         return AVERROR(ENOMEM);
 
-    ret = sxpi_async_init(s->actx, s->log_ctx, s->filename, &s->opts);
+    int ret = sxpi_async_init(s->actx, s->log_ctx, s->filename, &s->opts);
     if (ret < 0)
         return ret;
 
@@ -315,13 +312,11 @@ static int set_context_fields(struct sxplayer_ctx *s)
  */
 static int configure_context(struct sxplayer_ctx *s)
 {
-    int ret;
-
     if (s->context_configured)
         return 1;
 
     TRACE(s, "set context fields");
-    ret = set_context_fields(s);
+    int ret = set_context_fields(s);
     if (ret < 0) {
         LOG(s, ERROR, "Unable to set context fields: %s", av_err2str(ret));
         free_temp_context_data(s);
@@ -361,7 +356,6 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 {
     struct sxplayer_frame *ret = NULL;
     const struct sxplayer_opts *o = &s->opts;
-    AVFrameSideData *sd;
 
     if (!frame) {
         LOG(s, DEBUG, "no frame to return");
@@ -391,7 +385,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 
     s->last_pushed_frame_ts = frame_ts;
 
-    sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MOTION_VECTORS);
+    AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MOTION_VECTORS);
     if (sd) {
         ret->mvs = av_memdup(sd->data, sd->size);
         if (!ret->mvs) {
@@ -528,18 +522,16 @@ static struct sxplayer_frame *ret_synth_frame(struct sxplayer_ctx *s, int64_t t6
 
 int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
 {
-    int ret;
-    const struct sxplayer_opts *o = &s->opts;
-
     START_FUNC_T("SEEK", reqt);
 
     av_frame_free(&s->cached_frame);
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
 
-    ret = configure_context(s);
+    int ret = configure_context(s);
     if (ret < 0)
         return ret;
 
+    const struct sxplayer_opts *o = &s->opts;
     ret = sxpi_async_seek(s->actx, get_media_time(o, TIME2INT64(reqt)));
     END_FUNC(MAX_ASYNC_OP_TIME);
     return ret;
@@ -547,14 +539,12 @@ int sxplayer_seek(struct sxplayer_ctx *s, double reqt)
 
 int sxplayer_stop(struct sxplayer_ctx *s)
 {
-    int ret;
-
     START_FUNC("STOP");
 
     av_frame_free(&s->cached_frame);
     s->last_pushed_frame_ts = AV_NOPTS_VALUE;
 
-    ret = configure_context(s);
+    int ret = configure_context(s);
     if (ret < 0)
         return ret;
 
@@ -565,11 +555,9 @@ int sxplayer_stop(struct sxplayer_ctx *s)
 
 int sxplayer_start(struct sxplayer_ctx *s)
 {
-    int ret;
-
     START_FUNC("START");
 
-    ret = configure_context(s);
+    int ret = configure_context(s);
     if (ret < 0)
         return ret;
 
@@ -589,7 +577,6 @@ static inline int64_t stream_time(const struct sxplayer_ctx *s, int64_t t)
 
 struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64)
 {
-    int ret;
     int64_t diff;
     const struct sxplayer_opts *o = &s->opts;
 
@@ -599,7 +586,7 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
     return ret_synth_frame(s, t64);
 #endif
 
-    ret = configure_context(s);
+    int ret = configure_context(s);
     if (ret < 0)
         return ret_frame(s, NULL);
 
@@ -766,26 +753,21 @@ struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t)
 
 struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s)
 {
-    int ret;
-    AVFrame *frame;
-
     START_FUNC("GET NEXT FRAME");
 
-    ret = configure_context(s);
+    int ret = configure_context(s);
     if (ret < 0)
         return ret_frame(s, NULL);
 
-    frame = pop_frame(s);
+    AVFrame *frame = pop_frame(s);
     return ret_frame(s, frame);
 }
 
 int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info)
 {
-    int ret = 0;
-
     START_FUNC("GET INFO");
 
-    ret = configure_context(s);
+    int ret = configure_context(s);
     if (ret < 0)
         goto end;
     ret = sxpi_async_fetch_info(s->actx, info);
@@ -802,12 +784,10 @@ end:
 
 int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration)
 {
-    int ret = 0;
-    struct sxplayer_info info;
-
     START_FUNC("GET DURATION");
 
-    ret = sxplayer_get_info(s, &info);
+    struct sxplayer_info info;
+    int ret = sxplayer_get_info(s, &info);
     if (ret < 0)
         goto end;
     *duration = info.duration;

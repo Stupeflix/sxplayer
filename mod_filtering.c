@@ -82,7 +82,6 @@ struct filtering_ctx *sxpi_filtering_alloc(void)
 static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst_video,
                                          const AVFrame *audio_src)
 {
-    int i, j, ch;
     const int nb_samples = audio_src->nb_samples;
     const int width = nb_samples / 2;
     const float scale = 1.f / sqrt(AUDIO_NBSAMPLES/2 + 1);
@@ -96,24 +95,24 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
     memset(dst_video->data[0], 0, dst_video->height * dst_video->linesize[0]);
 
     /* Copy waves */
-    for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
+    for (int ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
         const int lz = dst_video->linesize[0];
         float *samples_dst = (float *)(dst_video->data[0] + ch * lz);
         const float *samples_src = (const float *)audio_src->extended_data[ch];
 
-        for (i = 0; i < width; i++)
+        for (int i = 0; i < width; i++)
             samples_dst[i] = (samples_src[width/2 + i] + 1.f) / 2.f;
     }
 
     /* Fourier transform */
-    for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
+    for (int ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
         const int lz = dst_video->linesize[0];
         float *fft_dst = (float *)(dst_video->data[0] + (AUDIO_NBCHANNELS + ch) * lz);
         const float *samples_src = (const float *)audio_src->extended_data[ch];
         float *bins = ctx->rdft_data[ch];
 
         /* Apply window function to input samples */
-        for (i = 0; i < nb_samples; i++)
+        for (int i = 0; i < nb_samples; i++)
             bins[i] = samples_src[i] * ctx->window_func_lut[i];
 
         /* Run transform.
@@ -135,7 +134,7 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
          * the first complex (lower frequency one).
          */
 #define MAGNITUDE(re, im) sqrtf(((re)*(re) + (im)*(im)) * scale)
-        for (i = 1; i < width - 1; i++)
+        for (int i = 1; i < width - 1; i++)
             fft_dst[i] = MAGNITUDE(bins[2*i], bins[2*i + 1]);
 
         /* Last complex (higher frequency one) is one of the the special case
@@ -144,8 +143,8 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
     }
 
     /* Downscaled versions of the FFT */
-    for (i = 0; i < AUDIO_NBITS-1; i++) {
-        for (ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
+    for (int i = 0; i < AUDIO_NBITS-1; i++) {
+        for (int ch = 0; ch < AUDIO_NBCHANNELS; ch++) {
             const int lz = dst_video->linesize[0];
             const int source_line = (i + 1)*AUDIO_NBCHANNELS + ch;
             float *fft_src = (float *)(dst_video->data[0] +  source_line                     * lz);
@@ -158,7 +157,7 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
             TRACE(ctx, "line %2d->%2d: %3d different pixels (copied %3dx) as destination, step source: %d",
                   source_line, source_line + AUDIO_NBCHANNELS, nb_dest_pixels, nb_identical_values, source_step);
 
-            for (j = 0; j < nb_dest_pixels; j++) {
+            for (int j = 0; j < nb_dest_pixels; j++) {
                 int x;
                 const float avg = (fft_src[ j*2      * source_step] +
                                    fft_src[(j*2 + 1) * source_step]) / 2.f;
@@ -338,8 +337,6 @@ int sxpi_filtering_init(void *log_ctx,
                         double media_rotation,
                         const struct sxplayer_opts *o)
 {
-    int ret;
-
     ctx->log_ctx = log_ctx;
     ctx->in_queue  = in_queue;
     ctx->out_queue = out_queue;
@@ -350,18 +347,16 @@ int sxpi_filtering_init(void *log_ctx,
     ctx->max_pts = o->trim_duration64 > 0 ? av_rescale_q(o->skip64 + o->trim_duration64, AV_TIME_BASE_Q, ctx->st_timebase)
                                           : AV_NOPTS_VALUE;
 
-    ret = avcodec_parameters_from_context(ctx->codecpar, avctx);
+    int ret = avcodec_parameters_from_context(ctx->codecpar, avctx);
     if (ret < 0)
         return ret;
 
     if (ctx->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_texture) {
-        int i;
-
         /* Pre-calc windowing function */
         ctx->window_func_lut = av_malloc_array(AUDIO_NBSAMPLES, sizeof(*ctx->window_func_lut));
         if (!ctx->window_func_lut)
             return AVERROR(ENOMEM);
-        for (i = 0; i < AUDIO_NBSAMPLES; i++)
+        for (int i = 0; i < AUDIO_NBSAMPLES; i++)
             ctx->window_func_lut[i] = .5f * (1 - cos(2*M_PI*i / (AUDIO_NBSAMPLES-1)));
 
         /* Real Discrete Fourier Transform context (Real to Complex) */

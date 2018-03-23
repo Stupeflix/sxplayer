@@ -207,12 +207,10 @@ static const struct {
 
 static void print_comb_name(uint64_t comb, int opt_test_flags)
 {
-    int i;
-
     printf(":: test-%s-", (opt_test_flags & FLAG_AUDIO) ? "audio" : "video");
     if (opt_test_flags & FLAG_SKIP)          printf("skip-");
     if (opt_test_flags & FLAG_TRIM_DURATION) printf("trimdur-");
-    for (i = 0; i < NB_ACTIONS; i++) {
+    for (int i = 0; i < NB_ACTIONS; i++) {
         const int action = GET_ACTION(comb, i);
         if (!action)
             break;
@@ -223,7 +221,7 @@ static void print_comb_name(uint64_t comb, int opt_test_flags)
 
 static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags)
 {
-    int i, ret = 0;
+    int ret = 0;
     struct sxplayer_ctx *s = sxplayer_create(filename);
     if (!s)
         return -1;
@@ -236,7 +234,7 @@ static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags)
     if (opt_test_flags & FLAG_TRIM_DURATION) sxplayer_set_option(s, "trim_duration", TESTVAL_TRIM_DURATION);
     if (opt_test_flags & FLAG_AUDIO)         sxplayer_set_option(s, "avselect",      SXPLAYER_SELECT_AUDIO);
 
-    for (i = 0; i < NB_ACTIONS; i++) {
+    for (int i = 0; i < NB_ACTIONS; i++) {
         const int action = GET_ACTION(comb, i);
         if (!action)
             break;
@@ -251,10 +249,9 @@ static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags)
 
 static int has_dup(uint64_t comb)
 {
-    int i;
     uint64_t actions = 0;
 
-    for (i = 0; i < NB_ACTIONS; i++) {
+    for (int i = 0; i < NB_ACTIONS; i++) {
         const int action = GET_ACTION(comb, i);
         if (!action)
             break;
@@ -436,7 +433,7 @@ static int run_audio_test(const char *filename)
 
 static int run_audio_seek_test(const char *filename)
 {
-    int i = 0, ret = 0;
+    int ret = 0;
     double last_ts = 0.0;
     struct sxplayer_ctx *s = sxplayer_create(filename);
     struct sxplayer_frame *frame = NULL;
@@ -446,7 +443,7 @@ static int run_audio_seek_test(const char *filename)
     sxplayer_set_option(s, "audio_texture", 0);
 
     printf("Test: %s run #1\n", __FUNCTION__);
-    for (i = 0; i < 10; i++) {
+    for (int i = 0; i < 10; i++) {
         frame = sxplayer_get_next_frame(s);
 
         if (!frame) {
@@ -479,7 +476,7 @@ static int run_audio_seek_test(const char *filename)
 
 static int run_seek_test_after_eos(const char *filename, int avselect, double skip, double duration)
 {
-    int i = 0, j = 0, k = 0, ret = 0, nb_frames = 0;
+    int ret = 0, nb_frames = 0;
     struct sxplayer_ctx *s = sxplayer_create(filename);
     struct sxplayer_frame *frame = NULL;
     static const float ts[] = { 0.0, 0.5, 7.65 };
@@ -502,8 +499,8 @@ static int run_seek_test_after_eos(const char *filename, int avselect, double sk
 
     sxplayer_free(&s);
 
-    for (k = 0; k < 4; k++) {
-        for (j = 0; j < sizeof(ts)/sizeof(*ts); j++) {
+    for (int k = 0; k < 4; k++) {
+        for (int j = 0; j < sizeof(ts)/sizeof(*ts); j++) {
             s = sxplayer_create(filename);
             sxplayer_set_option(s, "auto_hwaccel", 0);
             sxplayer_set_option(s, "avselect", avselect);
@@ -511,7 +508,7 @@ static int run_seek_test_after_eos(const char *filename, int avselect, double sk
             sxplayer_set_option(s, "skip", skip);
             sxplayer_set_option(s, "trim_duration", duration);
 
-            for (i = 0; i < nb_frames; i++) {
+            for (int i = 0; i < nb_frames; i++) {
                 frame = sxplayer_get_next_frame(s);
                 if (!frame) {
                     fprintf(stderr, "unexpected null frame before EOS\n");
@@ -691,8 +688,6 @@ static int run_test_ms(const char *filename)
 
 int main(int ac, char **av)
 {
-    int i;
-
     if (ac != 3) {
         fprintf(stderr, "Usage: %s <media.mkv> <image.jpg>\n", av[0]);
         return -1;
@@ -738,7 +733,7 @@ int main(int ac, char **av)
     if (run_test_ms(av[1]) < 0)
         return -1;
 
-    for (i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)
+    for (int i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)
         if (run_tests_all_combs(av[1], tests_flags[i]) < 0)
             return -1;
 
