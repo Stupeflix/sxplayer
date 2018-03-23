@@ -66,7 +66,7 @@ OBJS += $(NAME).o $(PROJECT_OBJS)
 
 CPPFLAGS += -MMD -MP
 
-CFLAGS += -Wall -O2 -Werror=missing-prototypes -fPIC
+CFLAGS += -Wall -O2 -Werror=missing-prototypes -std=c99 -fPIC
 ifeq ($(DEBUG),yes)
 	CFLAGS += -g
 endif
