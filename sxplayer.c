@@ -47,10 +47,15 @@ struct sxplayer_ctx {
     int context_configured;
 
     AVFrame *cached_frame;
+
+    AVRational st_timebase;                 // stream timebase
+
+    /* All the following ts are expressed in st_timebase unit */
     int64_t last_pushed_frame_ts;           // ts value of the latest pushed frame (it acts as a UID)
     int64_t last_frame_poped_ts;
     int64_t first_ts;
     int64_t last_ts;
+
     int64_t entering_time;
     const char *cur_func_name;
 };
@@ -365,8 +370,11 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
 
     const int64_t frame_ts = frame->pts;
 
-    TRACE(s, "last_pushed_frame_ts:%s frame_ts:%s",
-          PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(frame_ts));
+    TRACE(s, "last_pushed_frame_ts:%s (%"PRId64") frame_ts:%s (%"PRId64")",
+          av_ts2timestr(s->last_pushed_frame_ts, &s->st_timebase),
+          s->last_pushed_frame_ts,
+          av_ts2timestr(frame_ts, &s->st_timebase),
+          frame_ts);
 
     /* if same frame as previously, do not raise it again */
     if (s->last_pushed_frame_ts == frame_ts) {
@@ -399,8 +407,8 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->internal = frame;
     ret->data = frame->data[0];
     ret->linesize = frame->linesize[0];
-    ret->ms       = frame_ts;
-    ret->ts       = frame_ts * av_q2d(AV_TIME_BASE_Q);
+    ret->ms       = av_rescale_q(frame_ts, AV_TIME_BASE_Q, s->st_timebase);
+    ret->ts       = frame_ts * av_q2d(s->st_timebase);
     if (o->avselect == SXPLAYER_SELECT_VIDEO) {
         if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
             ret->data = frame->data[3];
@@ -422,7 +430,8 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     }
 
     LOG(s, DEBUG, "return %dx%d frame @ ts=%s",
-        frame->width, frame->height, PTS2TIMESTR(frame_ts));
+        frame->width, frame->height, av_ts2timestr(frame_ts, &s->st_timebase));
+
 end:
     END_FUNC(MAX_SYNC_OP_TIME);
     return ret;
@@ -452,14 +461,31 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
         frame = s->cached_frame;
         s->cached_frame = NULL;
     } else {
-        int ret = sxpi_async_pop_frame(s->actx, &frame);
-        if (ret < 0)
-            TRACE(s, "poped a message raising %s", av_err2str(ret));
+
+        /* Stream time base is required to interpret the frame PTS */
+        if (!s->st_timebase.den) {
+            struct sxplayer_info info;
+            int ret = sxpi_async_fetch_info(s->actx, &info);
+            if (ret < 0) {
+                TRACE(s, "unable to fetch info %s", av_err2str(ret));
+            } else {
+                s->st_timebase = av_make_q(info.timebase[0], info.timebase[1]);
+                LOG(s, DEBUG, "store stream timebase %d/%d",
+                    s->st_timebase.num, s->st_timebase.den);
+                av_assert0(s->st_timebase.den);
+            }
+        }
+
+        if (s->st_timebase.den) {
+            int ret = sxpi_async_pop_frame(s->actx, &frame);
+            if (ret < 0)
+                TRACE(s, "poped a message raising %s", av_err2str(ret));
+        }
     }
 
     if (frame) {
         const int64_t ts = frame->pts;
-        TRACE(s, "poped frame with ts=%s", PTS2TIMESTR(ts));
+        TRACE(s, "poped frame with ts=%s (%"PRId64")", av_ts2timestr(ts, &s->st_timebase), ts);
         s->last_frame_poped_ts = ts;
     } else {
         TRACE(s, "no frame available");
@@ -467,7 +493,7 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
          * thread again */
         if (s->last_ts == AV_NOPTS_VALUE ||
             (s->last_frame_poped_ts != AV_NOPTS_VALUE && s->last_frame_poped_ts > s->last_ts)) {
-            TRACE(s, "last timestamp is apparently %s", PTS2TIMESTR(s->last_ts));
+            TRACE(s, "last timestamp is apparently %s", av_ts2timestr(s->last_ts, &s->st_timebase));
             s->last_ts = s->last_frame_poped_ts;
         }
     }
@@ -548,6 +574,15 @@ int sxplayer_start(struct sxplayer_ctx *s)
     return ret;
 }
 
+/*
+ * Stream timebase must be known when this function is called.
+ */
+static inline int64_t stream_time(const struct sxplayer_ctx *s, int64_t t)
+{
+    av_assert0(s->st_timebase.den);
+    return av_rescale_q(t, AV_TIME_BASE_Q, s->st_timebase);
+}
+
 struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64)
 {
     int ret;
@@ -572,13 +607,13 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
     const int64_t vt = get_media_time(o, t64);
     TRACE(s, "t=%s -> vt=%s", PTS2TIMESTR(t64), PTS2TIMESTR(vt));
 
-    if (s->last_ts != AV_NOPTS_VALUE && vt >= s->last_ts &&
+    if (s->last_ts != AV_NOPTS_VALUE && stream_time(s, vt) >= s->last_ts &&
         s->last_pushed_frame_ts == s->last_ts) {
         TRACE(s, "requested the last frame again");
         return ret_frame(s, NULL);
     }
 
-    if (s->first_ts != AV_NOPTS_VALUE && vt <= s->first_ts &&
+    if (s->first_ts != AV_NOPTS_VALUE && stream_time(s, vt) <= s->first_ts &&
         s->last_pushed_frame_ts == s->first_ts) {
         TRACE(s, "requested the first frame again");
         return ret_frame(s, NULL);
@@ -607,9 +642,14 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
             return ret_frame(s, NULL);
         }
 
-        diff = vt - candidate->pts;
+        /* At this point we can assume the stream timebase is known because
+         * pop_frame() was called. */
+        const int64_t stt = stream_time(s, vt);
+        diff = stt - candidate->pts;
+
         TRACE(s, "diff with candidate (t=%s): %s [%"PRId64"]",
-              PTS2TIMESTR(candidate->pts), PTS2TIMESTR(diff), diff);
+              av_ts2timestr(candidate->pts, &s->st_timebase),
+              av_ts2timestr(diff, &s->st_timebase), diff);
 
         /* No frame was ever pushed, but the timestamp of the first frame
          * obtained is past the requested time. This should never happen if a
@@ -626,22 +666,30 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
         }
 
     } else {
-        diff = vt - s->last_pushed_frame_ts;
+        /* At this point we can assume the stream timebase is known because
+         * a frame was already pushed. */
+        const int64_t stt = stream_time(s, vt);
+        diff = stt - s->last_pushed_frame_ts;
+
         TRACE(s, "diff with latest frame (t=%s) returned: %s [%"PRId64"]",
-              PTS2TIMESTR(s->last_pushed_frame_ts), PTS2TIMESTR(diff), diff);
+              av_ts2timestr(s->last_pushed_frame_ts, &s->st_timebase),
+              av_ts2timestr(diff, &s->st_timebase),
+              diff);
     }
 
     if (!diff)
         return ret_frame(s, candidate);
 
     /* Check if a seek is needed */
-    if (diff < 0 || diff > o->dist_time_seek_trigger64) {
+    const int forward_seek = av_compare_ts(diff, s->st_timebase, o->dist_time_seek_trigger64, AV_TIME_BASE_Q) >= 0;
+    if (diff < 0 || forward_seek) {
         if (diff < 0)
-            TRACE(s, "diff %s [%"PRId64"] < 0 request backward seek", PTS2TIMESTR(diff), diff);
+            TRACE(s, "diff %s [%"PRId64"] < 0 request backward seek",
+                  av_ts2timestr(diff, &s->st_timebase), diff);
         else
-            TRACE(s, "diff %s > %s [%"PRId64" > %"PRId64"] request future seek",
-                  PTS2TIMESTR(diff), PTS2TIMESTR(o->dist_time_seek_trigger64),
-                  diff, o->dist_time_seek_trigger64);
+            TRACE(s, "diff %s > %s request future seek",
+                  av_ts2timestr(diff, &s->st_timebase),
+                  PTS2TIMESTR(o->dist_time_seek_trigger64));
 
         /* If we never returned a frame and got a candidate, we do not free it
          * immediately, because after the seek we might not actually get
@@ -678,21 +726,28 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
             TRACE(s, "no more frame");
             break;
         }
-        if (next->pts > vt) {
-            TRACE(s, "grabbed frame is in the future %s > %s", PTS2TIMESTR(next->pts), PTS2TIMESTR(vt));
+
+        /* We must not use av_compare_ts() here, because it doesn't make the
+         * comparison with the lowest timebase value. Instead, we need to lower
+         * our timestamp precision to the stream one to get as accurate as
+         * possible. */
+        const int64_t rescaled_vt = av_rescale_q(vt, AV_TIME_BASE_Q, s->st_timebase);
+        if (next->pts > rescaled_vt) {
+            TRACE(s, "grabbed frame is in the future %s > %s",
+                  av_ts2timestr(next->pts, &s->st_timebase), PTS2TIMESTR(vt));
             if (!candidate && !next_is_cached_frame && s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
                 candidate = next;
                 TRACE(s, "we need to return a frame, select this future frame anyway");
             } else {
                 s->cached_frame = next;
-                TRACE(s, "cache frame %s for next call", PTS2TIMESTR(next->pts));
+                TRACE(s, "cache frame %s for next call", av_ts2timestr(next->pts, &s->st_timebase));
             }
             break;
         }
         av_frame_free(&candidate);
         candidate = next;
-        if (candidate->pts == vt) {
-            TRACE(s, "grabbed exact frame %s", PTS2TIMESTR(candidate->pts));
+        if (candidate->pts == rescaled_vt) {
+            TRACE(s, "grabbed exact frame %s", av_ts2timestr(candidate->pts, &s->st_timebase));
             break;
         }
     }

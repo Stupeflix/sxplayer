@@ -298,6 +298,7 @@ static int initialize_modules_once(struct async_context *actx,
         (ret = sxpi_filtering_init(actx->log_ctx,
                                    actx->filterer,
                                    actx->frames_queue, actx->sink_queue,
+                                   sxpi_demuxing_get_stream(actx->demuxer),
                                    sxpi_decoding_get_avctx(actx->decoder),
                                    sxpi_demuxing_probe_rotation(actx->demuxer), opts)) < 0)
         return ret;

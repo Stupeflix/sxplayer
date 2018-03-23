@@ -32,6 +32,7 @@ int sxpi_filtering_init(void *log_ctx,
                         struct filtering_ctx *ctx,
                         AVThreadMessageQueue *in_queue,
                         AVThreadMessageQueue *out_queue,
+                        const AVStream *stream,
                         const AVCodecContext *avctx,
                         double media_rotation,
                         const struct sxplayer_opts *o);

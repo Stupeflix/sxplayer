@@ -154,7 +154,7 @@ static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
         .data = frame,
     };
 
-    TRACE(ctx, "queue frame with ts=%s", PTS2TIMESTR(frame->pts));
+    TRACE(ctx, "queue frame with ts=%s", av_ts2timestr(frame->pts, &ctx->st_timebase));
 
     ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);
     if (ret < 0) {
@@ -168,10 +168,8 @@ static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
 static int queue_cached_frame(struct decoding_ctx *ctx)
 {
     int ret;
-    const int64_t cached_ts = av_rescale_q_rnd(get_best_effort_ts(ctx->tmp_frame),
-                                               ctx->st_timebase, AV_TIME_BASE_Q,
-                                               AV_ROUND_PASS_MINMAX);
-    TRACE(ctx, "got a cached frame (t=%s) to push", PTS2TIMESTR(cached_ts));
+    const int64_t cached_ts = get_best_effort_ts(ctx->tmp_frame);
+    TRACE(ctx, "got a cached frame (t=%s) to push", av_ts2timestr(cached_ts, &ctx->st_timebase));
     AVFrame *prev_frame = ctx->tmp_frame;
     ctx->tmp_frame = NULL;
     prev_frame->pts = cached_ts;
@@ -197,18 +195,13 @@ int sxpi_decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
         return AVERROR_EOF;
     }
 
-    /* Rescale the timestamp to a global large time base: AV_TIME_BASE_Q */
-    const int64_t ts = av_rescale_q_rnd(get_best_effort_ts(frame),
-                                        ctx->st_timebase, AV_TIME_BASE_Q,
-                                        AV_ROUND_PASS_MINMAX);
-    TRACE(ctx, "processing frame with ts=%s "
-          "(%"PRId64", rescaled from %"PRId64" in %d/%d)",
-          PTS2TIMESTR(ts), ts, get_best_effort_ts(frame),
-          ctx->st_timebase.num, ctx->st_timebase.den);
+    const int64_t ts = get_best_effort_ts(frame);
+    TRACE(ctx, "processing frame with ts=%s", av_ts2timestr(ts, &ctx->st_timebase));
 
     if (ctx->seek_request != AV_NOPTS_VALUE && ts < ctx->seek_request) {
         TRACE(ctx, "frame ts:%s (%"PRId64"), skipping because before %s (%"PRId64")",
-              PTS2TIMESTR(ts), ts, PTS2TIMESTR(ctx->seek_request), ctx->seek_request);
+              av_ts2timestr(ts, &ctx->st_timebase), ts,
+              av_ts2timestr(ctx->seek_request, &ctx->st_timebase), ctx->seek_request);
         av_frame_free(&ctx->tmp_frame);
         ctx->tmp_frame = frame;
         return 0;
@@ -227,7 +220,8 @@ int sxpi_decoding_queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
     } else {
         if (ctx->seek_request != AV_NOPTS_VALUE && ctx->seek_request > 0 && frame->pts > ctx->seek_request) {
             TRACE(ctx, "first frame obtained is after requested time, fixup its ts from %s to %s",
-                  PTS2TIMESTR(frame->pts), PTS2TIMESTR(ctx->seek_request));
+                  av_ts2timestr(frame->pts, &ctx->st_timebase),
+                  av_ts2timestr(ctx->seek_request, &ctx->st_timebase));
             frame->pts = ctx->seek_request;
         }
     }
@@ -275,7 +269,7 @@ void sxpi_decoding_run(struct decoding_ctx *ctx)
 
             /* Mark the seek request so async_queue_frame() can do its
              * "filtering" work. */
-            ctx->seek_request = seek_ts;
+            ctx->seek_request = av_rescale_q(seek_ts, AV_TIME_BASE_Q, ctx->st_timebase);
 
             /* Forward seek message */
             ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);

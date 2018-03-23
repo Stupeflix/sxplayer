@@ -22,6 +22,7 @@
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
+#include <libavformat/avformat.h>
 #include <libavutil/avstring.h>
 #include <libavutil/frame.h>
 #include <libavutil/opt.h>
@@ -50,6 +51,7 @@ struct filtering_ctx {
     int sw_pix_fmt;
     int max_pixels;
     int audio_texture;
+    AVRational st_timebase;
 
     AVFilterGraph *filter_graph;
     enum AVPixelFormat last_frame_format;
@@ -86,7 +88,8 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
     const float scale = 1.f / sqrt(AUDIO_NBSAMPLES/2 + 1);
 
     TRACE(ctx, "transform audio filtered frame in %s @ ts=%s into an audio texture",
-          av_get_sample_fmt_name(audio_src->format), PTS2TIMESTR(audio_src->pts));
+          av_get_sample_fmt_name(audio_src->format),
+          av_ts2timestr(audio_src->pts, &ctx->st_timebase));
 
     dst_video->pts = audio_src->pts;
 
@@ -180,7 +183,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     AVFilterInOut *outputs, *inputs;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
     const AVCodecParameters *codecpar = ctx->codecpar;
-    const AVRational time_base = AV_TIME_BASE_Q;
+    const AVRational time_base = ctx->st_timebase;
 
     if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
         return 0;
@@ -330,6 +333,7 @@ int sxpi_filtering_init(void *log_ctx,
                         struct filtering_ctx *ctx,
                         AVThreadMessageQueue *in_queue,
                         AVThreadMessageQueue *out_queue,
+                        const AVStream *stream,
                         const AVCodecContext *avctx,
                         double media_rotation,
                         const struct sxplayer_opts *o)
@@ -342,7 +346,8 @@ int sxpi_filtering_init(void *log_ctx,
     ctx->sw_pix_fmt = o->sw_pix_fmt;
     ctx->max_pixels = o->max_pixels;
     ctx->audio_texture = o->audio_texture;
-    ctx->max_pts = o->trim_duration64 > 0 ? o->skip64 + o->trim_duration64
+    ctx->st_timebase = stream->time_base;
+    ctx->max_pts = o->trim_duration64 > 0 ? av_rescale_q(o->skip64 + o->trim_duration64, AV_TIME_BASE_Q, ctx->st_timebase)
                                           : AV_NOPTS_VALUE;
 
     ret = avcodec_parameters_from_context(ctx->codecpar, avctx);
@@ -451,7 +456,7 @@ static int pull_frame(struct filtering_ctx *ctx, AVFrame *outframe)
           av_get_media_type_string(ctx->codecpar->codec_type),
           ctx->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(filtered_frame->format)
                                                           : av_get_sample_fmt_name(filtered_frame->format),
-          PTS2TIMESTR(filtered_frame->pts));
+          av_ts2timestr(filtered_frame->pts, &ctx->st_timebase));
 
     if (do_audio_texture) {
         AVFrame *audio_texture_frame = get_audio_frame();
@@ -550,7 +555,7 @@ void sxpi_filtering_run(struct filtering_ctx *ctx)
               av_get_media_type_string(ctx->codecpar->codec_type),
               ctx->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ? av_get_pix_fmt_name(frame->format)
                                                               : av_get_sample_fmt_name(frame->format),
-              PTS2TIMESTR(frame->pts));
+              av_ts2timestr(frame->pts, &ctx->st_timebase));
 
         /* lazy filtergraph configuration */
         // XXX: check width/height/samplerate/etc changes?
