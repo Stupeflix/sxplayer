@@ -182,6 +182,14 @@ int sxpi_async_pop_frame(struct async_context *actx, AVFrame **framep)
 
     *framep = NULL;
 
+    LOG(actx, ERROR, "[QUEUES] pkt:%d/%d frames:%d/%d sink:%d/%d",
+        av_thread_message_queue_nelem(actx->pkt_queue),
+        actx->o->max_nb_packets,
+        av_thread_message_queue_nelem(actx->frames_queue),
+        actx->o->max_nb_frames,
+        av_thread_message_queue_nelem(actx->sink_queue),
+        actx->o->max_nb_sink);
+
     ret = sync_control_thread(actx);
     if (ret < 0)
         return ret;
