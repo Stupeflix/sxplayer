@@ -101,6 +101,38 @@ static int init_mediacodec(struct decoder_ctx *ctx)
 }
 #endif
 
+#if HAVE_VAAPI_HWACCEL
+#include <libavutil/hwcontext_vaapi.h>
+
+static int init_vaapi(struct decoder_ctx *ctx)
+{
+    AVBufferRef *hw_device_ctx_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VAAPI);
+    if (!hw_device_ctx_ref)
+        return -1;
+
+    AVHWDeviceContext *hw_device_ctx = (AVHWDeviceContext *)hw_device_ctx_ref->data;
+    AVVAAPIDeviceContext *hw_ctx = hw_device_ctx->hwctx;
+    hw_ctx->display = ctx->opaque;
+
+    int ret = av_hwdevice_ctx_init(hw_device_ctx_ref);
+    if (ret < 0) {
+        av_buffer_unref(&hw_device_ctx_ref);
+        return ret;
+    }
+
+    AVCodecContext *avctx = ctx->avctx;
+    avctx->hw_device_ctx = hw_device_ctx_ref;
+    avctx->thread_count = 1;
+
+    AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
+    ret = avcodec_open2(avctx, codec, NULL);
+    if (ret < 0) {
+        av_buffer_unref(&avctx->hw_device_ctx);
+    }
+    return ret;
+}
+#endif
+
 static int ffdec_init_sw(struct decoder_ctx *ctx, const struct sxplayer_opts *opts)
 {
     AVCodecContext *avctx = ctx->avctx;
@@ -114,6 +146,8 @@ static int ffdec_init_hw(struct decoder_ctx *ctx, const struct sxplayer_opts *op
 {
 #if HAVE_MEDIACODEC_HWACCEL
     return init_mediacodec(ctx);
+#elif HAVE_VAAPI_HWACCEL
+    return init_vaapi(ctx);
 #endif
     return AVERROR_DECODER_NOT_FOUND;
 }

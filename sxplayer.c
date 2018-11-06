@@ -407,6 +407,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->ts       = frame_ts * av_q2d(s->st_timebase);
     if (o->avselect == SXPLAYER_SELECT_VIDEO) {
         if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX ||
+            frame->format == AV_PIX_FMT_VAAPI        ||
             frame->format == AV_PIX_FMT_MEDIACODEC) {
             ret->data = frame->data[3];
         }

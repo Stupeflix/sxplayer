@@ -80,6 +80,7 @@ enum sxplayer_pixel_format {
     SXPLAYER_PIXFMT_VT,        // VideoToolBox pixel format (HW accelerated, frame->data is a CVPixelBufferRef)
     SXPLAYER_PIXFMT_MEDIACODEC,// MediaCodec pixel format (HW accelerated, frame->data is a AVMediaCodecBuffer)
     SXPLAYER_SMPFMT_FLT,
+    SXPLAYER_PIXFMT_VAAPI,     // VAAPI pixel format (HW accelerated, frame->data is a AV)
 };
 
 enum sxplayer_loglevel {

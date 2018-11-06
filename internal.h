@@ -36,6 +36,12 @@
 #define HAVE_MEDIACODEC_HWACCEL 0
 #endif
 
+#if defined(__linux__) && !defined(__ANDROID__)
+#define HAVE_VAAPI_HWACCEL 1
+#else
+#define HAVE_VAAPI_HWACCEL 0
+#endif
+
 enum AVPixelFormat sxpi_pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format sxpi_pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
 enum sxplayer_pixel_format sxpi_smp_fmts_ff2sx(enum AVSampleFormat smp_fmt);
