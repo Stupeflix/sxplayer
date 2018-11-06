@@ -13,7 +13,10 @@ PROJECT_OBJS = async.o          \
 DARWIN_OBJS  = decoder_vt.o
 ANDROID_OBJS =
 
-PROJECT_PKG_CONFIG_LIBS = libavformat libavfilter libavcodec libavutil
+PROJECT_PKG_CONFIG_LIBS = "libavformat >= 58.12.100" \
+                          "libavfilter >= 7.16.100"  \
+                          "libavcodec >= 58.18.100"  \
+                          "libavutil >= 56.14.100"
 DARWIN_PKG_CONFIG_LIBS  =
 ANDROID_PKG_CONFIG_LIBS =
 

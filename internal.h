@@ -30,7 +30,7 @@
 
 #include "sxplayer.h"
 
-#define HAVE_MEDIACODEC_HWACCEL LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 49, 103)
+#define HAVE_MEDIACODEC_HWACCEL 1
 
 enum AVPixelFormat sxpi_pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format sxpi_pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
