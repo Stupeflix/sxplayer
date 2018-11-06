@@ -34,101 +34,88 @@
 #if HAVE_MEDIACODEC_HWACCEL
 #include <libavcodec/mediacodec.h>
 #include <libavutil/hwcontext_mediacodec.h>
-#endif
 
-static int ffdec_init(struct decoder_ctx *ctx, int hw)
+static int init_mediacodec(struct decoder_ctx *ctx)
 {
-    int ret;
-    AVDictionary *opts = NULL;
     AVCodecContext *avctx = ctx->avctx;
-    AVCodec *dec = avcodec_find_decoder(avctx->codec_id);
 
-    TRACE(ctx, "initialize context");
+    if (avctx->codec_id != AV_CODEC_ID_H264  &&
+        avctx->codec_id != AV_CODEC_ID_HEVC  &&
+        avctx->codec_id != AV_CODEC_ID_MPEG4 &&
+        avctx->codec_id != AV_CODEC_ID_VP8   &&
+        avctx->codec_id != AV_CODEC_ID_VP9)
+        return AVERROR_DECODER_NOT_FOUND;
 
-    av_opt_set(avctx, "threads", "auto", 0);
+    const char *codec_name = NULL;
 
-    if (hw) {
-        if (avctx->codec_id == AV_CODEC_ID_H264  ||
-            avctx->codec_id == AV_CODEC_ID_HEVC  ||
-            avctx->codec_id == AV_CODEC_ID_MPEG4 ||
-            avctx->codec_id == AV_CODEC_ID_VP8   ||
-            avctx->codec_id == AV_CODEC_ID_VP9) {
-            const char *codec_name = NULL;
-
-            switch (avctx->codec_id) {
-            case AV_CODEC_ID_H264:
-                codec_name = "h264_mediacodec";
-                break;
-            case AV_CODEC_ID_HEVC:
-                codec_name = "hevc_mediacodec";
-                break;
-            case AV_CODEC_ID_MPEG4:
-                codec_name = "mpeg4_mediacodec";
-                break;
-            case AV_CODEC_ID_VP8:
-                codec_name = "vp8_mediacodec";
-                break;
-            case AV_CODEC_ID_VP9:
-                codec_name = "vp9_mediacodec";
-                break;
-            default:
-                av_assert0(0);
-            }
-
-            AVCodec *codec = avcodec_find_decoder_by_name(codec_name);
-            if (!codec)
-                return AVERROR_DECODER_NOT_FOUND;
-
-            av_dict_set_int(&opts, "delay_flush", 1, 0);
-
-#if HAVE_MEDIACODEC_HWACCEL
-            AVBufferRef *hw_device_ctx_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_MEDIACODEC);
-            if (!hw_device_ctx_ref)
-                return -1;
-
-            AVHWDeviceContext *hw_device_ctx = (AVHWDeviceContext *)hw_device_ctx_ref->data;
-            AVMediaCodecDeviceContext *hw_ctx = hw_device_ctx->hwctx;
-            hw_ctx->surface = ctx->opaque;
-
-            ret = av_hwdevice_ctx_init(hw_device_ctx_ref);
-            if (ret < 0) {
-                av_buffer_unref(&hw_device_ctx_ref);
-                return ret;
-            }
-
-            avctx->hw_device_ctx = hw_device_ctx_ref;
-            avctx->thread_count = 1;
-#endif
-            dec = codec;
-        } else {
-            return AVERROR_DECODER_NOT_FOUND;
-        }
+    switch (avctx->codec_id) {
+    case AV_CODEC_ID_H264:
+        codec_name = "h264_mediacodec";
+        break;
+    case AV_CODEC_ID_HEVC:
+        codec_name = "hevc_mediacodec";
+        break;
+    case AV_CODEC_ID_MPEG4:
+        codec_name = "mpeg4_mediacodec";
+        break;
+    case AV_CODEC_ID_VP8:
+        codec_name = "vp8_mediacodec";
+        break;
+    case AV_CODEC_ID_VP9:
+        codec_name = "vp9_mediacodec";
+        break;
+    default:
+        av_assert0(0);
     }
 
-    TRACE(ctx, "codec open");
+    AVCodec *codec = avcodec_find_decoder_by_name(codec_name);
+    if (!codec)
+        return AVERROR_DECODER_NOT_FOUND;
 
-    ret = avcodec_open2(avctx, dec, &opts);
-    av_dict_free(&opts);
+    AVBufferRef *hw_device_ctx_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_MEDIACODEC);
+    if (!hw_device_ctx_ref)
+        return -1;
+
+    AVHWDeviceContext *hw_device_ctx = (AVHWDeviceContext *)hw_device_ctx_ref->data;
+    AVMediaCodecDeviceContext *hw_ctx = hw_device_ctx->hwctx;
+    hw_ctx->surface = ctx->opaque;
+
+    int ret = av_hwdevice_ctx_init(hw_device_ctx_ref);
     if (ret < 0) {
-#if HAVE_MEDIACODEC_HWACCEL
-        if (hw) {
-            av_buffer_unref(&avctx->hw_device_ctx);
-        }
-#endif
+        av_buffer_unref(&hw_device_ctx_ref);
         return ret;
     }
 
+    avctx->hw_device_ctx = hw_device_ctx_ref;
+    avctx->thread_count = 1;
+
+    AVDictionary *opts = NULL;
+    av_dict_set_int(&opts, "delay_flush", 1, 0);
+
+    ret = avcodec_open2(avctx, codec, &opts);
+    if (ret < 0) {
+        av_buffer_unref(&avctx->hw_device_ctx);
+    }
+    av_dict_free(&opts);
     return ret;
 }
+#endif
 
 static int ffdec_init_sw(struct decoder_ctx *ctx, const struct sxplayer_opts *opts)
 {
-    return ffdec_init(ctx, 0);
+    AVCodecContext *avctx = ctx->avctx;
+    av_opt_set(avctx, "threads", "auto", 0);
+
+    AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
+    return avcodec_open2(avctx, codec, NULL);
 }
 
 static int ffdec_init_hw(struct decoder_ctx *ctx, const struct sxplayer_opts *opts)
 {
-    return ffdec_init(ctx, 1);
+#if HAVE_MEDIACODEC_HWACCEL
+    return init_mediacodec(ctx);
+#endif
+    return AVERROR_DECODER_NOT_FOUND;
 }
 
 static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
