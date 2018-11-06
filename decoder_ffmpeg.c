@@ -118,8 +118,6 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
         return ret;
     }
 
-    ctx->avctx = avctx;
-
     return ret;
 }
 
