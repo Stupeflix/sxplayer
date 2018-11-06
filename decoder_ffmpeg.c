@@ -45,7 +45,6 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
 
     TRACE(ctx, "initialize context");
 
-    av_opt_set_int(avctx, "refcounted_frames", 1, 0);
     av_opt_set(avctx, "threads", "auto", 0);
 
     if (hw) {
