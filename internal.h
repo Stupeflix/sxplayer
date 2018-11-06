@@ -30,7 +30,11 @@
 
 #include "sxplayer.h"
 
+#ifdef __ANDROID__
 #define HAVE_MEDIACODEC_HWACCEL 1
+#else
+#define HAVE_MEDIACODEC_HWACCEL 0
+#endif
 
 enum AVPixelFormat sxpi_pix_fmts_sx2ff(enum sxplayer_pixel_format pix_fmt);
 enum sxplayer_pixel_format sxpi_pix_fmts_ff2sx(enum AVPixelFormat pix_fmt);
