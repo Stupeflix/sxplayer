@@ -28,9 +28,7 @@ static const struct {
     enum AVPixelFormat ff;
     enum sxplayer_pixel_format sx;
 } pix_fmts_mapping[] = {
-#if HAVE_MEDIACODEC_HWACCEL
     {AV_PIX_FMT_MEDIACODEC,   SXPLAYER_PIXFMT_MEDIACODEC},
-#endif
     {AV_PIX_FMT_VIDEOTOOLBOX, SXPLAYER_PIXFMT_VT},
     {AV_PIX_FMT_BGRA,         SXPLAYER_PIXFMT_BGRA},
     {AV_PIX_FMT_RGBA,         SXPLAYER_PIXFMT_RGBA},

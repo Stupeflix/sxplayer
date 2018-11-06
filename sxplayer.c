@@ -406,12 +406,9 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->ms       = av_rescale_q(frame_ts, AV_TIME_BASE_Q, s->st_timebase);
     ret->ts       = frame_ts * av_q2d(s->st_timebase);
     if (o->avselect == SXPLAYER_SELECT_VIDEO) {
-        if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
+        if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX ||
+            frame->format == AV_PIX_FMT_MEDIACODEC) {
             ret->data = frame->data[3];
-#if HAVE_MEDIACODEC_HWACCEL
-        } else if (frame->format == AV_PIX_FMT_MEDIACODEC) {
-            ret->data = frame->data[3];
-#endif
         }
         ret->width   = frame->width;
         ret->height  = frame->height;

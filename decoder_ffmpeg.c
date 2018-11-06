@@ -31,10 +31,6 @@
 #include "internal.h"
 #include "log.h"
 
-#ifndef HAVE_MEDIACODEC_HWACCEL
-#error "HAVE_MEDIACODEC_HWACCEL must be defined"
-#endif
-
 #if HAVE_MEDIACODEC_HWACCEL
 
 #include <libavcodec/mediacodec.h>
