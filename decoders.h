@@ -35,7 +35,6 @@ struct decoder_ctx {
     void *priv_data;
     struct decoding_ctx *decoding_ctx;
     void *opaque;
-    int use_hwaccel;
 };
 
 struct decoder {

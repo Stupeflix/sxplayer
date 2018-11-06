@@ -45,7 +45,6 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
 
     TRACE(ctx, "initialize context");
 
-    ctx->use_hwaccel = 0;
     av_opt_set_int(avctx, "refcounted_frames", 1, 0);
     av_opt_set(avctx, "threads", "auto", 0);
 
@@ -100,7 +99,6 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
 
             avctx->hw_device_ctx = hw_device_ctx_ref;
             avctx->thread_count = 1;
-            ctx->use_hwaccel = 1;
 #endif
             dec = codec;
         } else {
@@ -114,9 +112,8 @@ static int ffdec_init(struct decoder_ctx *ctx, int hw)
     av_dict_free(&opts);
     if (ret < 0) {
 #if HAVE_MEDIACODEC_HWACCEL
-        if (ctx->use_hwaccel) {
+        if (hw) {
             av_buffer_unref(&avctx->hw_device_ctx);
-            ctx->use_hwaccel = 0;
         }
 #endif
         return ret;
