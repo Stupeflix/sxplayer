@@ -43,6 +43,7 @@ struct sxplayer_opts {
     int max_pixels;                         // maximum number of pixels per frame
     int audio_texture;                      // output audio as a video texture
     char *vt_pix_fmt;                       // VideoToolbox pixel format in the CVPixelBufferRef
+    int stream_idx;
 
     int64_t skip64;
     int64_t trim_duration64;

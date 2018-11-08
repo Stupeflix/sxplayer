@@ -133,7 +133,7 @@ int sxpi_demuxing_init(void *log_ctx,
     }
 
     TRACE(ctx, "find best stream");
-    ret = av_find_best_stream(ctx->fmt_ctx, media_type, -1, -1, NULL, 0);
+    ret = av_find_best_stream(ctx->fmt_ctx, media_type, opts->stream_idx, -1, NULL, 0);
     if (ret < 0) {
         LOG(ctx, ERROR, "Unable to find a %s stream in the input file",
             av_get_media_type_string(media_type));
