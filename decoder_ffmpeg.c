@@ -136,7 +136,7 @@ static int init_vaapi(struct decoder_ctx *ctx)
 static int ffdec_init_sw(struct decoder_ctx *ctx, const struct sxplayer_opts *opts)
 {
     AVCodecContext *avctx = ctx->avctx;
-    av_opt_set(avctx, "threads", "auto", 0);
+    avctx->thread_count = 0;
 
     AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
     return avcodec_open2(avctx, codec, NULL);
