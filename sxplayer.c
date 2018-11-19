@@ -219,8 +219,6 @@ struct sxplayer_ctx *sxplayer_create(const char *filename)
             LOG(s, WARNING, "/!\\ build and runtime version of FFmpeg mismatch /!\\");
     }
 
-    av_register_all();
-    avfilter_register_all();
     avformat_network_init();
 
     av_opt_set_defaults(s);
