@@ -33,6 +33,12 @@ TRACE  ?= no
 
 TARGET_OS ?= $(shell uname -s)
 
+ifeq ($(TARGET_OS),Linux)
+ENABLE_VAAPI ?= $(shell $(PKG_CONFIG) --exists libva && echo yes || echo no)
+else
+ENABLE_VAAPI = no
+endif
+
 EXPORTED_SYMBOLS_FILE = lib$(NAME).symexport
 
 VERSION_SCRIPT = --version-script
@@ -75,6 +81,9 @@ ifeq ($(DEBUG),yes)
 endif
 ifeq ($(TRACE),yes)
 	CFLAGS += -DENABLE_DBG=1
+endif
+ifeq ($(ENABLE_VAAPI),yes)
+	CFLAGS += -DHAVE_VAAPI_HWACCEL=1
 endif
 CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PROJECT_PKG_CONFIG_LIBS)) $(CFLAGS)
 LDLIBS := $(shell $(PKG_CONFIG) --libs   $(PROJECT_PKG_CONFIG_LIBS)) $(LDLIBS) $(PROJECT_LIBS)

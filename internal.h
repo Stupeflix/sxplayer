@@ -36,9 +36,7 @@
 #define HAVE_MEDIACODEC_HWACCEL 0
 #endif
 
-#if defined(__linux__) && !defined(__ANDROID__)
-#define HAVE_VAAPI_HWACCEL 1
-#else
+#ifndef HAVE_VAAPI_HWACCEL
 #define HAVE_VAAPI_HWACCEL 0
 #endif
 
