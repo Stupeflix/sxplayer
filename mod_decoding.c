@@ -121,7 +121,7 @@ int sxpi_decoding_init(void *log_ctx,
         TRACE(ctx, "unable to init %s decoder, fallback on %s decoder",
               dec_def->name, dec_def_fallback->name);
         if (ret != AVERROR_DECODER_NOT_FOUND)
-            LOG(ctx, ERROR, "Decoder fallback"); // TODO: no fallback here on iOS
+            LOG(ctx, ERROR, "Decoder fallback due to %s", av_err2str(ret));
         ret = sxpi_decoder_init(log_ctx, ctx->decoder, dec_def_fallback, stream, ctx, opts);
     }
     if (ret < 0)
