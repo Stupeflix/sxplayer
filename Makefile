@@ -161,6 +161,7 @@ endif # mingw-w64
 uninstall:
 	$(RM) $(DESTDIR)$(PREFIX)/lib/$(LIBNAME)
 	$(RM) $(DESTDIR)$(PREFIX)/lib/pkgconfig/$(PCNAME)
+	$(RM) $(DESTDIR)$(PREFIX)/bin/$(LIBNAME)
 	$(RM) $(DESTDIR)$(PREFIX)/include/$(NAME).h
 	$(RM) $(DESTDIR)$(PREFIX)/include/$(NAME).hpp
 
