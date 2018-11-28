@@ -148,9 +148,11 @@ install: $(LIBNAME) $(PCNAME) $(NAME).hpp
 	install -d $(DESTDIR)$(PREFIX)/lib/pkgconfig
 	install -d $(DESTDIR)$(PREFIX)/include
 ifeq ($(TARGET_OS),MinGW-w64)
+ifeq ($(SHARED),yes)
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 644 $(LIBNAME) $(DESTDIR)$(PREFIX)/bin
-endif
+endif # shared
+endif # mingw-w64
 	install -m 644 $(LIBNAME) $(DESTDIR)$(PREFIX)/lib
 	install -m 644 $(PCNAME) $(DESTDIR)$(PREFIX)/lib/pkgconfig
 	install -m 644 $(NAME).h $(DESTDIR)$(PREFIX)/include/$(NAME).h
