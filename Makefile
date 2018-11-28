@@ -24,7 +24,6 @@ PROJECT_LIBS = -lm -pthread
 DARWIN_LIBS  = -framework CoreFoundation -framework VideoToolbox -framework CoreMedia -framework QuartzCore
 ANDROID_LIBS =
 
-PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
 
 SHARED ?= no
@@ -32,6 +31,13 @@ DEBUG  ?= no
 TRACE  ?= no
 
 TARGET_OS ?= $(shell uname -s)
+
+ifeq ($(OS),Windows_NT)
+	TARGET_OS   = MinGW-w64
+	PREFIX      ?= C:/msys64/usr/local
+else
+	PREFIX      ?= /usr/local
+endif
 
 ifeq ($(TARGET_OS),Linux)
 ENABLE_VAAPI ?= $(shell $(PKG_CONFIG) --exists libva && echo yes || echo no)
