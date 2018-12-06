@@ -245,10 +245,10 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
         goto end;
     }
 
-#define SEP(a) ((a)[0] ? "," : "")
+#define SEP(a) ((a)[0] && (a)[strlen(a) - 1] != ';' ? "," : "")
 
     /* define the output of the graph */
-    snprintf(args, sizeof(args), "%s", ctx->filters ? ctx->filters : "");
+    snprintf(args, sizeof(args), "sws_flags=+full_chroma_int;%s", ctx->filters ? ctx->filters : "");
     if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
         const enum AVPixelFormat sw_pix_fmt = sxpi_pix_fmts_sx2ff(ctx->sw_pix_fmt);
