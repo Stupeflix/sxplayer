@@ -265,8 +265,8 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
         av_strlcatf(args, sizeof(args), "%sformat=%s, settb=tb=%d/%d", SEP(args), av_get_pix_fmt_name(pix_fmt),
                     time_base.num, time_base.den);
     } else if (ctx->audio_texture) {
-        av_strlcatf(args, sizeof(args), "aformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d, asettb=tb=%d/%d",
-                    AUDIO_NBSAMPLES, time_base.num, time_base.den);
+        av_strlcatf(args, sizeof(args), "%saformat=sample_fmts=fltp:channel_layouts=stereo, asetnsamples=%d, asettb=tb=%d/%d",
+                    SEP(args), AUDIO_NBSAMPLES, time_base.num, time_base.den);
     } else {
         av_strlcatf(args, sizeof(args), "%saformat=sample_fmts=flt:channel_layouts=stereo, asettb=tb=%d/%d",
                     SEP(args), time_base.num, time_base.den);
