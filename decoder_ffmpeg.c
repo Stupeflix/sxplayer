@@ -106,6 +106,9 @@ static int init_mediacodec(struct decoder_ctx *ctx)
 
 static int init_vaapi(struct decoder_ctx *ctx)
 {
+    if (!ctx->opaque)
+        return AVERROR_DECODER_NOT_FOUND;
+
     AVBufferRef *hw_device_ctx_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VAAPI);
     if (!hw_device_ctx_ref)
         return -1;
