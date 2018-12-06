@@ -214,7 +214,7 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     /* create buffer filter source (where we push the frame) */
     if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         snprintf(args, sizeof(args),
-                 "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d:sws_param=flags=bicubic",
+                 "video_size=%dx%d:pix_fmt=%s:time_base=%d/%d:pixel_aspect=%d/%d",
                  codecpar->width, codecpar->height, av_get_pix_fmt_name(ctx->last_frame_format),
                  time_base.num, time_base.den,
                  codecpar->sample_aspect_ratio.num, codecpar->sample_aspect_ratio.den);
