@@ -106,6 +106,12 @@ static int init_mediacodec(struct decoder_ctx *ctx)
 
 static int init_vaapi(struct decoder_ctx *ctx)
 {
+    AVCodecContext *avctx = ctx->avctx;
+
+    if (avctx->codec_id != AV_CODEC_ID_H264 &&
+        avctx->codec_id != AV_CODEC_ID_HEVC)
+        return AVERROR_DECODER_NOT_FOUND;
+
     if (!ctx->opaque)
         return AVERROR_DECODER_NOT_FOUND;
 
@@ -123,7 +129,6 @@ static int init_vaapi(struct decoder_ctx *ctx)
         return ret;
     }
 
-    AVCodecContext *avctx = ctx->avctx;
     avctx->hw_device_ctx = hw_device_ctx_ref;
     avctx->thread_count = 1;
 
