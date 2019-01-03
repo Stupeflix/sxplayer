@@ -184,10 +184,10 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     const AVCodecParameters *codecpar = ctx->codecpar;
     const AVRational time_base = ctx->st_timebase;
 
+    avfilter_graph_free(&ctx->filter_graph);
+
     if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
         return 0;
-
-    avfilter_graph_free(&ctx->filter_graph);
 
     outputs = avfilter_inout_alloc();
     inputs  = avfilter_inout_alloc();
