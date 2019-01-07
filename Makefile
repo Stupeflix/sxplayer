@@ -40,7 +40,7 @@ else
 endif
 
 ifeq ($(TARGET_OS),Linux)
-ENABLE_VAAPI ?= $(shell $(PKG_CONFIG) --exists libva && echo yes || echo no)
+ENABLE_VAAPI ?= $(shell $(PKG_CONFIG) --exists "libva >= 1.1.0" && echo yes || echo no)
 else
 ENABLE_VAAPI = no
 endif
