@@ -185,7 +185,8 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
             pkt_consumed = 1;
         }
 
-        while (ret >= 0) {
+        const int draining = flush && pkt_consumed;
+        while (ret >= 0 || (draining && ret == AVERROR(EAGAIN))) {
             AVFrame *dec_frame = av_frame_alloc();
 
             if (!dec_frame)
