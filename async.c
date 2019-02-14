@@ -289,6 +289,7 @@ static int initialize_modules_once(struct async_context *actx,
         (ret = sxpi_decoding_init(actx->log_ctx,
                                   actx->decoder,
                                   actx->pkt_queue, actx->frames_queue,
+                                  sxpi_demuxing_is_image(actx->demuxer),
                                   sxpi_demuxing_get_stream(actx->demuxer), opts)) < 0 ||
         (ret = sxpi_filtering_init(actx->log_ctx,
                                    actx->filterer,

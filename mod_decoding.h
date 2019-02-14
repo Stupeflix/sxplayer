@@ -34,6 +34,7 @@ int sxpi_decoding_init(void *log_ctx,
                        struct decoding_ctx *ctx,
                        AVThreadMessageQueue *pkt_queue,
                        AVThreadMessageQueue *frames_queue,
+                       int is_image,
                        const AVStream *stream,
                        const struct sxplayer_opts *opts);
 
