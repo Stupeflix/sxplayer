@@ -44,6 +44,9 @@ struct decoding_ctx {
     AVThreadMessageQueue *pkt_queue;
     AVThreadMessageQueue *frames_queue;
 
+    int is_image;
+    int frame_count;
+
     struct decoder_ctx *decoder;
 
     AVRational st_timebase;
@@ -73,6 +76,7 @@ int sxpi_decoding_init(void *log_ctx,
                        struct decoding_ctx *ctx,
                        AVThreadMessageQueue *pkt_queue,
                        AVThreadMessageQueue *frames_queue,
+                       int is_image,
                        const AVStream *stream,
                        const struct sxplayer_opts *opts)
 {
@@ -86,6 +90,7 @@ int sxpi_decoding_init(void *log_ctx,
     ctx->log_ctx = log_ctx;
     ctx->pkt_queue = pkt_queue;
     ctx->frames_queue = frames_queue;
+    ctx->is_image = is_image;
 
     if (opts->auto_hwaccel && decoder_def_hwaccel) {
         dec_def          = decoder_def_hwaccel;
@@ -153,6 +158,9 @@ static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
         .type = MSG_FRAME,
         .data = frame,
     };
+
+    if (ctx->is_image && ctx->frame_count++ > 0)
+        return AVERROR_EOF;
 
     TRACE(ctx, "queue frame with ts=%s", av_ts2timestr(frame->pts, &ctx->st_timebase));
 
