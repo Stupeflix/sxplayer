@@ -22,8 +22,10 @@
 #include <pthread.h>
 #include <libavutil/avassert.h>
 #include <libavutil/pixdesc.h>
+#include <libavformat/avio.h>
 #include <VideoToolbox/VideoToolbox.h>
 
+#include "avc.h"
 #include "mod_decoding.h"
 #include "decoders.h"
 #include "internal.h"
@@ -77,6 +79,7 @@ struct vtdec_context {
     pthread_cond_t cond;
     int nb_queued;
     int out_w, out_h;
+    int is_annexb;
 };
 
 static CMVideoFormatDescriptionRef format_desc_create(CMVideoCodecType codec_type,
@@ -110,6 +113,8 @@ static void dict_set_data(CFMutableDictionaryRef dict, CFStringRef key, uint8_t 
 static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
                                              const AVCodecContext *avctx)
 {
+    AVIOContext *xvcc_pb = NULL;
+
     CFMutableDictionaryRef config_info = CFDictionaryCreateMutable(kCFAllocatorDefault,
                                                                    2,
                                                                    &kCFTypeDictionaryKeyCallBacks,
@@ -120,6 +125,17 @@ static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
                          kCFBooleanTrue);
 
     if (avctx->extradata_size) {
+        int ret = avio_open_dyn_buf(&xvcc_pb);
+        if (ret < 0)
+            goto err;
+
+        ret = sxpi_isom_write_avcc(xvcc_pb, avctx->extradata, avctx->extradata_size);
+        if (ret < 0)
+            goto err;
+
+        uint8_t *xvcc_buf = NULL;
+        int xvcc_size = avio_close_dyn_buf(xvcc_pb, &xvcc_buf);
+
         CFMutableDictionaryRef avc_info;
 
         avc_info = CFDictionaryCreateMutable(kCFAllocatorDefault,
@@ -129,14 +145,16 @@ static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
 
         switch (avctx->codec_id) {
         case AV_CODEC_ID_H264:
-            dict_set_data(avc_info, CFSTR("avcC"), avctx->extradata, avctx->extradata_size);
+            dict_set_data(avc_info, CFSTR("avcC"), xvcc_buf, xvcc_size);
             break;
         case AV_CODEC_ID_HEVC:
-            dict_set_data(avc_info, CFSTR("hvcC"), avctx->extradata, avctx->extradata_size);
+            dict_set_data(avc_info, CFSTR("hvcC"), xvcc_buf, xvcc_size);
             break;
         default:
             av_assert0(0);
         }
+
+        av_freep(&xvcc_buf);
 
         CFDictionarySetValue(config_info,
                 kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms,
@@ -145,6 +163,15 @@ static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
         CFRelease(avc_info);
     }
     return config_info;
+
+err:
+    if (config_info)
+        CFRelease(config_info);
+    if (xvcc_pb) {
+        av_free(xvcc_pb->opaque);
+        avio_context_free(&xvcc_pb);
+    }
+    return NULL;
 }
 
 static CFDictionaryRef buffer_attributes_create(int width, int height, OSType pix_fmt)
@@ -337,6 +364,8 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
         return AVERROR_DECODER_NOT_FOUND;
     }
 
+    vt->is_annexb = avctx->extradata_size > 0 && avctx->extradata[0] != 1;
+
     decoder_spec = decoder_config_create(cm_codec_type, avctx);
 
     vt->cm_fmt_desc = format_desc_create(cm_codec_type, decoder_spec,
@@ -461,11 +490,23 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
         return AVERROR_EOF;
     }
 
-    VTDecodeFrameFlags decodeFlags = kVTDecodeFrame_EnableAsynchronousDecompression;
-    CMSampleBufferRef sample_buf = sample_buffer_create(vt->cm_fmt_desc, pkt->data, pkt->size, pkt->pts);
+    uint8_t *buffer = pkt->data;
+    int size = pkt->size;
+    uint8_t *avcc_buf = NULL;
+    if (vt->is_annexb) {
+        int ret = sxpi_avc_parse_nal_units_buf(buffer, &avcc_buf, &size);
+        if (ret < 0)
+            return ret;
+        buffer = avcc_buf;
+    }
 
-    if (!sample_buf)
+    VTDecodeFrameFlags decodeFlags = kVTDecodeFrame_EnableAsynchronousDecompression;
+    CMSampleBufferRef sample_buf = sample_buffer_create(vt->cm_fmt_desc, buffer, size, pkt->pts);
+
+    if (!sample_buf) {
+        av_freep(&avcc_buf);
         return AVERROR_EXTERNAL;
+    }
 
     update_nb_queue(dec_ctx, vt, 1);
     status = VTDecompressionSessionDecodeFrame(vt->session,
@@ -473,6 +514,8 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
                                                decodeFlags,
                                                NULL,    // sourceFrameRefCon
                                                0);      // infoFlagsOut
+
+    av_freep(&avcc_buf);
 
 #if 0
     if (status == noErr)

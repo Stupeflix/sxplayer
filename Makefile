@@ -10,7 +10,7 @@ PROJECT_OBJS = async.o          \
                msg.o            \
                utils.o          \
 
-DARWIN_OBJS  = decoder_vt.o
+DARWIN_OBJS  = decoder_vt.o avc.o
 ANDROID_OBJS =
 
 PROJECT_PKG_CONFIG_LIBS = "libavformat >= 58.12.100" \
