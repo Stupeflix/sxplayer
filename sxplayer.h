@@ -91,6 +91,73 @@ enum sxplayer_loglevel {
     SXPLAYER_LOG_ERROR,
 };
 
+enum {
+    SXPLAYER_COL_SPC_RGB,
+    SXPLAYER_COL_SPC_BT709,
+    SXPLAYER_COL_SPC_UNSPECIFIED,
+    SXPLAYER_COL_SPC_RESERVED,
+    SXPLAYER_COL_SPC_FCC,
+    SXPLAYER_COL_SPC_BT470BG,
+    SXPLAYER_COL_SPC_SMPTE170M,
+    SXPLAYER_COL_SPC_SMPTE240M,
+    SXPLAYER_COL_SPC_YCGCO,
+    SXPLAYER_COL_SPC_BT2020_NCL,
+    SXPLAYER_COL_SPC_BT2020_CL,
+    SXPLAYER_COL_SPC_SMPTE2085,
+    SXPLAYER_COL_SPC_CHROMA_DERIVED_NCL,
+    SXPLAYER_COL_SPC_CHROMA_DERIVED_CL,
+    SXPLAYER_COL_SPC_ICTCP,
+    NB_SXPLAYER_COL_SPC // *NOT* part of API/ABI
+};
+
+enum {
+    SXPLAYER_COL_RNG_UNSPECIFIED,
+    SXPLAYER_COL_RNG_LIMITED,
+    SXPLAYER_COL_RNG_FULL,
+    NB_SXPLAYER_COL_RNG // *NOT* part of API/ABI
+};
+
+enum {
+    SXPLAYER_COL_PRI_RESERVED0,
+    SXPLAYER_COL_PRI_BT709,
+    SXPLAYER_COL_PRI_UNSPECIFIED,
+    SXPLAYER_COL_PRI_RESERVED,
+    SXPLAYER_COL_PRI_BT470M,
+    SXPLAYER_COL_PRI_BT470BG,
+    SXPLAYER_COL_PRI_SMPTE170M,
+    SXPLAYER_COL_PRI_SMPTE240M,
+    SXPLAYER_COL_PRI_FILM,
+    SXPLAYER_COL_PRI_BT2020,
+    SXPLAYER_COL_PRI_SMPTE428,
+    SXPLAYER_COL_PRI_SMPTE431,
+    SXPLAYER_COL_PRI_SMPTE432,
+    SXPLAYER_COL_PRI_JEDEC_P22,
+    NB_SXPLAYER_COL_PRI // *NOT* part of API/ABI
+};
+
+enum {
+    SXPLAYER_COL_TRC_RESERVED0,
+    SXPLAYER_COL_TRC_BT709,
+    SXPLAYER_COL_TRC_UNSPECIFIED,
+    SXPLAYER_COL_TRC_RESERVED,
+    SXPLAYER_COL_TRC_GAMMA22,
+    SXPLAYER_COL_TRC_GAMMA28,
+    SXPLAYER_COL_TRC_SMPTE170M,
+    SXPLAYER_COL_TRC_SMPTE240M,
+    SXPLAYER_COL_TRC_LINEAR,
+    SXPLAYER_COL_TRC_LOG,
+    SXPLAYER_COL_TRC_LOG_SQRT,
+    SXPLAYER_COL_TRC_IEC61966_2_4,
+    SXPLAYER_COL_TRC_BT1361_ECG,
+    SXPLAYER_COL_TRC_IEC61966_2_1,
+    SXPLAYER_COL_TRC_BT2020_10,
+    SXPLAYER_COL_TRC_BT2020_12,
+    SXPLAYER_COL_TRC_SMPTE2084,
+    SXPLAYER_COL_TRC_SMPTE428,
+    SXPLAYER_COL_TRC_ARIB_STD_B67,
+    NB_SXPLAYER_COL_TRC // *NOT* part of the API/ABI
+};
+
 struct sxplayer_frame {
     uint8_t *data;      // frame data in RGBA, BGRA, ... according to pix_fmt
     double ts;          // video timestamp
@@ -106,6 +173,10 @@ struct sxplayer_frame {
     int64_t ms;         // video timestamp in microseconds
     int64_t pts;        // video presentation time stamp in stream timebase unit
     void *internal;     // sxplayer internal frame context frame, do not alter
+    int color_space;    // video color space (any of SXPLAYER_COL_CSP_*)
+    int color_range;    // video color range (any of SXPLAYER_COL_RNG_*)
+    int color_primaries;// video color primaries (any of SXPLAYER_COL_PRI_*)
+    int color_trc;      // video color transfer (any of SXPLAYER_COL_TRC_*)
 };
 
 struct sxplayer_info {

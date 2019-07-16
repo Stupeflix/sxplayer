@@ -325,6 +325,105 @@ static int configure_context(struct sxplayer_ctx *s)
     return 0;
 }
 
+static const int col_spc_map[] = {
+    [AVCOL_SPC_RGB]                = SXPLAYER_COL_SPC_RGB,
+    [AVCOL_SPC_BT709]              = SXPLAYER_COL_SPC_BT709,
+    [AVCOL_SPC_UNSPECIFIED]        = SXPLAYER_COL_SPC_UNSPECIFIED,
+    [AVCOL_SPC_RESERVED]           = SXPLAYER_COL_SPC_RESERVED,
+    [AVCOL_SPC_FCC]                = SXPLAYER_COL_SPC_FCC,
+    [AVCOL_SPC_BT470BG]            = SXPLAYER_COL_SPC_BT470BG,
+    [AVCOL_SPC_SMPTE170M]          = SXPLAYER_COL_SPC_SMPTE170M,
+    [AVCOL_SPC_SMPTE240M]          = SXPLAYER_COL_SPC_SMPTE240M,
+    [AVCOL_SPC_YCGCO]              = SXPLAYER_COL_SPC_YCGCO,
+    [AVCOL_SPC_BT2020_NCL]         = SXPLAYER_COL_SPC_BT2020_NCL,
+    [AVCOL_SPC_BT2020_CL]          = SXPLAYER_COL_SPC_BT2020_CL,
+    [AVCOL_SPC_SMPTE2085]          = SXPLAYER_COL_SPC_SMPTE2085,
+    [AVCOL_SPC_CHROMA_DERIVED_NCL] = SXPLAYER_COL_SPC_CHROMA_DERIVED_NCL,
+    [AVCOL_SPC_CHROMA_DERIVED_CL]  = SXPLAYER_COL_SPC_CHROMA_DERIVED_CL,
+    [AVCOL_SPC_ICTCP]              = SXPLAYER_COL_SPC_ICTCP,
+};
+
+SXPI_STATIC_ASSERT(col_spc_map, FF_ARRAY_ELEMS(col_spc_map) < 32);
+
+static int get_sxplayer_col_spc(int avcol_spc)
+{
+    if (avcol_spc < 0 || avcol_spc >= FF_ARRAY_ELEMS(col_spc_map))
+        return SXPLAYER_COL_SPC_UNSPECIFIED;
+    return col_spc_map[avcol_spc];
+}
+
+static const int col_rng_map[] = {
+    [AVCOL_RANGE_UNSPECIFIED] = SXPLAYER_COL_RNG_UNSPECIFIED,
+    [AVCOL_RANGE_MPEG]        = SXPLAYER_COL_RNG_LIMITED,
+    [AVCOL_RANGE_JPEG]        = SXPLAYER_COL_RNG_FULL,
+};
+
+SXPI_STATIC_ASSERT(col_rng_map, FF_ARRAY_ELEMS(col_rng_map) < 32);
+
+static int get_sxplayer_col_rng(int avcol_rng)
+{
+    if (avcol_rng < 0 || avcol_rng >= FF_ARRAY_ELEMS(col_rng_map))
+        return SXPLAYER_COL_RNG_UNSPECIFIED;
+    return col_rng_map[avcol_rng];
+}
+
+static const int col_pri_map[] = {
+    [AVCOL_PRI_RESERVED0]   = SXPLAYER_COL_PRI_RESERVED0,
+    [AVCOL_PRI_BT709]       = SXPLAYER_COL_PRI_BT709,
+    [AVCOL_PRI_UNSPECIFIED] = SXPLAYER_COL_PRI_UNSPECIFIED,
+    [AVCOL_PRI_RESERVED]    = SXPLAYER_COL_PRI_RESERVED,
+    [AVCOL_PRI_BT470M]      = SXPLAYER_COL_PRI_BT470M,
+    [AVCOL_PRI_BT470BG]     = SXPLAYER_COL_PRI_BT470BG,
+    [AVCOL_PRI_SMPTE170M]   = SXPLAYER_COL_PRI_SMPTE170M,
+    [AVCOL_PRI_SMPTE240M]   = SXPLAYER_COL_PRI_SMPTE240M,
+    [AVCOL_PRI_FILM]        = SXPLAYER_COL_PRI_FILM,
+    [AVCOL_PRI_BT2020]      = SXPLAYER_COL_PRI_BT2020,
+    [AVCOL_PRI_SMPTE428]    = SXPLAYER_COL_PRI_SMPTE428,
+    [AVCOL_PRI_SMPTE431]    = SXPLAYER_COL_PRI_SMPTE431,
+    [AVCOL_PRI_SMPTE432]    = SXPLAYER_COL_PRI_SMPTE432,
+    [AVCOL_PRI_JEDEC_P22]   = SXPLAYER_COL_PRI_JEDEC_P22,
+};
+
+SXPI_STATIC_ASSERT(col_pri_map, FF_ARRAY_ELEMS(col_pri_map) < 32);
+
+static int get_sxplayer_col_pri(int avcol_pri)
+{
+    if (avcol_pri < 0 || avcol_pri >= FF_ARRAY_ELEMS(col_pri_map))
+        return SXPLAYER_COL_PRI_UNSPECIFIED;
+    return col_pri_map[avcol_pri];
+}
+
+static const int col_trc_map[] = {
+    [AVCOL_TRC_RESERVED0]    = SXPLAYER_COL_TRC_RESERVED0,
+    [AVCOL_TRC_BT709]        = SXPLAYER_COL_TRC_BT709,
+    [AVCOL_TRC_UNSPECIFIED]  = SXPLAYER_COL_TRC_UNSPECIFIED,
+    [AVCOL_TRC_RESERVED]     = SXPLAYER_COL_TRC_RESERVED,
+    [AVCOL_TRC_GAMMA22]      = SXPLAYER_COL_TRC_GAMMA22,
+    [AVCOL_TRC_GAMMA28]      = SXPLAYER_COL_TRC_GAMMA28,
+    [AVCOL_TRC_SMPTE170M]    = SXPLAYER_COL_TRC_SMPTE170M,
+    [AVCOL_TRC_SMPTE240M]    = SXPLAYER_COL_TRC_SMPTE240M,
+    [AVCOL_TRC_LINEAR]       = SXPLAYER_COL_TRC_LINEAR,
+    [AVCOL_TRC_LOG]          = SXPLAYER_COL_TRC_LOG,
+    [AVCOL_TRC_LOG_SQRT]     = SXPLAYER_COL_TRC_LOG_SQRT,
+    [AVCOL_TRC_IEC61966_2_4] = SXPLAYER_COL_TRC_IEC61966_2_4,
+    [AVCOL_TRC_BT1361_ECG]   = SXPLAYER_COL_TRC_BT1361_ECG,
+    [AVCOL_TRC_IEC61966_2_1] = SXPLAYER_COL_TRC_IEC61966_2_1,
+    [AVCOL_TRC_BT2020_10]    = SXPLAYER_COL_TRC_BT2020_10,
+    [AVCOL_TRC_BT2020_12]    = SXPLAYER_COL_TRC_BT2020_12,
+    [AVCOL_TRC_SMPTE2084]    = SXPLAYER_COL_TRC_SMPTE2084,
+    [AVCOL_TRC_SMPTE428]     = SXPLAYER_COL_TRC_SMPTE428,
+    [AVCOL_TRC_ARIB_STD_B67] = SXPLAYER_COL_TRC_ARIB_STD_B67,
+};
+
+SXPI_STATIC_ASSERT(col_trc_map, FF_ARRAY_ELEMS(col_trc_map) < 32);
+
+static int get_sxplayer_col_trc(int avcol_trc)
+{
+    if (avcol_trc < 0 || avcol_trc >= FF_ARRAY_ELEMS(col_trc_map))
+        return SXPLAYER_COL_TRC_UNSPECIFIED;
+    return col_trc_map[avcol_trc];
+}
+
 #define START_FUNC_BASE(name, ...) do {                     \
     s->cur_func_name = name;                                \
     if (LOG_LEVEL >= AV_LOG_WARNING)                        \
@@ -403,6 +502,10 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->pts      = frame_ts;
     ret->ms       = av_rescale_q(frame_ts, AV_TIME_BASE_Q, s->st_timebase);
     ret->ts       = frame_ts * av_q2d(s->st_timebase);
+    ret->color_space     = get_sxplayer_col_spc(frame->colorspace);
+    ret->color_range     = get_sxplayer_col_rng(frame->color_range);
+    ret->color_primaries = get_sxplayer_col_pri(frame->color_primaries);
+    ret->color_trc       = get_sxplayer_col_trc(frame->color_trc);
     if (o->avselect == SXPLAYER_SELECT_VIDEO) {
         if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX ||
             frame->format == AV_PIX_FMT_VAAPI        ||
