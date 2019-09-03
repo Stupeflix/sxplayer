@@ -43,6 +43,7 @@ struct decoding_ctx {
 
     AVThreadMessageQueue *pkt_queue;
     AVThreadMessageQueue *frames_queue;
+    AVThreadMessageQueue *sink_queue;
 
     int is_image;
     int frame_count;
@@ -52,6 +53,7 @@ struct decoding_ctx {
     AVRational st_timebase;
     AVFrame *tmp_frame;
     int64_t seek_request;
+    int64_t max_pts;
 };
 
 struct decoding_ctx *sxpi_decoding_alloc(void)
@@ -76,6 +78,7 @@ int sxpi_decoding_init(void *log_ctx,
                        struct decoding_ctx *ctx,
                        AVThreadMessageQueue *pkt_queue,
                        AVThreadMessageQueue *frames_queue,
+                       AVThreadMessageQueue *sink_queue,
                        int is_image,
                        const AVStream *stream,
                        const struct sxplayer_opts *opts)
@@ -90,7 +93,10 @@ int sxpi_decoding_init(void *log_ctx,
     ctx->log_ctx = log_ctx;
     ctx->pkt_queue = pkt_queue;
     ctx->frames_queue = frames_queue;
+    ctx->sink_queue = sink_queue;
     ctx->is_image = is_image;
+    ctx->max_pts = opts->trim_duration64 > 0 ? av_rescale_q(opts->skip64 + opts->trim_duration64, AV_TIME_BASE_Q, ctx->st_timebase)
+                                          : AV_NOPTS_VALUE;
 
     if (opts->auto_hwaccel && decoder_def_hwaccel) {
         dec_def          = decoder_def_hwaccel;
@@ -164,6 +170,27 @@ static int queue_frame(struct decoding_ctx *ctx, AVFrame *frame)
 
     TRACE(ctx, "queue frame with ts=%s", av_ts2timestr(frame->pts, &ctx->st_timebase));
 
+    // XXX: cache to remove this call
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
+
+    // lol zob
+    if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL) {
+
+        if (frame->pts < 0) {
+            av_frame_free(&frame);
+            TRACE(ctx, "frame ts is negative, skipping");
+            return 0;
+        }
+
+        if (ctx->max_pts != AV_NOPTS_VALUE && frame->pts > ctx->max_pts) {
+            av_frame_free(&frame);
+            TRACE(ctx, "reached trim duration");
+            return AVERROR_EXIT; // not EOF because we do not want to flush the frames
+        }
+
+        ret = av_thread_message_queue_send(ctx->sink_queue, &msg, 0);
+
+    } else
     ret = av_thread_message_queue_send(ctx->frames_queue, &msg, 0);
     if (ret < 0) {
         if (ret != AVERROR_EOF && ret != AVERROR_EXIT)

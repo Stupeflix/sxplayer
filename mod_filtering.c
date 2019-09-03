@@ -563,13 +563,13 @@ void sxpi_filtering_run(struct filtering_ctx *ctx)
                 break;
         }
 
-        // TODO: replace with a trim filter in libavfilter (check if hw accelerated
-        // filters work)
         if (frame->pts < 0) {
             av_frame_free(&frame);
             TRACE(ctx, "frame ts is negative, skipping");
             continue;
-        } else if (ctx->max_pts != AV_NOPTS_VALUE && frame->pts > ctx->max_pts) {
+        }
+
+        if (ctx->max_pts != AV_NOPTS_VALUE && frame->pts > ctx->max_pts) {
             av_frame_free(&frame);
             TRACE(ctx, "reached trim duration");
             ret = AVERROR_EXIT; // not EOF because we do not want to flush the frames
