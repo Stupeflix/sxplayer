@@ -26,6 +26,7 @@
 #include <libavformat/avformat.h>
 #include <libavutil/avassert.h>
 #include <libavutil/avstring.h>
+#include <libavutil/mastering_display_metadata.h>
 #include <libavutil/motion_vector.h>
 #include <libavutil/opt.h>
 #include <libavutil/rational.h>
@@ -432,6 +433,29 @@ static int get_sxplayer_col_trc(int avcol_trc)
     return col_trc_map[avcol_trc];
 }
 
+/* Reference white level expressed in cd/m^2 described in ITU-R BT.2100 */
+#define REFERENCE_WHITE 100.0f
+
+static float get_signal_peak(AVFrame *frame)
+{
+    float peak = 0;
+
+    AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+    if (sd) {
+        AVContentLightMetadata *metadata = (AVContentLightMetadata *)sd->data;
+        peak = metadata->MaxCLL / REFERENCE_WHITE;
+    }
+
+    sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+    if (!peak && sd) {
+        AVMasteringDisplayMetadata *metadata = (AVMasteringDisplayMetadata *)sd->data;
+        if (metadata->has_luminance)
+            peak = av_q2d(metadata->max_luminance) / REFERENCE_WHITE;
+    }
+
+    return peak;
+}
+
 #define START_FUNC_BASE(name, ...) do {                     \
     s->cur_func_name = name;                                \
     if (LOG_LEVEL >= AV_LOG_WARNING)                        \
@@ -516,6 +540,7 @@ static struct sxplayer_frame *ret_frame(struct sxplayer_ctx *s, AVFrame *frame)
     ret->color_range     = get_sxplayer_col_rng(frame->color_range);
     ret->color_primaries = get_sxplayer_col_pri(frame->color_primaries);
     ret->color_trc       = get_sxplayer_col_trc(frame->color_trc);
+    ret->signal_peak     = get_signal_peak(frame);
     if (o->avselect == SXPLAYER_SELECT_VIDEO) {
         if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX ||
             frame->format == AV_PIX_FMT_VAAPI        ||

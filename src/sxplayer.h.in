@@ -201,6 +201,8 @@ struct sxplayer_frame {
     int color_trc;      // video color transfer (any of SXPLAYER_COL_TRC_*)
     uint8_t *datap[8];  // pointer to the frame planes
     int linesizep[8];   // linesize in bytes of each planes
+    float signal_peak;  // highest signal value relative to the maximum SDR signal
+                        // value (as described by ITU-R BT.2100), 0 if undefined/unknown.
 };
 
 struct sxplayer_info {
