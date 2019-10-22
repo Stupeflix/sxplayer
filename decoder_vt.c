@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <libavutil/avassert.h>
 #include <libavutil/pixdesc.h>
+#include <libavutil/pixfmt.h>
 #include <VideoToolbox/VideoToolbox.h>
 
 #include "mod_decoding.h"
@@ -202,6 +203,7 @@ static int push_async_frame(struct decoder_ctx *dec_ctx,
     frame->height  = vt->out_h;
     frame->format  = avctx->pix_fmt;
     frame->pts     = async_frame->pts;
+    frame->color_range = AVCOL_RANGE_MPEG;
     frame->data[3] = (uint8_t *)async_frame->cv_buffer;
     frame->buf[0]  = av_buffer_create(frame->data[3],
                                       sizeof(frame->data[3]),
