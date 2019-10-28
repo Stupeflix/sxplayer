@@ -823,7 +823,7 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
          * comparison with the lowest timebase value. Instead, we need to lower
          * our timestamp precision to the stream one to get as accurate as
          * possible. */
-        const int64_t rescaled_vt = av_rescale_q(vt, AV_TIME_BASE_Q, s->st_timebase);
+        const int64_t rescaled_vt = stream_time(s, vt);
         if (next->pts > rescaled_vt) {
             TRACE(s, "grabbed frame is in the future %s > %s",
                   av_ts2timestr(next->pts, &s->st_timebase), PTS2TIMESTR(vt));
