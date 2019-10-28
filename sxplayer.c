@@ -82,6 +82,7 @@ static const AVOption sxplayer_options[] = {
     { "audio_texture",          NULL, OFFSET(audio_texture),          AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { "vt_pix_fmt",             NULL, OFFSET(vt_pix_fmt),             AV_OPT_TYPE_STRING,    {.str="bgra"},  0, 0 },
     { "stream_idx",             NULL, OFFSET(stream_idx),             AV_OPT_TYPE_INT,       {.i64=-1},     -1, INT_MAX },
+    { "use_pkt_duration",       NULL, OFFSET(use_pkt_duration),       AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { NULL }
 };
 
@@ -824,6 +825,17 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
          * our timestamp precision to the stream one to get as accurate as
          * possible. */
         const int64_t rescaled_vt = stream_time(s, vt);
+
+        if (s->opts.use_pkt_duration && next->pkt_duration > 0 && rescaled_vt >= next->pts) {
+            const int64_t next_guessed_pts = next->pts + next->pkt_duration;
+            if (rescaled_vt < next_guessed_pts) {
+                av_frame_free(&candidate);
+                av_frame_free(&s->cached_frame);
+                s->cached_frame = NULL;
+                return ret_frame(s, next);
+            }
+        }
+
         if (next->pts > rescaled_vt) {
             TRACE(s, "grabbed frame is in the future %s > %s",
                   av_ts2timestr(next->pts, &s->st_timebase), PTS2TIMESTR(vt));

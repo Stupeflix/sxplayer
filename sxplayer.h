@@ -244,6 +244,7 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer_log_c
  *   audio_texture            integer   output audio as a video texture
  *   vt_pix_fmt               string    VideoToolbox pixel format in the CVPixelBufferRef ("bgra" or "nv12")
  *   stream_idx               integer   force a stream number instead of picking the "best" one (note: stream MUST be of type avselect)
+ *   use_pkt_duration         integer   use packet duration instead of decoding the next frame to get the next frame pts
  */
 int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
 
