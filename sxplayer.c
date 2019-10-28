@@ -50,6 +50,7 @@ struct sxplayer_ctx {
     AVFrame *cached_frame;
 
     AVRational st_timebase;                 // stream timebase
+    int64_t st_guessed_frame_duration;      // stream guessed frame duration
 
     /* All the following ts are expressed in st_timebase unit */
     int64_t last_pushed_frame_ts;           // ts value of the latest pushed frame (it acts as a UID)
@@ -82,6 +83,7 @@ static const AVOption sxplayer_options[] = {
     { "audio_texture",          NULL, OFFSET(audio_texture),          AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { "vt_pix_fmt",             NULL, OFFSET(vt_pix_fmt),             AV_OPT_TYPE_STRING,    {.str="bgra"},  0, 0 },
     { "stream_idx",             NULL, OFFSET(stream_idx),             AV_OPT_TYPE_INT,       {.i64=-1},     -1, INT_MAX },
+    { "frame_selection_mode",   NULL, OFFSET(frame_selection_mode),   AV_OPT_TYPE_INT,       {.i64=SXPLAYER_FRAME_SELECTION_DECODE}, 0, NB_SXPLAYER_FRAME_SELECTION_MODE-1 },
     { NULL }
 };
 
@@ -572,6 +574,10 @@ static AVFrame *pop_frame(struct sxplayer_ctx *s)
                 LOG(s, DEBUG, "store stream timebase %d/%d",
                     s->st_timebase.num, s->st_timebase.den);
                 av_assert0(s->st_timebase.den);
+                const AVRational framerate_inv = av_make_q(info.framerate[1], info.framerate[0]);
+                s->st_guessed_frame_duration = av_rescale_q(1, framerate_inv, s->st_timebase);
+                LOG(s, DEBUG, "store stream guessed frame duration %" PRId64,
+                    s->st_guessed_frame_duration);
             }
         }
 
@@ -824,6 +830,17 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
          * our timestamp precision to the stream one to get as accurate as
          * possible. */
         const int64_t rescaled_vt = stream_time(s, vt);
+
+        if (s->opts.frame_selection_mode == SXPLAYER_FRAME_SELECTION_GUESS && s->st_guessed_frame_duration) {
+            const int64_t next_guessed_pts = next->pts + s->st_guessed_frame_duration;
+            if (rescaled_vt >= next->pts && rescaled_vt < next_guessed_pts) {
+                av_frame_free(&candidate);
+                av_frame_free(&s->cached_frame);
+                s->cached_frame = NULL;
+                return ret_frame(s, next);
+            }
+        }
+
         if (next->pts > rescaled_vt) {
             TRACE(s, "grabbed frame is in the future %s > %s",
                   av_ts2timestr(next->pts, &s->st_timebase), PTS2TIMESTR(vt));

@@ -44,6 +44,7 @@ struct sxplayer_opts {
     int audio_texture;                      // output audio as a video texture
     char *vt_pix_fmt;                       // VideoToolbox pixel format in the CVPixelBufferRef
     int stream_idx;
+    int frame_selection_mode;               // frame selection mode
 
     int64_t skip64;
     int64_t trim_duration64;

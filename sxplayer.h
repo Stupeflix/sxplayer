@@ -91,6 +91,18 @@ enum sxplayer_loglevel {
     SXPLAYER_LOG_ERROR,
 };
 
+enum sxplayer_frame_selection_mode {
+    SXPLAYER_FRAME_SELECTION_DECODE, // Accurate method which relies on decoding the next frame
+                                     // to select the frame returned by sxplayer_get_frame()
+    SXPLAYER_FRAME_SELECTION_GUESS,  // Inaccurate method which relies on guessing the next frame
+                                     // timestamp based on the media frame rate to select the frame
+                                     // returned by sxplayer_get_frame(). This method greatly
+                                     // increases performances with MediaCodec decoders that can't output
+                                     // more than 2 output buffers at the same time as it avoids caching
+                                     // a frame internally.
+    NB_SXPLAYER_FRAME_SELECTION_MODE // *NOT* part of the API/ABI
+};
+
 enum {
     SXPLAYER_COL_SPC_RGB,
     SXPLAYER_COL_SPC_BT709,
@@ -245,6 +257,8 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer_log_c
  *   audio_texture            integer   output audio as a video texture
  *   vt_pix_fmt               string    VideoToolbox pixel format in the CVPixelBufferRef ("bgra" or "nv12")
  *   stream_idx               integer   force a stream number instead of picking the "best" one (note: stream MUST be of type avselect)
+ *   frame_selection_mode     string    frame selection mode (any of SXPLAYER_FRAME_SELECTION_*)
+ *
  */
 int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
 
