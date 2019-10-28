@@ -185,6 +185,7 @@ struct sxplayer_info {
     double duration;
     int is_image;
     int timebase[2];    // stream timebase
+    int framerate[2];   // stream framerate
 };
 
 /**

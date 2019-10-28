@@ -41,6 +41,7 @@ struct info_message {
     int64_t duration;
     int is_image;
     AVRational timebase;
+    AVRational framerate;
 };
 
 struct async_context {
@@ -173,6 +174,8 @@ int sxpi_async_fetch_info(struct async_context *actx, struct sxplayer_info *info
     info->is_image = actx->info.is_image;
     info->timebase[0] = actx->info.timebase.num;
     info->timebase[1] = actx->info.timebase.den;
+    info->framerate[0] = actx->info.framerate.num;
+    info->framerate[1] = actx->info.framerate.den;
     return 0;
 }
 
@@ -475,6 +478,7 @@ static int op_info(struct async_context *actx, struct message *msg)
         .duration = duration,
         .is_image = is_image,
         .timebase = st->time_base,
+        .framerate = st->avg_frame_rate,
     };
 
     if (!info.timebase.num || !info.timebase.den) {
