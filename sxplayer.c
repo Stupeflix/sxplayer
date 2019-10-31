@@ -28,6 +28,7 @@
 #include <libavutil/avstring.h>
 #include <libavutil/motion_vector.h>
 #include <libavutil/opt.h>
+#include <libavutil/rational.h>
 #include <libavutil/time.h>
 
 #include "sxplayer.h"
