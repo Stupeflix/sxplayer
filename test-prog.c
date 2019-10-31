@@ -219,7 +219,7 @@ static void print_comb_name(uint64_t comb, int opt_test_flags)
     printf(" (comb=0x%"PRIx64")\n", comb);
 }
 
-static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags)
+static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags, enum sxplayer_frame_selection_mode mode)
 {
     int ret = 0;
     struct sxplayer_ctx *s = sxplayer_create(filename);
@@ -227,6 +227,7 @@ static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags)
         return -1;
 
     sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
 
     print_comb_name(comb, opt_test_flags);
 
@@ -288,7 +289,7 @@ static uint64_t get_next_comb(uint64_t comb)
     return ret;
 }
 
-static int run_tests_all_combs(const char *filename, int opt_test_flags)
+static int run_tests_all_combs(const char *filename, int opt_test_flags, enum sxplayer_frame_selection_mode mode)
 {
     int ret = 0;
     uint64_t comb = 0;
@@ -297,7 +298,7 @@ static int run_tests_all_combs(const char *filename, int opt_test_flags)
         comb = get_next_comb(comb);
         if (comb == EOA)
             break;
-        ret = exec_comb(filename, comb, opt_test_flags);
+        ret = exec_comb(filename, comb, opt_test_flags, mode);
         if (ret < 0) {
             fprintf(stderr, "test failed\n");
             break;
@@ -306,7 +307,7 @@ static int run_tests_all_combs(const char *filename, int opt_test_flags)
     return ret;
 }
 
-static int run_image_test(const char *filename)
+static int run_image_test(const char *filename, enum sxplayer_frame_selection_mode mode)
 {
     struct sxplayer_info info;
     struct sxplayer_ctx *s = sxplayer_create(filename);
@@ -315,6 +316,7 @@ static int run_image_test(const char *filename)
     if (!s)
         return -1;
     sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
     f = sxplayer_get_frame(s, 53.0);
     if (!f) {
         fprintf(stderr, "didn't get an image\n");
@@ -341,7 +343,7 @@ static int run_image_test(const char *filename)
     return 0;
 }
 
-static int run_image_seek_test(const char *filename)
+static int run_image_seek_test(const char *filename, enum sxplayer_frame_selection_mode mode)
 {
     struct sxplayer_ctx *s = sxplayer_create(filename);
     struct sxplayer_frame *f;
@@ -349,6 +351,7 @@ static int run_image_seek_test(const char *filename)
     if (!s)
         return -1;
     sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
     sxplayer_seek(s, 10.2);
     f = sxplayer_get_frame(s, 10.5);
     if (!f) {
@@ -361,7 +364,7 @@ static int run_image_seek_test(const char *filename)
     return 0;
 }
 
-static int test_next_frame(const char *filename)
+static int test_next_frame(const char *filename, enum sxplayer_frame_selection_mode mode)
 {
     int i = 0, ret = 0, r;
     struct sxplayer_ctx *s = sxplayer_create(filename);
@@ -370,6 +373,7 @@ static int test_next_frame(const char *filename)
         return -1;
 
     sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
 
     for (r = 0; r < 2; r++) {
         printf("Test: %s run #%d\n", __FUNCTION__, r+1);
@@ -398,7 +402,7 @@ static int test_next_frame(const char *filename)
     return ret;
 }
 
-static int run_audio_test(const char *filename)
+static int run_audio_test(const char *filename, enum sxplayer_frame_selection_mode mode)
 {
     int i = 0, ret = 0, r, smp = 0;
     struct sxplayer_ctx *s = sxplayer_create(filename);
@@ -407,6 +411,7 @@ static int run_audio_test(const char *filename)
         return -1;
 
     sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
     sxplayer_set_option(s, "avselect", SXPLAYER_SELECT_AUDIO);
     sxplayer_set_option(s, "audio_texture", 0);
 
@@ -437,7 +442,7 @@ static int run_audio_test(const char *filename)
     return ret;
 }
 
-static int run_audio_seek_test(const char *filename)
+static int run_audio_seek_test(const char *filename, enum sxplayer_frame_selection_mode mode)
 {
     int ret = 0;
     double last_ts = 0.0;
@@ -450,6 +455,7 @@ static int run_audio_seek_test(const char *filename)
     sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_set_option(s, "avselect", SXPLAYER_SELECT_AUDIO);
     sxplayer_set_option(s, "audio_texture", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
 
     printf("Test: %s run #1\n", __FUNCTION__);
     for (int i = 0; i < 10; i++) {
@@ -483,7 +489,7 @@ static int run_audio_seek_test(const char *filename)
     return ret;
 }
 
-static int run_seek_test_after_eos(const char *filename, int avselect, double skip, double duration)
+static int run_seek_test_after_eos(const char *filename, int avselect, double skip, double duration, enum sxplayer_frame_selection_mode mode)
 {
     int ret = 0, nb_frames = 0;
     struct sxplayer_ctx *s = sxplayer_create(filename);
@@ -498,6 +504,7 @@ static int run_seek_test_after_eos(const char *filename, int avselect, double sk
     sxplayer_set_option(s, "audio_texture", 0);
     sxplayer_set_option(s, "skip", skip);
     sxplayer_set_option(s, "trim_duration", duration);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
 
     printf("Test: %s run #1 (avselect=%d duration=%f)\n", __FUNCTION__, avselect, duration);
     for (;;) {
@@ -579,13 +586,14 @@ static void log_callback(void *arg, int level, const char *filename, int ln,
     printf("level=%d filename=%s ln=%d fn=%s fmt=%s\n", level, filename, ln, fn, fmt);
 }
 
-static int run_notavail_file_test(void)
+static int run_notavail_file_test(enum sxplayer_frame_selection_mode mode)
 {
     struct sxplayer_ctx *s = sxplayer_create(fake_filename);
 
     if (!s)
         return -1;
     sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
     sxplayer_set_log_callback(s, (void*)fake_filename, log_callback);
     sxplayer_release_frame(sxplayer_get_frame(s, -1));
     sxplayer_release_frame(sxplayer_get_frame(s, 1.0));
@@ -594,7 +602,7 @@ static int run_notavail_file_test(void)
     return 0;
 }
 
-static int run_misc_events(const char *filename)
+static int run_misc_events(const char *filename, enum sxplayer_frame_selection_mode mode)
 {
     struct sxplayer_ctx *s = sxplayer_create(filename);
     struct sxplayer_frame *f;
@@ -602,6 +610,7 @@ static int run_misc_events(const char *filename)
     if (!s)
         return -1;
     sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
     sxplayer_seek(s, 12.7);
     sxplayer_seek(s, 21.0);
     sxplayer_seek(s, 5.3);
@@ -644,10 +653,11 @@ static const int tests_flags[] = {
     FLAG_AUDIO|FLAG_SKIP|FLAG_TRIM_DURATION,
 };
 
-static int test_high_refresh_rate(const char *filename)
+static int test_high_refresh_rate(const char *filename, enum sxplayer_frame_selection_mode mode)
 {
     struct sxplayer_ctx *s = sxplayer_create(filename);
     sxplayer_set_option(s, "auto_hwaccel", 0);
+    sxplayer_set_option(s, "frame_selection_mode", mode);
     struct sxplayer_frame *f;
     const double t = 1/60.;
 
@@ -668,7 +678,7 @@ static int test_high_refresh_rate(const char *filename)
     return 0;
 }
 
-static int run_test_ms(const char *filename)
+static int run_test_ms(const char *filename, enum sxplayer_frame_selection_mode mode)
 {
     struct sxplayer_ctx *s1 = sxplayer_create(filename);
     struct sxplayer_ctx *s2 = sxplayer_create(filename);
@@ -678,7 +688,9 @@ static int run_test_ms(const char *filename)
         return -1;
 
     sxplayer_set_option(s1, "auto_hwaccel", 0);
+    sxplayer_set_option(s1, "frame_selection_mode", mode);
     sxplayer_set_option(s2, "auto_hwaccel", 0);
+    sxplayer_set_option(s2, "frame_selection_mode", mode);
     f1 = sxplayer_get_frame(s1, 3.0);
     f2 = sxplayer_get_frame_ms(s2, 3*1000000);
     if (!f1 || !f2)
@@ -701,6 +713,57 @@ static int run_test_ms(const char *filename)
     return 0;
 }
 
+static int run_tests(int ac, char **av, enum sxplayer_frame_selection_mode mode)
+{
+    if (test_high_refresh_rate(av[1], mode) < 0)
+        return -1;
+
+    if (run_image_test(av[2], mode) < 0)
+        return -1;
+
+    if (run_image_seek_test(av[2], mode) < 0)
+        return -1;
+
+    if (run_notavail_file_test(mode) < 0)
+        return -1;
+
+    if (test_next_frame(av[1], mode) < 0)
+        return -1;
+
+    if (run_misc_events(av[1], mode) < 0)
+        return -1;
+
+    if (run_misc_events(av[2], mode) < 0)
+        return -1;
+
+    if (run_audio_test(av[1], mode) < 0)
+        return -1;
+
+    if (run_audio_seek_test(av[1], mode) < 0)
+        return -1;
+
+    if (run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO,  0.0, -1.0, mode) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO,  0.0, 10.0, mode) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO, 60.0, -1.0, mode) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO, 60.0, 10.0, mode) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO,  0.0, -1.0, mode) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO,  0.0, 10.0, mode) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO, 60.0, -1.0, mode) ||
+        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO, 60.0, 10.0, mode))
+        return -1;
+
+    if (run_test_ms(av[1], mode) < 0)
+        return -1;
+
+    for (int i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)
+        if (run_tests_all_combs(av[1], tests_flags[i], mode) < 0)
+            return -1;
+
+    printf("All tests OK for frame selection mode: %s\n", mode == SXPLAYER_FRAME_SELECTION_DECODE ? "decode" : "guess");
+
+    return 0;
+}
+
 int main(int ac, char **av)
 {
     if (ac != 3) {
@@ -708,51 +771,11 @@ int main(int ac, char **av)
         return -1;
     }
 
-    if (test_high_refresh_rate(av[1]) < 0)
+    if (run_tests(ac, av, SXPLAYER_FRAME_SELECTION_DECODE) < 0)
         return -1;
 
-    if (run_image_test(av[2]) < 0)
+    if (run_tests(ac, av, SXPLAYER_FRAME_SELECTION_GUESS) < 0)
         return -1;
-
-    if (run_image_seek_test(av[2]) < 0)
-        return -1;
-
-    if (run_notavail_file_test() < 0)
-        return -1;
-
-    if (test_next_frame(av[1]) < 0)
-        return -1;
-
-    if (run_misc_events(av[1]) < 0)
-        return -1;
-
-    if (run_misc_events(av[2]) < 0)
-        return -1;
-
-    if (run_audio_test(av[1]) < 0)
-        return -1;
-
-    if (run_audio_seek_test(av[1]) < 0)
-        return -1;
-
-    if (run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO,  0.0, -1.0) ||
-        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO,  0.0, 10.0) ||
-        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO, 60.0, -1.0) ||
-        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_AUDIO, 60.0, 10.0) ||
-        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO,  0.0, -1.0) ||
-        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO,  0.0, 10.0) ||
-        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO, 60.0, -1.0) ||
-        run_seek_test_after_eos(av[1], SXPLAYER_SELECT_VIDEO, 60.0, 10.0))
-        return -1;
-
-    if (run_test_ms(av[1]) < 0)
-        return -1;
-
-    for (int i = 0; i < sizeof(tests_flags)/sizeof(*tests_flags); i++)
-        if (run_tests_all_combs(av[1], tests_flags[i]) < 0)
-            return -1;
-
-    printf("All tests OK\n");
 
     return 0;
 }
