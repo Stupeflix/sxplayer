@@ -24,6 +24,7 @@ PROJECT_LIBS = -lm -pthread
 DARWIN_LIBS  = -framework CoreFoundation -framework VideoToolbox -framework CoreMedia -framework QuartzCore
 ANDROID_LIBS =
 
+INSTALL ?= install
 PKG_CONFIG ?= pkg-config
 
 SHARED ?= no
@@ -144,19 +145,19 @@ $(NAME).hpp: $(NAME).h
 	@printf "#warning \"$(NAME) is a C library and C++ is not officially supported\"\nextern \"C\" {\n#include \"$(NAME).h\"\n}\n" > $(NAME).hpp
 
 install: $(LIBNAME) $(PCNAME) $(NAME).hpp
-	install -d $(DESTDIR)$(PREFIX)/lib
-	install -d $(DESTDIR)$(PREFIX)/lib/pkgconfig
-	install -d $(DESTDIR)$(PREFIX)/include
+	$(INSTALL) -d $(DESTDIR)$(PREFIX)/lib
+	$(INSTALL) -d $(DESTDIR)$(PREFIX)/lib/pkgconfig
+	$(INSTALL) -d $(DESTDIR)$(PREFIX)/include
 ifeq ($(TARGET_OS),MinGW-w64)
 ifeq ($(SHARED),yes)
-	install -d $(DESTDIR)$(PREFIX)/bin
-	install -m 644 $(LIBNAME) $(DESTDIR)$(PREFIX)/bin
+	$(INSTALL) -d $(DESTDIR)$(PREFIX)/bin
+	$(INSTALL) -m 644 $(LIBNAME) $(DESTDIR)$(PREFIX)/bin
 endif # shared
 endif # mingw-w64
-	install -m 644 $(LIBNAME) $(DESTDIR)$(PREFIX)/lib
-	install -m 644 $(PCNAME) $(DESTDIR)$(PREFIX)/lib/pkgconfig
-	install -m 644 $(NAME).h $(DESTDIR)$(PREFIX)/include/$(NAME).h
-	install -m 644 $(NAME).hpp $(DESTDIR)$(PREFIX)/include/$(NAME).hpp
+	$(INSTALL) -m 644 $(LIBNAME) $(DESTDIR)$(PREFIX)/lib
+	$(INSTALL) -m 644 $(PCNAME) $(DESTDIR)$(PREFIX)/lib/pkgconfig
+	$(INSTALL) -m 644 $(NAME).h $(DESTDIR)$(PREFIX)/include/$(NAME).h
+	$(INSTALL) -m 644 $(NAME).hpp $(DESTDIR)$(PREFIX)/include/$(NAME).hpp
 
 uninstall:
 	$(RM) $(DESTDIR)$(PREFIX)/lib/$(LIBNAME)
