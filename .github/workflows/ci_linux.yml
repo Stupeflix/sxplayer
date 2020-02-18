@@ -1,0 +1,36 @@
+name: 'tests Linux'
+
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+
+jobs:
+  build_libs:
+
+    runs-on: ubuntu-18.04
+    container: ubuntu:19.10
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: docker://ubuntu:19.10
+
+    - name: Install dependencies
+      run: |
+        apt-get -y --force-yes update
+        apt-get -y install build-essential
+        apt-get -y install pkg-config
+        apt-get -y install libavcodec-dev libavutil-dev libavformat-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev libpostproc-dev
+        apt-get -y install valgrind
+
+    - name: Run tests
+      run: |
+        make -j$(($(nproc)+1)) test
+    - name: Clean
+      run: |
+        make -j$(($(nproc)+1)) clean
+    - name: Run memory tests
+      run: |
+        make -j$(($(nproc)+1)) testmem DEBUG=yes
+
