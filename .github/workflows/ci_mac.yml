@@ -1,0 +1,24 @@
+name: 'tests Mac'
+
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+
+jobs:
+  build_libs:
+
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: |
+        brew install ffmpeg
+        brew install pkg-config
+
+    - name: Run tests
+      run: |
+        make -j$(($(sysctl -n hw.logicalcpu)+1)) test
