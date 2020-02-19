@@ -1,5 +1,7 @@
 # sxplayer
 
+![tests Linux](https://github.com/stupeflix/sxplayer/workflows/tests%20Linux/badge.svg)
+![tests Mac](https://github.com/stupeflix/sxplayer/workflows/tests%20Mac/badge.svg)
 
 ## Introduction
 
