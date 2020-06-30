@@ -1,9 +1,12 @@
 *.o
 *.d
+*.gcda
+*.gcno
 libsxplayer.a
 libsxplayer.pc
 libsxplayer.so
 libsxplayer.symexport
 sxplayer
+sxplayer-cov
 sxplayer.hpp
 test-prog
