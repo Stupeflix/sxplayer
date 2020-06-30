@@ -30,6 +30,7 @@ PKG_CONFIG ?= pkg-config
 SHARED ?= no
 DEBUG  ?= no
 TRACE  ?= no
+COVERAGE  ?= no
 
 TARGET_OS ?= $(shell uname -s)
 
@@ -83,6 +84,11 @@ OBJS += $(NAME).o $(PROJECT_OBJS)
 CPPFLAGS += -MMD -MP
 
 CFLAGS += -Wall -O2 -Werror=missing-prototypes -std=c99 -fPIC
+ifeq ($(COVERAGE),yes)
+	CFLAGS += --coverage
+	LDLIBS += --coverage
+	DEBUG = yes
+endif
 ifeq ($(DEBUG),yes)
 	CFLAGS += -g
 endif
@@ -171,6 +177,13 @@ test: $(TESTPROG)
 testmem: $(TESTPROG)
 	valgrind --leak-check=full --show-leak-kinds=all ./$(TESTPROG) media.mkv image.jpg
 
-.PHONY: all test testmem clean install uninstall player
+
+# You need to build and run with COVERAGE set to generate data.
+# For example: `make clean && make -j8 test COVERAGE=yes`
+coverage:
+	mkdir -p sxplayer-cov
+	gcovr -r . --html-details --html-title "sxplayer coverage" --print-summary -o sxplayer-cov/index.html -e "test*"
+
+.PHONY: all test testmem clean install uninstall player coverage
 
 -include $(ALLDEPS)

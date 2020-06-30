@@ -4,6 +4,7 @@ libsxplayer.a
 libsxplayer.pc
 libsxplayer.so
 libsxplayer.symexport
+sxplayer-cov
 sxplayer
 sxplayer.hpp
 test-prog
