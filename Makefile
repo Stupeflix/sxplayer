@@ -31,6 +31,7 @@ SHARED ?= no
 DEBUG  ?= no
 TRACE  ?= no
 COVERAGE ?= no
+RPATH ?= no
 
 TARGET_OS ?= $(shell uname -s)
 
@@ -98,8 +99,16 @@ endif
 ifeq ($(ENABLE_VAAPI),yes)
 	CFLAGS += -DHAVE_VAAPI_HWACCEL=1
 endif
-CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PROJECT_PKG_CONFIG_LIBS)) $(CFLAGS)
-LDLIBS := $(shell $(PKG_CONFIG) --libs   $(PROJECT_PKG_CONFIG_LIBS)) $(LDLIBS) $(PROJECT_LIBS)
+CFLAGS := $(shell $(PKG_CONFIG) --cflags      $(PROJECT_PKG_CONFIG_LIBS)) $(CFLAGS)
+LDLIBS := $(shell $(PKG_CONFIG) --libs        $(PROJECT_PKG_CONFIG_LIBS)) $(LDLIBS) $(PROJECT_LIBS)
+LDDIRS := $(shell $(PKG_CONFIG) --libs-only-L $(PROJECT_PKG_CONFIG_LIBS) | sed 's/ *-L/:/g' | sed 's/^://g')
+
+ifeq ($(RPATH),yes)
+	LDFLAGS += -Wl,-rpath,$(LDDIRS)
+ifeq ($(TARGET_OS),Darwin)
+	LDFLAGS += -Wl,-install_name,@rpath/libsxplayer.dylib
+endif # darwin
+endif # RPATH
 
 PROGOBJS = player.o
 TESTPROG = test-prog
