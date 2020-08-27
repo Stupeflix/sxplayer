@@ -375,6 +375,11 @@ MODULE_THREAD_FUNC(demuxer,  demuxing)
 MODULE_THREAD_FUNC(decoder,  decoding)
 MODULE_THREAD_FUNC(filterer, filtering)
 
+static int is_seek_possible(const struct async_context *actx)
+{
+    return sxpi_demuxing_probe_duration(actx->demuxer) != AV_NOPTS_VALUE;
+}
+
 static int op_start(struct async_context *actx)
 {
     struct message msg;
@@ -397,6 +402,11 @@ static int op_start(struct async_context *actx)
         seek_to = o->skip64;
     }
 
+    if (seek_to != AV_NOPTS_VALUE && !is_seek_possible(actx)) {
+        LOG(actx, ERROR, "can not seek into media, ignoring seek");
+        seek_to = AV_NOPTS_VALUE;
+    }
+
     if (seek_to != AV_NOPTS_VALUE) {
         TRACE(actx, "seek to: %s", PTS2TIMESTR(seek_to));
 
@@ -412,9 +422,9 @@ static int op_start(struct async_context *actx)
             sxpi_msg_free_data(&msg);
             return ret;
         }
-
-        actx->request_seek = AV_NOPTS_VALUE;
     }
+
+    actx->request_seek = AV_NOPTS_VALUE;
 
     START_MODULE_THREAD(demuxer);
     START_MODULE_THREAD(decoder);
@@ -542,9 +552,8 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
         return ret;
     }
 
-    const int64_t probe_duration = sxpi_demuxing_probe_duration(actx->demuxer);
-    if (probe_duration == AV_NOPTS_VALUE) {
-        TRACE(actx, "media has no duration, ignore seek");
+    if (!is_seek_possible(actx)) {
+        LOG(actx, ERROR, "can not seek into media, ignoring seek");
         sxpi_msg_free_data(seek_msg);
         return 0;
     }

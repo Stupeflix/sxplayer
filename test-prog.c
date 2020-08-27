@@ -315,6 +315,7 @@ static int run_image_test(const char *filename, int use_pkt_duration)
 
     if (!s)
         return -1;
+    sxplayer_set_option(s, "skip", 3.0);
     sxplayer_set_option(s, "auto_hwaccel", 0);
     sxplayer_set_option(s, "use_pkt_duration", use_pkt_duration);
     f = sxplayer_get_frame(s, 53.0);
