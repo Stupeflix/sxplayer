@@ -1,23 +1,29 @@
 #!/bin/sh
 
+#
+# Release process:
+# 1. on a clean git state, run this script with the new version as argument
+# 2. check the last commit and tag
+# 3. git push && git push --tags
+#
+
+set -eu
+
 if [ $# -ne 1 ]; then
 	echo "Usage $0 <major.minor.micro>"
 	exit 1
 fi
 
-extract(){
-	echo $1 | cut -d. -f $2
-}
-VERSION=$1
-MAJOR=$(extract $VERSION 1)
-MINOR=$(extract $VERSION 2)
-MICRO=$(extract $VERSION 3)
+cd "$(dirname $0)"
 
-sed "s/^Version: .*/Version: $VERSION/" -i libsxplayer.pc.tpl
-sed -e "s/^#define SXPLAYER_VERSION_MAJOR.*/#define SXPLAYER_VERSION_MAJOR $MAJOR/" \
-    -e "s/^#define SXPLAYER_VERSION_MINOR.*/#define SXPLAYER_VERSION_MINOR $MINOR/" \
-    -e "s/^#define SXPLAYER_VERSION_MICRO.*/#define SXPLAYER_VERSION_MICRO $MICRO/" \
-    -i sxplayer.h
+if ! git diff-index --quiet HEAD; then
+	echo "Git index is not clean"
+	exit 1
+fi
 
-git commit -a --allow-empty -m "Release $VERSION"
+set -x
+VERSION="$1"
+echo "$VERSION" > VERSION
+git add VERSION
+git commit -m "Release $VERSION"
 git tag "v$VERSION"

@@ -16,17 +16,16 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt -y install pkg-config
+        sudo apt -y install meson ninja-build
+        sudo apt -y install libglfw3-dev libglew-dev
         sudo apt -y install libavcodec-dev libavutil-dev libavformat-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev libpostproc-dev
         sudo apt -y install valgrind
 
     - name: Run tests
       run: |
-        make -j$(($(nproc)+1)) test
-    - name: Clean
-      run: |
-        make -j$(($(nproc)+1)) clean
+        meson setup --buildtype release builddir
+        meson test -C builddir -v
     - name: Run memory tests
       run: |
-        make -j$(($(nproc)+1)) testmem DEBUG=yes
-
+        meson setup --buildtype debugoptimized builddir-memory
+        meson test --wrapper valgrind -C builddir-memory -v

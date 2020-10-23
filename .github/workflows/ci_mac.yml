@@ -16,9 +16,12 @@ jobs:
 
     - name: Install dependencies
       run: |
+        brew install meson ninja
+        brew install glfw3 glew
         brew install ffmpeg
         brew install pkg-config
 
     - name: Run tests
       run: |
-        make -j$(($(sysctl -n hw.logicalcpu)+1)) test
+        meson setup --buildtype release builddir
+        meson test -C builddir -v
