@@ -17,19 +17,16 @@ LGPL v2.1, see `LICENSE`.
 
 ## Compilation, installation
 
-The only dependency is FFmpeg.
+```sh
+meson setup builddir
+meson compile -C builddir
+meson install -C builddir
+```
 
-`make` is enough to build `libsxplayer.a`.
+`meson configure` can be used to list the available options. See the [Meson
+documentation][meson-doc] for more information.
 
-If you prefer a dynamic library, you can use the variable `SHARED`, such as
-`make SHARED=yes`.
-
-If you need symbol debugging, you can use `make DEBUG=yes`.
-
-Make allow options to be combinable, so `make SHARED=yes DEBUG=yes` is valid.
-
-`make install` will install the library in `PREFIX`, which you can override,
-for example using `make install PREFIX=/tmp/sxp`.
+[meson-doc]: https://mesonbuild.com/Quick-guide.html#compiling-a-meson-project
 
 
 ## API Usage

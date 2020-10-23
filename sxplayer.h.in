@@ -24,9 +24,9 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-#define SXPLAYER_VERSION_MAJOR 9
-#define SXPLAYER_VERSION_MINOR 5
-#define SXPLAYER_VERSION_MICRO 2
+#define SXPLAYER_VERSION_MAJOR @version_major@
+#define SXPLAYER_VERSION_MINOR @version_minor@
+#define SXPLAYER_VERSION_MICRO @version_micro@
 
 #define SXPLAYER_GET_VERSION(major, minor, micro) ((major)<<16 | (minor)<<8 | (micro))
 
