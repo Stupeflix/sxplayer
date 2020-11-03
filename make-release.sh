@@ -21,9 +21,15 @@ if ! git diff-index --quiet HEAD; then
 	exit 1
 fi
 
+if ! sed --version 2>/dev/null | grep -m1 -q GNU; then
+	echo "GNU/sed is required"
+	exit 1
+fi
+
 set -x
 VERSION="$1"
+sed "/^## \[Unreleased\]/a \\\n## [$VERSION] - $(date -I)" -i CHANGELOG.md
 echo "$VERSION" > VERSION
-git add VERSION
+git add VERSION CHANGELOG.md
 git commit -m "Release $VERSION"
 git tag "v$VERSION"
