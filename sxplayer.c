@@ -36,6 +36,10 @@
 #include "log.h"
 #include "internal.h"
 
+#if HAVE_MEDIACODEC_HWACCEL
+#include <libavcodec/mediacodec.h>
+#endif
+
 struct sxplayer_ctx {
     const AVClass *class;                   // necessary for the AVOption mechanism
     struct log_ctx *log_ctx;
@@ -545,6 +549,25 @@ void sxplayer_release_frame(struct sxplayer_frame *frame)
         av_freep(&frame->mvs);
         av_free(frame);
     }
+}
+
+int sxplayer_release_frame_mediacodec(struct sxplayer_frame **framep)
+{
+#if HAVE_MEDIACODEC_HWACCEL
+    struct sxplayer_frame *frame = *framep;
+    if (!frame)
+        return 0;
+    av_assert0(frame->pix_fmt == SXPLAYER_PIXFMT_MEDIACODEC);
+    AVMediaCodecBuffer *buffer = (AVMediaCodecBuffer *)frame->data;
+    int ret = av_mediacodec_release_buffer(buffer, 1);
+    sxplayer_release_frame(frame);
+    *framep = NULL;
+    if (ret < 0)
+        return -1;
+    return 0;
+#else
+    av_assert0(0);
+#endif
 }
 
 int sxplayer_set_drop_ref(struct sxplayer_ctx *s, int drop)
