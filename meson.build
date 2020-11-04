@@ -3,6 +3,7 @@ project(
   'c',
   default_options: ['c_std=c99'],
   license: 'LGPL-2.1',
+  meson_version: '>= 0.49.0',
   # We don't use `cat` here for portability concerns. The VERSION file is
   # managed by the `make-release.sh` script
   # See https://github.com/mesonbuild/meson/issues/7890 for more information
