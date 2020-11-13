@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed git make"
+          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed git"
           C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-{toolchain,ffmpeg}"
           C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-python3-pip"
           C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-meson"
