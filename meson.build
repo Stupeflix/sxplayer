@@ -141,7 +141,7 @@ endforeach
 if player_deps_found
   player = executable(
     'sxplayer',
-    files('player.c'),
+    files('sxplayer.c'),
     dependencies: player_deps,
     link_with: libsxplayer,
     install: true,
