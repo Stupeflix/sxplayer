@@ -74,16 +74,16 @@ endif
 #
 
 lib_src = files(
-  'api.c',
-  'async.c',
-  'decoder_ffmpeg.c',
-  'decoders.c',
-  'log.c',
-  'mod_decoding.c',
-  'mod_demuxing.c',
-  'mod_filtering.c',
-  'msg.c',
-  'utils.c',
+  'src/api.c',
+  'src/async.c',
+  'src/decoder_ffmpeg.c',
+  'src/decoders.c',
+  'src/log.c',
+  'src/mod_decoding.c',
+  'src/mod_demuxing.c',
+  'src/mod_filtering.c',
+  'src/msg.c',
+  'src/utils.c',
 )
 
 lib_link_args = cc.get_supported_link_arguments([
@@ -92,7 +92,7 @@ lib_link_args = cc.get_supported_link_arguments([
 ])
 
 if host_system == 'darwin'
-  lib_src += files('decoder_vt.c')
+  lib_src += files('src/decoder_vt.c')
 endif
 
 libsxplayer = library(
@@ -106,13 +106,13 @@ libsxplayer = library(
 )
 
 lib_header = configure_file(
-  input: 'sxplayer.h.in',
+  input: 'src/sxplayer.h.in',
   output: 'sxplayer.h',
   configuration: conf_data
 )
 install_headers(lib_header)
 if get_option('cpp-header')
-  install_headers(files('sxplayer.hpp'))
+  install_headers(files('src/sxplayer.hpp'))
 endif
 
 pkg = import('pkgconfig')
@@ -141,7 +141,7 @@ endforeach
 if player_deps_found
   player = executable(
     'sxplayer',
-    files('sxplayer.c'),
+    files('src/sxplayer.c'),
     dependencies: player_deps,
     link_with: libsxplayer,
     install: true,
@@ -157,7 +157,7 @@ endif
 if get_option('tests')
   test_prog = executable(
     'test-prog',
-    files('test-prog.c'),
+    files('src/test-prog.c'),
     dependencies: lib_deps,
     link_with: libsxplayer,
     install: false,
