@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [9.6.0] - 2020-11-07
 ### Added
 - This Changelog
+- New MediaCodec helper function: `sxplayer_release_frame_mediacodec()`
 
 ### Changed
 - Switch build system from GNU/Make to [Meson](https://mesonbuild.com/)

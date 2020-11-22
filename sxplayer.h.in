@@ -336,6 +336,20 @@ int sxplayer_set_drop_ref(struct sxplayer_ctx *s, int drop);
 /* Release a frame obtained with sxplayer_get_frame() */
 void sxplayer_release_frame(struct sxplayer_frame *frame);
 
+/**
+ * Render to surface and release a MediaCodec frame obtained with
+ * sxplayer_get_frame().
+ *
+ * @param framep the address of a sxplayer_frame pointer to be rendered
+ *               and released
+ *
+ * Note: the sxplayer_frame is released even if the underlying MediaCodec
+ * buffer failed to be rendered.
+ *
+ * Return 0 on success, a negative value on error
+ */
+int sxplayer_release_frame_mediacodec(struct sxplayer_frame **framep);
+
 /* Close and free everything */
 void sxplayer_free(struct sxplayer_ctx **ss);
 
