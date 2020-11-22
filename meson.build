@@ -3,7 +3,7 @@ project(
   'c',
   default_options: ['c_std=c99'],
   license: 'LGPL-2.1',
-  meson_version: '>= 0.49.0',
+  meson_version: '>= 0.53.0',
   # We don't use `cat` here for portability concerns. The VERSION file is
   # managed by the `make-release.sh` script
   # See https://github.com/mesonbuild/meson/issues/7890 for more information
@@ -155,17 +155,73 @@ endif
 #
 
 if get_option('tests')
-  test_prog = executable(
-    'test-prog',
-    files('src/test-prog.c'),
-    dependencies: lib_deps,
-    link_with: libsxplayer,
-    install: false,
-  )
-  test(
-    'all',
-    test_prog,
-    args: files('media.mkv', 'image.jpg'),
-    timeout: 24*60*60,
-  )
+  media = files('tests/media.mkv')
+  image = files('tests/image.jpg')
+
+  exe_names = [
+    'audio',
+    'audio_seek',
+    'comb',
+    'high_refresh_rate',
+    'image',
+    'image_seek',
+    'misc_events',
+    'microseconds',
+    'next_frame',
+    'notavail_file',
+    'seek_after_eos',
+  ]
+
+  executables = {}
+  foreach exe_name : exe_names
+    exe = executable(
+      'test_' + exe_name,
+      files('tests/test_@0@.c'.format(exe_name)),
+      dependencies: lib_deps,
+      link_with: libsxplayer,
+      install: false,
+    )
+    executables += {exe_name: exe}
+  endforeach
+
+  tests = {
+    'Audio seek':                         {'test': 'audio_seek',        'args': [media]},
+    'Audio':                              {'test': 'audio',             'args': [media]},
+    'Combination audio':                  {'test': 'comb',              'args': [media, 0b100.to_string()]},
+    'Combination audio+duration':         {'test': 'comb',              'args': [media, 0b110.to_string()]},
+    'Combination audio+duration+skip':    {'test': 'comb',              'args': [media, 0b111.to_string()]},
+    'Combination audio+skip':             {'test': 'comb',              'args': [media, 0b101.to_string()]},
+    'Combination video':                  {'test': 'comb',              'args': [media, 0b000.to_string()]},
+    'Combination video+duration':         {'test': 'comb',              'args': [media, 0b010.to_string()]},
+    'Combination video+duration+skip':    {'test': 'comb',              'args': [media, 0b011.to_string()]},
+    'Combination video+skip':             {'test': 'comb',              'args': [media, 0b001.to_string()]},
+    'File not available':                 {'test': 'notavail_file'},
+    'High refresh rate':                  {'test': 'high_refresh_rate', 'args': [media]},
+    'Image Seek':                         {'test': 'image_seek',        'args': [image]},
+    'Image':                              {'test': 'image',             'args': [image]},
+    'Microseconds':                       {'test': 'microseconds',      'args': [media]},
+    'Misc events image':                  {'test': 'misc_events',       'args': [image]},
+    'Misc events media':                  {'test': 'misc_events',       'args': [media]},
+    'Next frame':                         {'test': 'next_frame',        'args': [media]},
+    'Seek after EOS audio':               {'test': 'seek_after_eos',    'args': [media, 0b000.to_string()]},
+    'Seek after EOS audio+duration':      {'test': 'seek_after_eos',    'args': [media, 0b010.to_string()]},
+    'Seek after EOS audio+duration+skip': {'test': 'seek_after_eos',    'args': [media, 0b001.to_string()]},
+    'Seek after EOS audio+skip':          {'test': 'seek_after_eos',    'args': [media, 0b011.to_string()]},
+    'Seek after EOS video':               {'test': 'seek_after_eos',    'args': [media, 0b100.to_string()]},
+    'Seek after EOS video+duration':      {'test': 'seek_after_eos',    'args': [media, 0b110.to_string()]},
+    'Seek after EOS video+duration+skip': {'test': 'seek_after_eos',    'args': [media, 0b101.to_string()]},
+    'Seek after EOS video+skip':          {'test': 'seek_after_eos',    'args': [media, 0b111.to_string()]},
+  }
+
+  foreach use_pkt_duration : [0, 1]
+    foreach test_name, test_data : tests
+      test_exe = executables.get(test_data.get('test'))
+      test_args = test_data.get('args', [])
+      if use_pkt_duration == 1
+        test_name += ' with packet duration'
+        test_args += '1'
+      endif
+      test(test_name, test_exe, args: test_args, timeout: 24*60*60)
+    endforeach
+  endforeach
 endif
