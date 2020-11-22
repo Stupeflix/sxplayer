@@ -106,7 +106,7 @@ libsxplayer = library(
 )
 
 lib_header = configure_file(
-  input: 'src/sxplayer.h.in',
+  input: files('src/sxplayer.h.in'),
   output: 'sxplayer.h',
   configuration: conf_data
 )
