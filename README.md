@@ -55,7 +55,7 @@ build time), which can be used for other manual testing purposes.
               .                             .
               . . . . . . . . . . . . . . . .
               .                             .   .------------.               .-----------------------------------------------------.
-              .                             .   | sxplayer.c |               | control                                             |
+              .                             .   | api.c      |               | control                                             |
               .                             .   +------------+               +-----------------------------------------------------+
            ===.===  sxplayer_create() ======.==>|            |===  init  ===>|                                                     |
               .                             .   |            |---  start  -->|                    MANAGE THREADS                   |

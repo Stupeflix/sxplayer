@@ -74,6 +74,7 @@ endif
 #
 
 lib_src = files(
+  'api.c',
   'async.c',
   'decoder_ffmpeg.c',
   'decoders.c',
@@ -82,7 +83,6 @@ lib_src = files(
   'mod_demuxing.c',
   'mod_filtering.c',
   'msg.c',
-  'sxplayer.c',
   'utils.c',
 )
 
