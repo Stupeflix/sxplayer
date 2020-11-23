@@ -221,7 +221,7 @@ if get_option('tests')
         test_name += ' with packet duration'
         test_args += '1'
       endif
-      test(test_name, test_exe, args: test_args, timeout: 24*60*60)
+      test(test_name, test_exe, args: test_args, timeout: 60*60)
     endforeach
   endforeach
 endif
