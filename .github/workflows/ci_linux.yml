@@ -42,4 +42,4 @@ jobs:
     - name: Run memory tests
       run: |
         meson setup --buildtype debugoptimized builddir
-        meson test --wrapper valgrind -C builddir -v
+        meson test --wrapper "valgrind --error-exitcode=1" -C builddir -v
