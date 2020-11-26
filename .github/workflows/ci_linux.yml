@@ -16,6 +16,7 @@ jobs:
 
     - name: Install dependencies
       run: |
+        sudo apt -y update
         sudo apt -y install meson ninja-build
         sudo apt -y install libglfw3-dev libglew-dev
         sudo apt -y install libavcodec-dev libavutil-dev libavformat-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev libpostproc-dev
@@ -34,6 +35,7 @@ jobs:
 
     - name: Install dependencies
       run: |
+        sudo apt -y update
         sudo apt -y install meson ninja-build
         sudo apt -y install libglfw3-dev libglew-dev
         sudo apt -y install libavcodec-dev libavutil-dev libavformat-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev libpostproc-dev
