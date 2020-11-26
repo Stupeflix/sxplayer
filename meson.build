@@ -65,7 +65,13 @@ if vaapi_dep.found()
 endif
 
 if host_system == 'darwin'
-  lib_deps += dependency('appleframeworks', modules: ['CoreFoundation', 'VideoToolbox', 'CoreMedia', 'QuartzCore'])
+  lib_deps += dependency('appleframeworks', modules: [
+    'CoreFoundation',
+    'CoreMedia',
+    'CoreVideo',
+    'QuartzCore',
+    'VideoToolbox',
+  ])
 endif
 
 
