@@ -34,6 +34,18 @@
                                                   SXPLAYER_VERSION_MINOR, \
                                                   SXPLAYER_VERSION_MICRO)
 
+#if defined(_WIN32)
+#  if defined(BUILD_SXPLAYER_SHARED_LIB)
+#    define SXAPI __declspec(dllexport)
+#  elif defined(USE_SXPLAYER_STATIC_LIB)
+#    define SXAPI
+#  else
+#    define SXAPI __declspec(dllimport)
+#  endif
+#else
+#  define SXAPI __attribute__((visibility("default")))
+#endif
+
 /* Stupeflix Media Player */
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -192,7 +204,7 @@ struct sxplayer_info {
  *
  * @param filename media input file name
  */
-struct sxplayer_ctx *sxplayer_create(const char *filename);
+SXAPI struct sxplayer_ctx *sxplayer_create(const char *filename);
 
 /**
  * Type of the user log callback
@@ -219,7 +231,7 @@ typedef void (*sxplayer_log_callback_type)(void *arg, int level, const char *fil
  *                  the callback
  * @param callback  custom user logging callback
  */
-void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer_log_callback_type callback);
+SXAPI void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer_log_callback_type callback);
 
 /**
  * Set an option.
@@ -246,19 +258,19 @@ void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer_log_c
  *   stream_idx               integer   force a stream number instead of picking the "best" one (note: stream MUST be of type avselect)
  *   use_pkt_duration         integer   use packet duration instead of decoding the next frame to get the next frame pts
  */
-int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
+SXAPI int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
 
 /**
  * Get the media duration (clipped to trim_duration if set).
  *
  * The duration is expressed in seconds.
  */
-int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration);
+SXAPI int sxplayer_get_duration(struct sxplayer_ctx *s, double *duration);
 
 /**
  * Get various information on the media.
  */
-int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info);
+SXAPI int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info);
 
 /**
  * Get the frame at an absolute time.
@@ -276,12 +288,12 @@ int sxplayer_get_info(struct sxplayer_ctx *s, struct sxplayer_info *info);
  * The function is blocking, it will make sure any asynchronous operation
  * previously requested (start, seek, stop) is honored before returning.
  */
-struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
+SXAPI struct sxplayer_frame *sxplayer_get_frame(struct sxplayer_ctx *s, double t);
 
 /**
  * Same as sxplayer_get_frame, but with timestamp expressed in microseconds.
  */
-struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t ms);
+SXAPI struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t ms);
 
 /**
  * Request a playback start to the player.
@@ -291,7 +303,7 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t ms)
  *
  * Return 0 on success, a negative value on error.
  */
-int sxplayer_start(struct sxplayer_ctx *s);
+SXAPI int sxplayer_start(struct sxplayer_ctx *s);
 
 /**
  * Request a stop to the player to liberate playback ressources.
@@ -301,7 +313,7 @@ int sxplayer_start(struct sxplayer_ctx *s);
  *
  * Return 0 on success, a negative value on error.
  */
-int sxplayer_stop(struct sxplayer_ctx *s);
+SXAPI int sxplayer_stop(struct sxplayer_ctx *s);
 
 /**
  * Request a seek to the player at a given time.
@@ -313,7 +325,7 @@ int sxplayer_stop(struct sxplayer_ctx *s);
  *
  * Return 0 on success, a negative value on error.
  */
-int sxplayer_seek(struct sxplayer_ctx *s, double t);
+SXAPI int sxplayer_seek(struct sxplayer_ctx *s, double t);
 
 /**
  * Get the next frame.
@@ -328,15 +340,15 @@ int sxplayer_seek(struct sxplayer_ctx *s, double t);
  * interested in. You can still use this function in combination with
  * sxplayer_get_frame() in case you need seeking.
  */
-struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s);
+SXAPI struct sxplayer_frame *sxplayer_get_next_frame(struct sxplayer_ctx *s);
 
 /* Enable or disable the droping of non reference frames */
-int sxplayer_set_drop_ref(struct sxplayer_ctx *s, int drop);
+SXAPI int sxplayer_set_drop_ref(struct sxplayer_ctx *s, int drop);
 
 /* Release a frame obtained with sxplayer_get_frame() */
-void sxplayer_release_frame(struct sxplayer_frame *frame);
+SXAPI void sxplayer_release_frame(struct sxplayer_frame *frame);
 
 /* Close and free everything */
-void sxplayer_free(struct sxplayer_ctx **ss);
+SXAPI void sxplayer_free(struct sxplayer_ctx **ss);
 
 #endif
