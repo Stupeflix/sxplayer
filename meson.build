@@ -92,10 +92,10 @@ lib_src = files(
   'src/utils.c',
 )
 
-lib_link_args = cc.get_supported_link_arguments([
-  '-Wl,--version-script,@0@'.format(meson.current_source_dir() / 'libsxplayer.symexport'),  # GNU ld
-  '-Wl,-exported_symbols_list,@0@'.format(meson.current_source_dir() / 'libsxplayer.darwin.symexport'),  # Darwin
-])
+lib_c_args = []
+if get_option('default_library') == 'shared'
+  lib_c_args += '-DBUILD_SXPLAYER_SHARED_LIB'
+endif
 
 if host_system == 'darwin'
   lib_src += files('src/decoder_vt.c')
@@ -108,7 +108,8 @@ libsxplayer = library(
   install: true,
   install_rpath: install_rpath,
   version: meson.project_version(),
-  link_args: lib_link_args,
+  c_args: lib_c_args,
+  gnu_symbol_visibility: 'hidden',
 )
 
 lib_header = configure_file(
@@ -122,10 +123,16 @@ if get_option('cpp-header')
 endif
 
 pkg = import('pkgconfig')
+pkg_extra_cflags = []
+if get_option('default_library') == 'static'
+  pkg_extra_cflags += '-DUSE_SXPLAYER_STATIC_LIB'
+endif
+
 pkg.generate(
   libsxplayer,
   name: 'libsxplayer',  # not specifying the name would fallback on "sxplayer.pc" instead of "libsxplayer.pc"
   description: 'Stupeflix Player library',
+  extra_cflags: pkg_extra_cflags,
 )
 
 
@@ -186,6 +193,11 @@ if get_option('tests')
       dependencies: lib_deps,
       link_with: libsxplayer,
       install: false,
+      # pkg-config extra cflags don't apply to local executables, so we have to
+      # transfer them manually. Alternatively, we could create a virtual
+      # dependency and use it.
+      # See https://github.com/mesonbuild/meson/issues/8082 for more information
+      c_args: pkg_extra_cflags,
     )
     executables += {exe_name: exe}
   endforeach
