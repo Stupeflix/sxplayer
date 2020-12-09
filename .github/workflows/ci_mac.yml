@@ -26,6 +26,13 @@ jobs:
         meson setup --buildtype release builddir --default-library static
         meson test -C builddir -v
 
+    - name: Upload Logs
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: macos-static-logs
+        path: builddir/meson-logs
+
   macos-shared:
 
     runs-on: macos-latest
@@ -44,3 +51,10 @@ jobs:
       run: |
         meson setup --buildtype release builddir --default-library shared
         meson test -C builddir -v
+
+    - name: Upload Logs
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: macos-shared-logs
+        path: builddir/meson-logs

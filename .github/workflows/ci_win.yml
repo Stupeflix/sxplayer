@@ -37,6 +37,13 @@ jobs:
           $env:CHERE_INVOKING = 'yes'
           C:\msys64\usr\bin\bash -lc "meson compile -C builddir"
 
+      - name: Upload Logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: mingw-static-logs
+          path: builddir/meson-logs
+
       - name: Test
         run: |
           $env:CHERE_INVOKING = 'yes'
@@ -72,6 +79,13 @@ jobs:
         run: |
           $env:CHERE_INVOKING = 'yes'
           C:\msys64\usr\bin\bash -lc "meson compile -C builddir"
+
+      - name: Upload Logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: mingw-shared-logs
+          path: builddir/meson-logs
 
       - name: Test
         run: |
