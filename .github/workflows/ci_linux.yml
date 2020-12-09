@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  linux:
+  linux-static:
 
     runs-on: ubuntu-20.04
 
@@ -23,7 +23,26 @@ jobs:
 
     - name: Run tests
       run: |
-        meson setup --buildtype release builddir
+        meson setup --buildtype release builddir --default-library static
+        meson test -C builddir -v
+
+  linux-shared:
+
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: |
+        sudo apt -y update
+        sudo apt -y install meson ninja-build
+        sudo apt -y install libglfw3-dev libglew-dev
+        sudo apt -y install libavcodec-dev libavutil-dev libavformat-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev libpostproc-dev
+
+    - name: Run tests
+      run: |
+        meson setup --buildtype release builddir --default-library shared
         meson test -C builddir -v
 
   valgrind:
@@ -45,3 +64,4 @@ jobs:
       run: |
         meson setup --buildtype debugoptimized builddir
         meson test --wrapper "valgrind --error-exitcode=1" -C builddir -v
+
