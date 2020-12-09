@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  mingw:
+  mingw-static:
 
     runs-on: windows-latest
 
@@ -30,7 +30,7 @@ jobs:
       - name: Setup
         run: |
           $env:CHERE_INVOKING = 'yes'
-          C:\msys64\usr\bin\bash -lc "meson setup builddir"
+          C:\msys64\usr\bin\bash -lc "meson setup builddir --default-library static"
 
       - name: Build
         run: |
@@ -42,7 +42,44 @@ jobs:
           $env:CHERE_INVOKING = 'yes'
           C:\msys64\usr\bin\bash -lc "meson test -C builddir"
 
-  msvc:
+
+  mingw-shared:
+
+    runs-on: windows-latest
+
+    steps:
+
+      - uses: actions/checkout@v2
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64 # Start a 64 bit Mingw environment
+          update: true
+
+      - name: Install dependencies
+        run: |
+          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed git"
+          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-{toolchain,ffmpeg}"
+          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-python3-pip"
+          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-meson"
+
+      - name: Setup
+        run: |
+          $env:CHERE_INVOKING = 'yes'
+          C:\msys64\usr\bin\bash -lc "meson setup builddir --default-library shared"
+
+      - name: Build
+        run: |
+          $env:CHERE_INVOKING = 'yes'
+          C:\msys64\usr\bin\bash -lc "meson compile -C builddir"
+
+      - name: Test
+        run: |
+          $env:CHERE_INVOKING = 'yes'
+          C:\msys64\usr\bin\bash -lc "meson test -C builddir"
+
+
+  msvc-static:
 
     runs-on: windows-latest
 
@@ -69,6 +106,48 @@ jobs:
       run: |
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
         meson setup builddir --backend vs --buildtype release --default-library static ^
+        --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig"
+
+    - name: Build
+      shell: cmd
+      run: |
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        meson compile -C builddir
+
+    - name: Test
+      shell: cmd
+      run: |
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        meson test -C builddir
+
+
+  msvc-shared:
+
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+        architecture: 'x64'
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        git clone --depth 1 https://github.com/Microsoft/vcpkg
+        cd vcpkg
+        ./bootstrap-vcpkg.bat -disableMetrics
+        vcpkg install pthread:x64-windows ffmpeg:x64-windows
+        vcpkg integrate install
+        pip install meson
+
+    - name: Setup
+      shell: cmd
+      run: |
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        meson setup builddir --backend vs --buildtype release --default-library shared ^
         --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig"
 
     - name: Build

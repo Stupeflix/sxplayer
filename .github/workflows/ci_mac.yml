@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  macos:
+  macos-static:
 
     runs-on: macos-latest
 
@@ -23,5 +23,24 @@ jobs:
 
     - name: Run tests
       run: |
-        meson setup --buildtype release builddir
+        meson setup --buildtype release builddir --default-library static
+        meson test -C builddir -v
+
+  macos-shared:
+
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: |
+        brew install meson ninja
+        brew install glfw3 glew
+        brew install ffmpeg
+        brew install pkg-config
+
+    - name: Run tests
+      run: |
+        meson setup --buildtype release builddir --default-library shared
         meson test -C builddir -v
