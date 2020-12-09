@@ -26,6 +26,13 @@ jobs:
         meson setup --buildtype release builddir --default-library static
         meson test -C builddir -v
 
+    - name: Upload Logs
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: linux-static-logs
+        path: builddir/meson-logs
+
   linux-shared:
 
     runs-on: ubuntu-20.04
@@ -44,6 +51,13 @@ jobs:
       run: |
         meson setup --buildtype release builddir --default-library shared
         meson test -C builddir -v
+
+    - name: Upload Logs
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: linux-shared-logs
+        path: builddir/meson-logs
 
   valgrind:
 
