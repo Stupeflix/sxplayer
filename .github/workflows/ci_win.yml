@@ -105,15 +105,23 @@ jobs:
         python-version: '3.x'
         architecture: 'x64'
 
-    - name: Install dependencies
+    - name: Install meson
       shell: bash
       run: |
-        git clone --depth 1 https://github.com/Microsoft/vcpkg
-        cd vcpkg
-        ./bootstrap-vcpkg.bat -disableMetrics
-        vcpkg install pthread:x64-windows ffmpeg:x64-windows
-        vcpkg integrate install
         pip install meson
+
+    - name: Install dependencies via vcpkg
+      uses: lukka/run-vcpkg@v6
+      with:
+        vcpkgGitCommitId: 595777db2332a3442b73f9af9f656355f207aec9
+        vcpkgTriplet: x64-windows
+        vcpkgArguments: pthreads ffmpeg[ffmpeg]
+        cleanAfterBuild: false
+
+    - name: vcpkg integrate install
+      shell: bash
+      run: |
+        cd vcpkg && ./vcpkg.exe integrate install
 
     - name: Setup
       shell: cmd
@@ -154,15 +162,23 @@ jobs:
         python-version: '3.x'
         architecture: 'x64'
 
-    - name: Install dependencies
+    - name: Install meson
       shell: bash
       run: |
-        git clone --depth 1 https://github.com/Microsoft/vcpkg
-        cd vcpkg
-        ./bootstrap-vcpkg.bat -disableMetrics
-        vcpkg install pthread:x64-windows ffmpeg:x64-windows
-        vcpkg integrate install
         pip install meson
+    
+    - name: Install dependencies via vcpkg
+      uses: lukka/run-vcpkg@v6
+      with:
+        vcpkgGitCommitId: 595777db2332a3442b73f9af9f656355f207aec9
+        vcpkgTriplet: x64-windows
+        vcpkgArguments: pthreads ffmpeg[ffmpeg]
+        cleanAfterBuild: false
+
+    - name: vcpkg integrate install
+      shell: bash
+      run: |
+        cd vcpkg && ./vcpkg.exe integrate install
 
     - name: Setup
       shell: cmd
