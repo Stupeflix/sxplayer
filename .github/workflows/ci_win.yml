@@ -105,13 +105,18 @@ jobs:
         python-version: '3.x'
         architecture: 'x64'
 
+    - name: Download dependencies
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: ci_dep_build.yml
+        name: vcpkg
+        path: vcpkg
+
     - name: Install dependencies
       shell: bash
       run: |
-        git clone --depth 1 https://github.com/Microsoft/vcpkg
         cd vcpkg
         ./bootstrap-vcpkg.bat -disableMetrics
-        vcpkg install pthread:x64-windows ffmpeg:x64-windows
         vcpkg integrate install
         pip install meson
 
@@ -154,13 +159,18 @@ jobs:
         python-version: '3.x'
         architecture: 'x64'
 
+    - name: Download dependencies
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: ci_dep_build.yml
+        name: vcpkg
+        path: vcpkg
+
     - name: Install dependencies
       shell: bash
       run: |
-        git clone --depth 1 https://github.com/Microsoft/vcpkg
         cd vcpkg
         ./bootstrap-vcpkg.bat -disableMetrics
-        vcpkg install pthread:x64-windows ffmpeg:x64-windows
         vcpkg integrate install
         pip install meson
 
