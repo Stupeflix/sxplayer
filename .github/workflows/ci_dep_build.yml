@@ -2,10 +2,6 @@ name: 'Dependencies build Windows'
 on:
   schedule:
   - cron: "0 0 1 * *"
-  push:
-    branches:
-      - 'master'
-  pull_request:
 
 jobs:
   dependencies:
