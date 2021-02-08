@@ -57,6 +57,17 @@ lib_deps = [
   dependency('libavcodec', version: '>= 58.18.100'),
   dependency('libavutil', version: '>= 56.14.100'),
 ]
+if (cc.get_id() == 'msvc')
+  pthreads_dir = get_option('pthreads_dir')
+  pthreads_dep = declare_dependency(
+      compile_args: [ '-D_TIMESPEC_DEFINED' ],
+      include_directories: [ pthreads_dir / 'include' ],
+      link_args: [
+        '-L' + pthreads_dir / 'lib', '-lpthreadVC3',
+      ],
+    )
+  lib_deps += pthreads_dep
+endif
 
 vaapi_dep = dependency('libva', version: '>= 1.1.0', required: get_option('vaapi'))
 if vaapi_dep.found()

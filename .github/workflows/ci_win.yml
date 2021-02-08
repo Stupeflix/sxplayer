@@ -130,7 +130,8 @@ jobs:
       run: |
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
         meson setup builddir --backend vs --buildtype release --default-library static ^
-        --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig"
+        --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig" ^
+        -D pthreads_dir="D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows"
 
     - name: Build
       shell: cmd
@@ -177,17 +178,13 @@ jobs:
         vcpkgArguments: pthreads ffmpeg[ffmpeg]
         cleanAfterBuild: false
 
-    - name: vcpkg integrate install
-      shell: bash
-      run: |
-        cd vcpkg && ./vcpkg.exe integrate install
-
     - name: Setup
       shell: cmd
       run: |
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
         meson setup builddir --backend vs --buildtype release --default-library shared ^
-        --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig"
+        --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig" ^
+        -D pthreads_dir="D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows"
 
     - name: Build
       shell: cmd
@@ -199,6 +196,7 @@ jobs:
       shell: cmd
       run: |
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        set PATH=D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\bin;%PATH% && ^
         meson test -C builddir
 
     - name: Upload Logs
