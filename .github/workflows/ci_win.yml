@@ -13,6 +13,10 @@ jobs:
 
     runs-on: windows-latest
 
+    defaults:
+      run:
+        shell: msys2 {0}
+
     steps:
 
       - uses: actions/checkout@v2
@@ -24,25 +28,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed git"
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-{toolchain,ffmpeg}"
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-python3-pip"
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-meson"
+          pacman -S --noconfirm --needed git
+          pacman -S --noconfirm --needed mingw-w64-x86_64-{toolchain,ffmpeg}
+          pacman -S --noconfirm mingw-w64-x86_64-python3-pip
+          pacman -S --noconfirm --needed mingw-w64-x86_64-meson
 
       - name: Setup
         run: |
-          $env:CHERE_INVOKING = 'yes'
-          C:\msys64\usr\bin\bash -lc "meson setup builddir --default-library static"
+          meson setup builddir --default-library static
 
       - name: Build
         run: |
-          $env:CHERE_INVOKING = 'yes'
-          C:\msys64\usr\bin\bash -lc "meson compile -C builddir"
+          meson compile -C builddir
 
       - name: Test
         run: |
-          $env:CHERE_INVOKING = 'yes'
-          C:\msys64\usr\bin\bash -lc "meson test -C builddir"
+          meson test -C builddir
 
       - name: Upload Logs
         if: ${{ always() }}
@@ -56,6 +57,10 @@ jobs:
 
     runs-on: windows-latest
 
+    defaults:
+      run:
+        shell: msys2 {0}
+
     steps:
 
       - uses: actions/checkout@v2
@@ -67,25 +72,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed git"
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-{toolchain,ffmpeg}"
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-python3-pip"
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-meson"
+          pacman -S --noconfirm --needed git
+          pacman -S --noconfirm --needed mingw-w64-x86_64-{toolchain,ffmpeg}
+          pacman -S --noconfirm mingw-w64-x86_64-python3-pip
+          pacman -S --noconfirm --needed mingw-w64-x86_64-meson
 
       - name: Setup
         run: |
-          $env:CHERE_INVOKING = 'yes'
-          C:\msys64\usr\bin\bash -lc "meson setup builddir --default-library shared"
+          meson setup builddir --default-library shared
 
       - name: Build
         run: |
-          $env:CHERE_INVOKING = 'yes'
-          C:\msys64\usr\bin\bash -lc "meson compile -C builddir"
+          meson compile -C builddir
 
       - name: Test
         run: |
-          $env:CHERE_INVOKING = 'yes'
-          C:\msys64\usr\bin\bash -lc "meson test -C builddir"
+          meson test -C builddir
 
       - name: Upload Logs
         if: ${{ always() }}
