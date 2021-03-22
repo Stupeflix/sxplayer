@@ -168,7 +168,7 @@ jobs:
       shell: bash
       run: |
         pip install meson
-    
+
     - name: Install dependencies via vcpkg
       uses: lukka/run-vcpkg@v6
       with:
