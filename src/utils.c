@@ -19,10 +19,10 @@
  */
 
 #define _GNU_SOURCE // pthread_setname_np on Linux
-#include <pthread.h>
 
 #include "sxplayer.h"
 #include "internal.h"
+#include "pthread_compat.h"
 
 static const struct {
     enum AVPixelFormat ff;

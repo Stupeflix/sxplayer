@@ -18,11 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <pthread.h>
 #include <stdarg.h>
 #include <libavutil/time.h>
 
 #include "log.h"
+#include "pthread_compat.h"
 
 struct log_ctx {
     int64_t last_time;

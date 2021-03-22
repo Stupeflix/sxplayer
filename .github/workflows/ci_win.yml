@@ -119,7 +119,7 @@ jobs:
       with:
         vcpkgGitCommitId: 595777db2332a3442b73f9af9f656355f207aec9
         vcpkgTriplet: x64-windows
-        vcpkgArguments: pthreads ffmpeg[ffmpeg]
+        vcpkgArguments: ffmpeg[ffmpeg]
         cleanAfterBuild: false
 
     - name: vcpkg integrate install
@@ -176,7 +176,7 @@ jobs:
       with:
         vcpkgGitCommitId: 595777db2332a3442b73f9af9f656355f207aec9
         vcpkgTriplet: x64-windows
-        vcpkgArguments: pthreads ffmpeg[ffmpeg]
+        vcpkgArguments: ffmpeg[ffmpeg]
         cleanAfterBuild: false
 
     - name: vcpkg integrate install

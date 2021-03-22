@@ -19,7 +19,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <pthread.h>
 #include <libavutil/avassert.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
@@ -29,6 +28,7 @@
 #include "decoders.h"
 #include "internal.h"
 #include "log.h"
+#include "pthread_compat.h"
 
 #define BUFCOUNT_DEBUG 0
 
