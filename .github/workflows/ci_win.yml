@@ -115,7 +115,7 @@ jobs:
     - name: Install dependencies via vcpkg
       uses: lukka/run-vcpkg@v6
       with:
-        vcpkgGitCommitId: 595777db2332a3442b73f9af9f656355f207aec9
+        vcpkgGitCommitId: e2e6dbdaa45c40fe2e3ec7753b40d92d1dcab16e
         vcpkgTriplet: x64-windows
         vcpkgArguments: ffmpeg[ffmpeg]
         cleanAfterBuild: false
@@ -172,7 +172,7 @@ jobs:
     - name: Install dependencies via vcpkg
       uses: lukka/run-vcpkg@v6
       with:
-        vcpkgGitCommitId: 595777db2332a3442b73f9af9f656355f207aec9
+        vcpkgGitCommitId: e2e6dbdaa45c40fe2e3ec7753b40d92d1dcab16e
         vcpkgTriplet: x64-windows
         vcpkgArguments: ffmpeg[ffmpeg]
         cleanAfterBuild: false
