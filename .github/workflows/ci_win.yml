@@ -120,11 +120,6 @@ jobs:
         vcpkgArguments: ffmpeg[ffmpeg]
         cleanAfterBuild: false
 
-    - name: vcpkg integrate install
-      shell: bash
-      run: |
-        cd vcpkg && ./vcpkg.exe integrate install
-
     - name: Setup
       shell: cmd
       run: |
@@ -141,6 +136,7 @@ jobs:
     - name: Test
       shell: cmd
       run: |
+        set PATH=D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\bin;%PATH%
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
         meson test -C builddir
 
@@ -177,11 +173,6 @@ jobs:
         vcpkgArguments: ffmpeg[ffmpeg]
         cleanAfterBuild: false
 
-    - name: vcpkg integrate install
-      shell: bash
-      run: |
-        cd vcpkg && ./vcpkg.exe integrate install
-
     - name: Setup
       shell: cmd
       run: |
@@ -198,6 +189,7 @@ jobs:
     - name: Test
       shell: cmd
       run: |
+        set PATH=D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\bin;%PATH%
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
         meson test -C builddir
 
