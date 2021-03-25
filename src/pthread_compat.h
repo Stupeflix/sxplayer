@@ -57,7 +57,7 @@ static unsigned __stdcall pthread_compat_worker(void *arg)
     return 0;
 }
 
-static int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg)
+static inline int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg)
 {
     size_t stack_size = attr ? attr->stack_size : 0;
     memset(thread, 0, sizeof(*thread));
@@ -78,7 +78,7 @@ static int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(
     return 0;
 }
 
-static int pthread_join(pthread_t thread, void **retval)
+static inline int pthread_join(pthread_t thread, void **retval)
 {
     DWORD ret = WaitForSingleObject(thread.handle, INFINITE);
     if (ret != WAIT_OBJECT_0)
@@ -89,43 +89,43 @@ static int pthread_join(pthread_t thread, void **retval)
     return 0;
 }
 
-static int pthread_attr_init(pthread_attr_t *attr)
+static inline int pthread_attr_init(pthread_attr_t *attr)
 {
     memset(attr, 0, sizeof(*attr));
     return 0;
 }
 
-static int pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *size)
+static inline int pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *size)
 {
     *size = attr->stack_size;
     return 0;
 }
 
-static int pthread_attr_setstacksize(pthread_attr_t *attr, size_t size)
+static inline int pthread_attr_setstacksize(pthread_attr_t *attr, size_t size)
 {
     attr->stack_size = size;
     return 0;
 }
 
-static int pthread_attr_destroy(pthread_attr_t *attr)
+static inline int pthread_attr_destroy(pthread_attr_t *attr)
 {
     memset(attr, 0, sizeof(*attr));
     return 0;
 }
 
-static int pthread_mutex_init(pthread_mutex_t *mutex, void *attr)
+static inline int pthread_mutex_init(pthread_mutex_t *mutex, void *attr)
 {
     InitializeSRWLock(mutex);
     return 0;
 }
 
-static int pthread_mutex_lock(pthread_mutex_t *mutex)
+static inline int pthread_mutex_lock(pthread_mutex_t *mutex)
 {
     AcquireSRWLockExclusive(mutex);
     return 0;
 }
 
-static int pthread_mutex_unlock(pthread_mutex_t *mutex)
+static inline int pthread_mutex_unlock(pthread_mutex_t *mutex)
 {
     ReleaseSRWLockExclusive(mutex);
     return 0;
@@ -136,30 +136,30 @@ static int pthread_mutex_unlock(pthread_mutex_t *mutex)
  * An unlocked SRW lock with no waiting threads is in its initial state and can
  * be copied, moved, and forgotten without being explicitly destroyed.
  */
-static int pthread_mutex_destroy(pthread_mutex_t *mutex)
+static inline int pthread_mutex_destroy(pthread_mutex_t *mutex)
 {
     return 0;
 }
 
-static int pthread_cond_init(pthread_cond_t *cond, const void *attr)
+static inline int pthread_cond_init(pthread_cond_t *cond, const void *attr)
 {
     InitializeConditionVariable(cond);
     return 0;
 }
 
-static int pthread_cond_broadcast(pthread_cond_t *cond)
+static inline int pthread_cond_broadcast(pthread_cond_t *cond)
 {
     WakeAllConditionVariable(cond);
     return 0;
 }
 
-static int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
+static inline int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
 {
     SleepConditionVariableSRW(cond, mutex, INFINITE, 0);
     return 0;
 }
 
-static int pthread_cond_signal(pthread_cond_t *cond)
+static inline int pthread_cond_signal(pthread_cond_t *cond)
 {
     WakeConditionVariable(cond);
     return 0;
@@ -170,7 +170,7 @@ static int pthread_cond_signal(pthread_cond_t *cond)
  * A condition variable with no waiting threads is in its initial state and can
  * be copied, moved, and forgotten without being explicitly destroyed.
  */
-static int pthread_cond_destroy(pthread_cond_t *cond)
+static inline int pthread_cond_destroy(pthread_cond_t *cond)
 {
     return 0;
 }
