@@ -186,6 +186,7 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
         }
 
         const int draining = flush && pkt_consumed;
+        int64_t next_pts = AV_NOPTS_VALUE;
         while (ret >= 0 || (draining && ret == AVERROR(EAGAIN))) {
             AVFrame *dec_frame = av_frame_alloc();
 
@@ -202,6 +203,19 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
             }
 
             if (ret >= 0) {
+                /*
+                 * If there are multiple frames in the packet, some frames may
+                 * not have any PTS but we don't want to drop them.
+                 */
+                if (avctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+                    if (dec_frame->pts == AV_NOPTS_VALUE && next_pts != AV_NOPTS_VALUE)
+                        dec_frame->pts = next_pts;
+                    else if (next_pts == AV_NOPTS_VALUE)
+                        next_pts = dec_frame->pts;
+                    if (next_pts != AV_NOPTS_VALUE)
+                        next_pts += dec_frame->nb_samples;
+                }
+
                 ret = sxpi_decoding_queue_frame(ctx->decoding_ctx, dec_frame);
                 if (ret < 0) {
                     TRACE(ctx, "Could not queue frame: %s", av_err2str(ret));
