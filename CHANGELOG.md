@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fix compilation with FFmpeg 5.1
 
+### Changed
+- Bumped meson requirement to 0.57.0
+
 ## [9.12.0] - 2022-03-30
 ### Added
 - Honor video color range in VideoToolbox

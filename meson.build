@@ -3,13 +3,8 @@ project(
   'c',
   default_options: ['c_std=c99'],
   license: 'LGPL-2.1',
-  meson_version: '>= 0.53.0',
-  # We don't use `cat` here for portability concerns. The VERSION file is
-  # managed by the `make-release.sh` script
-  # See https://github.com/mesonbuild/meson/issues/7890 for more information
-  version: run_command(
-    find_program('python'), '-c', 'import sys;print(open(sys.argv[1]).read())', files('VERSION')
-  ).stdout().strip(),
+  meson_version: '>= 0.57.0',
+  version: files('VERSION'),
 )
 
 conf_data = configuration_data()
