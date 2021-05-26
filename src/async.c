@@ -553,7 +553,7 @@ static int op_seek(struct async_context *actx, struct message *seek_msg)
     }
 
     if (!is_seek_possible(actx)) {
-        LOG(actx, ERROR, "can not seek into media, ignoring seek");
+        TRACE(actx, "can not seek into media, ignoring seek");
         sxpi_msg_free_data(seek_msg);
         return 0;
     }
