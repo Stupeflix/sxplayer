@@ -251,7 +251,17 @@ static int setup_filtergraph(struct filtering_ctx *ctx)
     snprintf(args, sizeof(args), "sws_flags=+full_chroma_int;%s", ctx->filters ? ctx->filters : "");
     if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->last_frame_format);
-        const enum AVPixelFormat sw_pix_fmt = sxpi_pix_fmts_sx2ff(ctx->sw_pix_fmt);
+        enum AVPixelFormat sw_pix_fmt = sxpi_pix_fmts_sx2ff(ctx->sw_pix_fmt);
+        if (ctx->sw_pix_fmt == SXPLAYER_PIXFMT_AUTO) {
+            const enum sxplayer_pixel_format fmt = sxpi_pix_fmts_ff2sx(ctx->last_frame_format);
+            if (fmt == -1) {
+                LOG(ctx, DEBUG, "Unsupported software pixel format: %s, falling back to rgba",
+                    av_get_pix_fmt_name(ctx->last_frame_format));
+                sw_pix_fmt = AV_PIX_FMT_RGBA;
+            } else {
+                sw_pix_fmt = ctx->last_frame_format;
+            }
+        }
         const enum AVPixelFormat pix_fmt = !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL) ? sw_pix_fmt : ctx->last_frame_format;
 
         if (ctx->max_pixels) {

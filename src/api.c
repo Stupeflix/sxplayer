@@ -30,6 +30,8 @@
 #include <libavutil/opt.h>
 #include <libavutil/rational.h>
 #include <libavutil/time.h>
+#include <libavutil/pixfmt.h>
+#include <libavutil/pixdesc.h>
 
 #include "sxplayer.h"
 #include "async.h"
@@ -71,7 +73,7 @@ static const AVOption sxplayer_options[] = {
     { "max_nb_frames",          NULL, OFFSET(max_nb_frames),          AV_OPT_TYPE_INT,       {.i64=2},       1, 100 },
     { "max_nb_sink",            NULL, OFFSET(max_nb_sink),            AV_OPT_TYPE_INT,       {.i64=2},       1, 100 },
     { "filters",                NULL, OFFSET(filters),                AV_OPT_TYPE_STRING,    {.str=NULL},    0,       0 },
-    { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SXPLAYER_PIXFMT_BGRA},  0, 1 },
+    { "sw_pix_fmt",             NULL, OFFSET(sw_pix_fmt),             AV_OPT_TYPE_INT,       {.i64=SXPLAYER_PIXFMT_BGRA},  0, INT_MAX },
     { "autorotate",             NULL, OFFSET(autorotate),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
     { "auto_hwaccel",           NULL, OFFSET(auto_hwaccel),           AV_OPT_TYPE_INT,       {.i64=1},       0, 1 },
     { "export_mvs",             NULL, OFFSET(export_mvs),             AV_OPT_TYPE_INT,       {.i64=0},       0, 1 },
@@ -264,9 +266,13 @@ static int set_context_fields(struct sxplayer_ctx *s)
 {
     struct sxplayer_opts *o = &s->opts;
 
-    if (sxpi_pix_fmts_sx2ff(o->sw_pix_fmt) == AV_PIX_FMT_NONE) {
-        LOG(s, ERROR, "Invalid software decoding pixel format specified");
-        return AVERROR(EINVAL);
+    if (o->sw_pix_fmt != SXPLAYER_PIXFMT_AUTO) {
+        const enum AVPixelFormat fmt = sxpi_pix_fmts_sx2ff(o->sw_pix_fmt);
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
+        if (!desc || (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)) {
+            LOG(s, ERROR, "Invalid software decoding pixel format specified");
+            return AVERROR(EINVAL);
+        }
     }
 
     if (o->auto_hwaccel && (o->filters || o->autorotate || o->export_mvs)) {

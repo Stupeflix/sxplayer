@@ -93,6 +93,7 @@ enum sxplayer_pixel_format {
     SXPLAYER_PIXFMT_MEDIACODEC,// MediaCodec pixel format (HW accelerated, frame->data is a AVMediaCodecBuffer)
     SXPLAYER_SMPFMT_FLT,
     SXPLAYER_PIXFMT_VAAPI,     // VAAPI pixel format (HW accelerated, frame->data is a VASurfaceID)
+    SXPLAYER_PIXFMT_AUTO,
 };
 
 enum sxplayer_loglevel {
@@ -246,7 +247,12 @@ SXAPI void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer
  *   dist_time_seek_trigger   double    how much time forward will trigger a seek
  *   max_nb_frames            integer   maximum number of frames in the queue
  *   filters                  string    custom user filters (software decoding only)
- *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only), can be any SXPLAYER_PIXFMT_* not HW accelerated
+ *   sw_pix_fmt               integer   pixel format format to use when using software decoding (video only),
+ *                                      can be any SXPLAYER_PIXFMT_* not HW accelerated. If sw_pix_fmt is set
+ *                                      to SXPLAYER_PIXFMT_AUTO, sxplayer automatically selects a pixel format
+ *                                      based on the intersection between the decoder output pixel format and
+ *                                      the list of non-HW accelerated formats supported by sxplayer (SXPLAYER_PIXFMT_*).
+ *                                      If the decoder output format is not supported, sxplayer fallbacks to RGBA.
  *   autorotate               integer   automatically insert rotation filters (video software decoding only)
  *   auto_hwaccel             integer   attempt to enable hardware acceleration
  *   export_mvs               integer   export motion vectors into frame->mvs
