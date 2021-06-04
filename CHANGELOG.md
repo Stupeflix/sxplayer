@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Automatic software pixel format selection
 - New datap and linesizep fields to sxplayer frame
+- NV12, YUV420P, YUV422P, YUV444P support
 
 ## [9.8.1] - 2021-03-25
 ### Fixed

@@ -94,6 +94,10 @@ enum sxplayer_pixel_format {
     SXPLAYER_SMPFMT_FLT,
     SXPLAYER_PIXFMT_VAAPI,     // VAAPI pixel format (HW accelerated, frame->data/frame->datap[0] is a VASurfaceID)
     SXPLAYER_PIXFMT_AUTO,
+    SXPLAYER_PIXFMT_NV12,
+    SXPLAYER_PIXFMT_YUV420P,
+    SXPLAYER_PIXFMT_YUV422P,
+    SXPLAYER_PIXFMT_YUV444P,
 };
 
 enum sxplayer_loglevel {
