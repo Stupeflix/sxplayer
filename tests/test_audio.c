@@ -34,7 +34,7 @@ int main(int ac, char **av)
                 break;
             }
             printf("frame #%d / data:%p ts:%f nb_samples:%d sfxsmpfmt:%d\n",
-                   i++, frame->data, frame->ts, frame->nb_samples, frame->pix_fmt);
+                   i++, frame->datap[0], frame->ts, frame->nb_samples, frame->pix_fmt);
             smp += frame->nb_samples;
 
             sxplayer_release_frame(frame);
