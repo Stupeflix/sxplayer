@@ -65,7 +65,7 @@ static int check_frame(struct sxplayer_frame *f, double t, int opt_test_flags)
     }
 
     if (!(opt_test_flags & FLAG_AUDIO)) {
-        const uint32_t c = *(const uint32_t *)f->data;
+        const uint32_t c = *(const uint32_t *)f->datap[0];
         const int r = c >> (N+16) & 0xf;
         const int g = c >> (N+ 8) & 0xf;
         const int b = c >> (N+ 0) & 0xf;

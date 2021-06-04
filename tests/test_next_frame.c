@@ -32,8 +32,8 @@ int main(int ac, char **av)
                 break;
             }
             printf("frame #%d / data:%p ts:%f %dx%d lz:%d sfxpixfmt:%d\n",
-                   i++, frame->data, frame->ts, frame->width, frame->height,
-                   frame->linesize, frame->pix_fmt);
+                   i++, frame->datap[0], frame->ts, frame->width, frame->height,
+                   frame->linesizep[0], frame->pix_fmt);
 
             sxplayer_release_frame(frame);
         }
