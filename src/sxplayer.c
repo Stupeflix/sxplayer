@@ -224,7 +224,7 @@ static void render_frame(GLFWwindow *window, struct sxplayer_frame *frame)
             update_texture_padding(padding);
         }
 
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame->linesize >> 2, frame->height, 0, GL_RGBA,  GL_UNSIGNED_BYTE, frame->data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame->linesizep[0] >> 2, frame->height, 0, GL_RGBA,  GL_UNSIGNED_BYTE, frame->datap[0]);
         g_last_rendered_frame_ts = frame->ts;
     }
     glUniform1i(g_sampler_id, 0);
