@@ -89,10 +89,10 @@ enum sxplayer_media_selection {
 enum sxplayer_pixel_format {
     SXPLAYER_PIXFMT_RGBA,
     SXPLAYER_PIXFMT_BGRA,
-    SXPLAYER_PIXFMT_VT,        // VideoToolBox pixel format (HW accelerated, frame->data is a CVPixelBufferRef)
-    SXPLAYER_PIXFMT_MEDIACODEC,// MediaCodec pixel format (HW accelerated, frame->data is a AVMediaCodecBuffer)
+    SXPLAYER_PIXFMT_VT,        // VideoToolBox pixel format (HW accelerated, frame->data/frame->datap[0] is a CVPixelBufferRef)
+    SXPLAYER_PIXFMT_MEDIACODEC,// MediaCodec pixel format (HW accelerated, frame->data/frame->datap[0] is a AVMediaCodecBuffer)
     SXPLAYER_SMPFMT_FLT,
-    SXPLAYER_PIXFMT_VAAPI,     // VAAPI pixel format (HW accelerated, frame->data is a VASurfaceID)
+    SXPLAYER_PIXFMT_VAAPI,     // VAAPI pixel format (HW accelerated, frame->data/frame->datap[0] is a VASurfaceID)
     SXPLAYER_PIXFMT_AUTO,
 };
 
@@ -172,9 +172,9 @@ enum {
 };
 
 struct sxplayer_frame {
-    uint8_t *data;      // frame data in RGBA, BGRA, ... according to pix_fmt
+    uint8_t *data;      // frame data in RGBA, BGRA, ... according to pix_fmt. Deprecated, use datap instead
     double ts;          // video timestamp
-    int linesize;       // linesize in bytes (includes padding)
+    int linesize;       // linesize in bytes (includes padding). Deprecated, use linesizep instead
     union {
     int width;          // frame width in pixel
     int nb_samples;     // number of audio samples contained in the frame
@@ -190,6 +190,8 @@ struct sxplayer_frame {
     int color_range;    // video color range (any of SXPLAYER_COL_RNG_*)
     int color_primaries;// video color primaries (any of SXPLAYER_COL_PRI_*)
     int color_trc;      // video color transfer (any of SXPLAYER_COL_TRC_*)
+    uint8_t *datap[8];  // pointer to the frame planes
+    int linesizep[8];   // linesize in bytes of each planes
 };
 
 struct sxplayer_info {

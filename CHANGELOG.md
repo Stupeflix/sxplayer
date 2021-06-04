@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Automatic software pixel format selection
+- New datap and linesizep fields to sxplayer frame
 
 ## [9.8.1] - 2021-03-25
 ### Fixed
