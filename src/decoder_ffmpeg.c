@@ -87,7 +87,7 @@ static int init_mediacodec(struct decoder_ctx *ctx)
     }
 
     avctx->hw_device_ctx = hw_device_ctx_ref;
-    avctx->thread_count = 1;
+    avctx->thread_count = 0;
 
     AVDictionary *opts = NULL;
     av_dict_set_int(&opts, "delay_flush", 1, 0);
@@ -130,7 +130,7 @@ static int init_vaapi(struct decoder_ctx *ctx)
     }
 
     avctx->hw_device_ctx = hw_device_ctx_ref;
-    avctx->thread_count = 1;
+    avctx->thread_count = 0;
 
     AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
     ret = avcodec_open2(avctx, codec, NULL);
