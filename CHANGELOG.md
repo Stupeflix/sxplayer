@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - NV12, YUV420P, YUV422P, YUV444P support
 - P010LE, YUV420PLE, YUV422P10LE, YUV444P10LE support
 
+### Fixed
+- Multiple audio frames without PTS
+- Removed inoffensive seek error logging on images (regression)
+
 ## [9.8.1] - 2021-03-25
 ### Fixed
 - Fixed compiler warnings on Windows
