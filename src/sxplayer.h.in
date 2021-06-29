@@ -87,6 +87,7 @@ enum sxplayer_media_selection {
 };
 
 enum sxplayer_pixel_format {
+    SXPLAYER_PIXFMT_NONE = -1,
     SXPLAYER_PIXFMT_RGBA,
     SXPLAYER_PIXFMT_BGRA,
     SXPLAYER_PIXFMT_VT,        // VideoToolBox pixel format (HW accelerated, frame->data/frame->datap[0] is a CVPixelBufferRef)
