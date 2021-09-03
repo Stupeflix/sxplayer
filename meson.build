@@ -95,6 +95,8 @@ lib_src = files(
 lib_c_args = []
 if get_option('default_library') == 'shared'
   lib_c_args += '-DBUILD_SXPLAYER_SHARED_LIB'
+else
+  lib_c_args += '-DUSE_SXPLAYER_STATIC_LIB'
 endif
 
 if host_system == 'darwin'
