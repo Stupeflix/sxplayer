@@ -458,7 +458,7 @@ static int vtdec_push_packet(struct decoder_ctx *dec_ctx, const AVPacket *pkt)
         pthread_cond_wait(&vt->cond, &vt->lock);
     pthread_mutex_unlock(&vt->lock);
 
-    if (!pkt->size) {
+    if (!pkt || !pkt->size) {
         VTDecompressionSessionFinishDelayedFrames(vt->session);
         return AVERROR_EOF;
     }
