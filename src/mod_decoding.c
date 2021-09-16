@@ -301,12 +301,8 @@ void sxpi_decoding_run(struct decoding_ctx *ctx)
     /* Fetch remaining frames */
     if (ret == AVERROR_EOF) {
         TRACE(ctx, "flush cached frames");
-        AVPacket pkt;
-        av_init_packet(&pkt);
-        pkt.data = NULL;
-        pkt.size = 0;
         do {
-            ret = sxpi_decoder_push_packet(ctx->decoder, &pkt);
+            ret = sxpi_decoder_push_packet(ctx->decoder, NULL);
         } while (ret == 0 || ret == AVERROR(EAGAIN));
     }
 
