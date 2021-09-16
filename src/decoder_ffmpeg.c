@@ -164,13 +164,14 @@ static int ffdec_push_packet(struct decoder_ctx *ctx, const AVPacket *pkt)
 {
     int ret;
     int pkt_consumed = 0;
-    const int flush = !pkt->size;
+    const int pkt_size = pkt ? pkt->size : 0;
+    const int flush = !pkt_size;
     AVCodecContext *avctx = ctx->avctx;
 
     av_assert0(avctx->codec_type == AVMEDIA_TYPE_VIDEO ||
                avctx->codec_type == AVMEDIA_TYPE_AUDIO);
 
-    TRACE(ctx, "Received packet of size %d", pkt->size);
+    TRACE(ctx, "Received packet of size %d", pkt_size);
 
     while (!pkt_consumed) {
         ret = avcodec_send_packet(avctx, pkt);
