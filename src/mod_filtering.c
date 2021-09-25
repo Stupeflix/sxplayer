@@ -133,7 +133,7 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
          * Note: since we only have space for N samples in the texture, we skip
          * the last complex (highest frequency one).
          */
-#define MAGNITUDE(re, im) (sqrtf((re)*(re) + (im)*(im)) * scale)
+#define MAGNITUDE(re, im) (hypotf(re, im) * scale)
         fft_dst[0] = MAGNITUDE(bins[0], 0); // lowest frequency
         for (int i = 1; i < width; i++)
             fft_dst[i] = MAGNITUDE(bins[2*i], bins[2*i + 1]);
