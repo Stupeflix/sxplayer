@@ -131,15 +131,15 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
         /* Get magnitude of frequency bins and copy result into texture
          *
          * Note: since we only have space for N samples in the texture, we skip
-         * the first complex (lower frequency one).
+         * the last complex (highest frequency one).
          */
 #define MAGNITUDE(re, im) sqrtf(((re)*(re) + (im)*(im)) * scale)
         for (int i = 1; i < width; i++)
-            fft_dst[i - 1] = MAGNITUDE(bins[2*i], bins[2*i + 1]);
+            fft_dst[i] = MAGNITUDE(bins[2*i], bins[2*i + 1]);
 
-        /* Last complex (higher frequency one) is one of the two special cases
+        /* First complex (lowest frequency one) is one of the two special cases
          * mentioned above */
-        fft_dst[width - 1] = MAGNITUDE(bins[1], 0);
+        fft_dst[0] = MAGNITUDE(bins[0], 0);
     }
 
     /* Downscaled versions of the FFT */
