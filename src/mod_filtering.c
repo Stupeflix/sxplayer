@@ -137,7 +137,7 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
         for (int i = 1; i < width - 1; i++)
             fft_dst[i] = MAGNITUDE(bins[2*i], bins[2*i + 1]);
 
-        /* Last complex (higher frequency one) is one of the the special case
+        /* Last complex (higher frequency one) is one of the two special cases
          * mentioned above */
         fft_dst[width - 1] = MAGNITUDE(bins[1], 0);
     }
