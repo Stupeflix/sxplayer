@@ -40,7 +40,7 @@
 #endif
 
 #define DO_LOG(c, log_level, ...) sxpi_log_print((c)->log_ctx, log_level, \
-                                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+                                                 __FILE__, __LINE__, __func__, __VA_ARGS__)
 
 #define LOG(c, level, ...) DO_LOG(c, SXPLAYER_LOG_##level, __VA_ARGS__)
 
