@@ -134,12 +134,9 @@ static void audio_frame_to_sound_texture(struct filtering_ctx *ctx, AVFrame *dst
          * the last complex (highest frequency one).
          */
 #define MAGNITUDE(re, im) sqrtf(((re)*(re) + (im)*(im)) * scale)
+        fft_dst[0] = MAGNITUDE(bins[0], 0); // lowest frequency
         for (int i = 1; i < width; i++)
             fft_dst[i] = MAGNITUDE(bins[2*i], bins[2*i + 1]);
-
-        /* First complex (lowest frequency one) is one of the two special cases
-         * mentioned above */
-        fft_dst[0] = MAGNITUDE(bins[0], 0);
     }
 
     /* Downscaled versions of the FFT */
