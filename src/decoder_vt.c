@@ -302,6 +302,7 @@ static uint32_t pix_fmt_ff2vt(const char *fmt_str)
     switch (fmt_ff) {
     case AV_PIX_FMT_BGRA: return kCVPixelFormatType_32BGRA;
     case AV_PIX_FMT_NV12: return kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+    case AV_PIX_FMT_P010: return kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange;
     default:
         av_assert0(0);
     }
