@@ -22,6 +22,8 @@
 #include <libavutil/avassert.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
+#include <libavutil/mem.h>
+#include <libavutil/avstring.h>
 #include <VideoToolbox/VideoToolbox.h>
 
 #include "mod_decoding.h"
@@ -314,6 +316,90 @@ static int pix_fmt_ff2vt(enum AVPixelFormat ff_pix_fmt, OSType *cv_pix_fmt)
     return 0;
 }
 
+static int parse_allowed_pix_fmts(const char *pix_fmts_str,
+                                  enum AVPixelFormat **pix_fmtsp,
+                                  int *nb_pix_fmtsp)
+{
+    enum AVPixelFormat *pix_fmts = NULL;
+    int nb_pix_fmts = 0;
+
+    char *tmp = av_strdup(pix_fmts_str);
+    if (!tmp)
+        return AVERROR(ENOMEM);
+
+    char *s = tmp;
+    char *ptr = NULL;
+    char *pix_fmt_str = NULL;
+    while ((pix_fmt_str = av_strtok(s, ", ", &ptr)) != NULL) {
+        s = NULL;
+        const enum AVPixelFormat pix_fmt = av_get_pix_fmt(pix_fmt_str);
+        if (pix_fmt == AV_PIX_FMT_NONE)
+            continue;
+        OSType cv_pix_fmt;
+        int ret = pix_fmt_ff2vt(pix_fmt, &cv_pix_fmt);
+        if (ret < 0)
+            continue;
+        pix_fmts = av_realloc_f(pix_fmts, nb_pix_fmts + 1, sizeof(pix_fmt));
+        if (!pix_fmts) {
+            av_freep(&tmp);
+            return AVERROR(ENOMEM);
+        }
+        pix_fmts[nb_pix_fmts++] = pix_fmt;
+    }
+
+    *pix_fmtsp = pix_fmts;
+    *nb_pix_fmtsp = nb_pix_fmts;
+
+    av_freep(&tmp);
+
+    return 0;
+}
+
+
+static int is_pix_fmt_allowed(const enum AVPixelFormat *pix_fmts,
+                              int nb_pix_fmts,
+                              enum AVPixelFormat pix_fmt)
+{
+    for (int i = 0; i < nb_pix_fmts; i++) {
+        if (pix_fmts[i] == pix_fmt)
+            return 1;
+    }
+    return 0;
+}
+
+
+static enum AVPixelFormat select_pix_fmt(const enum AVPixelFormat *pix_fmts,
+                                         int nb_pix_fmts,
+                                         enum AVPixelFormat in_pix_fmt)
+{
+    static const enum AVPixelFormat preferred_pix_fmts_8[] = {
+        AV_PIX_FMT_P010,
+        AV_PIX_FMT_BGRA,
+        AV_PIX_FMT_NV12,
+        AV_PIX_FMT_NONE
+    };
+    static const enum AVPixelFormat preferred_pix_fmts_10[] = {
+        AV_PIX_FMT_P010,
+        AV_PIX_FMT_BGRA,
+        AV_PIX_FMT_NV12,
+        AV_PIX_FMT_NONE
+    };
+    const enum AVPixelFormat *preferred_pix_fmts = NULL;
+
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(in_pix_fmt);
+    const int depth = desc ? desc->comp[0].depth : 8;
+    switch (depth) {
+    case 10: preferred_pix_fmts = preferred_pix_fmts_10; break;
+    default: preferred_pix_fmts = preferred_pix_fmts_8;  break;
+    }
+
+    for (int i = 0; preferred_pix_fmts[i] != AV_PIX_FMT_NONE; i++) {
+        if (is_pix_fmt_allowed(pix_fmts, nb_pix_fmts, preferred_pix_fmts[i]))
+            return preferred_pix_fmts[i];
+    }
+    return AV_PIX_FMT_NONE;
+}
+
 static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *opts)
 {
     int ret;
@@ -334,6 +420,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
 
     TRACE(dec_ctx, "init");
 
+    const enum AVPixelFormat hw_subfmt = avctx->pix_fmt;
     avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
 
     pthread_mutex_init(&vt->lock, NULL);
@@ -366,8 +453,23 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
           avctx->width * avctx->height, vt->out_w * vt->out_h,
           opts->max_pixels);
 
+    enum AVPixelFormat *pix_fmts;
+    int nb_pix_fmts;
+    ret = parse_allowed_pix_fmts(opts->vt_pix_fmt, &pix_fmts, &nb_pix_fmts);
+    if (ret < 0)
+        return ret;
+
+    const enum AVPixelFormat pix_fmt = select_pix_fmt(pix_fmts, nb_pix_fmts, hw_subfmt);
+    av_freep(&pix_fmts);
+
+    if (pix_fmt == AV_PIX_FMT_NONE) {
+        LOG(dec_ctx, ERROR, "could not select a supported pixel format from vt_pix_fmt list '%s'",
+            opts->vt_pix_fmt);
+        return AVERROR(EINVAL);
+    }
+
     OSType vt_pix_fmt;
-    ret = pix_fmt_ff2vt(opts->vt_pix_fmt, &vt_pix_fmt);
+    ret = pix_fmt_ff2vt(pix_fmt, &vt_pix_fmt);
     av_assert0(ret == 0);
 
     buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, vt_pix_fmt);
