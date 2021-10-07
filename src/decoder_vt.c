@@ -206,6 +206,9 @@ static int push_async_frame(struct decoder_ctx *dec_ctx,
     frame->format  = avctx->pix_fmt;
     frame->pts     = async_frame->pts;
     frame->color_range = AVCOL_RANGE_MPEG;
+    frame->color_primaries = avctx->color_primaries;
+    frame->color_trc       = avctx->color_trc;
+    frame->colorspace      = avctx->colorspace;
     frame->data[3] = (uint8_t *)async_frame->cv_buffer;
     frame->buf[0]  = av_buffer_create(frame->data[3],
                                       sizeof(frame->data[3]),
