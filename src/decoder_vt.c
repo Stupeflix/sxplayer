@@ -296,21 +296,27 @@ static void decode_callback(void *opaque,
     update_nb_queue(dec_ctx, vt, -1);
 }
 
-static uint32_t pix_fmt_ff2vt(const char *fmt_str)
+static int pix_fmt_ff2vt(enum AVPixelFormat ff_pix_fmt, OSType *cv_pix_fmt)
 {
-    const enum AVPixelFormat fmt_ff = av_get_pix_fmt(fmt_str);
-    switch (fmt_ff) {
-    case AV_PIX_FMT_BGRA: return kCVPixelFormatType_32BGRA;
-    case AV_PIX_FMT_NV12: return kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
-    case AV_PIX_FMT_P010: return kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange;
+    switch (ff_pix_fmt) {
+    case AV_PIX_FMT_BGRA:
+        *cv_pix_fmt = kCVPixelFormatType_32BGRA;
+        break;
+    case AV_PIX_FMT_NV12:
+        *cv_pix_fmt = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+        break;
+    case AV_PIX_FMT_P010:
+        *cv_pix_fmt = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange;
+        break;
     default:
-        av_assert0(0);
+        return AVERROR(EINVAL);
     }
-    return -1;
+    return 0;
 }
 
 static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *opts)
 {
+    int ret;
     AVCodecContext *avctx = dec_ctx->avctx;
     struct vtdec_context *vt = dec_ctx->priv_data;
     int cm_codec_type;
@@ -320,7 +326,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
     CFDictionaryRef buf_attr;
 
 #if BUFCOUNT_DEBUG
-    int ret = pthread_once(&g_bufcounter_initialized, initialize_bufcounter);
+    ret = pthread_once(&g_bufcounter_initialized, initialize_bufcounter);
     if (ret < 0)
         return AVERROR(ret);
     deccounter_update(1);
@@ -359,7 +365,12 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
           avctx->width, avctx->height, vt->out_w, vt->out_h,
           avctx->width * avctx->height, vt->out_w * vt->out_h,
           opts->max_pixels);
-    buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, pix_fmt_ff2vt(opts->vt_pix_fmt));
+
+    OSType vt_pix_fmt;
+    ret = pix_fmt_ff2vt(opts->vt_pix_fmt, &vt_pix_fmt);
+    av_assert0(ret == 0);
+
+    buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, vt_pix_fmt);
 
     decoder_cb.decompressionOutputCallback = decode_callback;
     decoder_cb.decompressionOutputRefCon   = dec_ctx;
