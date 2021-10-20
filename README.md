@@ -4,6 +4,7 @@
 ![tests Mac](https://github.com/stupeflix/sxplayer/workflows/tests%20Mac/badge.svg)
 ![tests Windows](https://github.com/stupeflix/sxplayer/workflows/tests%20Windows/badge.svg)
 ![build Android 🤖](https://github.com/stupeflix/sxplayer/workflows/build%20Android%20🤖/badge.svg)
+![build iOS 🍏](https://github.com/stupeflix/sxplayer/workflows/build%20iOS%20🍏/badge.svg)
 
 ## Introduction
 
