@@ -109,10 +109,11 @@ jobs:
         python-version: '3.x'
         architecture: 'x64'
 
-    - name: Install meson
+    - name: Install meson and pkg-config
       shell: bash
       run: |
         pip install meson
+        choco install pkgconfiglite
 
     - name: Install dependencies via vcpkg
       uses: lukka/run-vcpkg@v6
@@ -162,10 +163,11 @@ jobs:
         python-version: '3.x'
         architecture: 'x64'
 
-    - name: Install meson
+    - name: Install meson and pkg-config
       shell: bash
       run: |
         pip install meson
+        choco install pkgconfiglite
 
     - name: Install dependencies via vcpkg
       uses: lukka/run-vcpkg@v6
