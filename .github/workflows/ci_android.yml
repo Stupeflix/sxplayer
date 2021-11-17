@@ -56,7 +56,7 @@ jobs:
       run: |
         PKG_CONFIG_LIBDIR=$HOME/ffmpeg-install-${{ matrix.arch }}/lib/pkgconfig/ \
         meson setup --cross-file .github/meson-android-${{ matrix.arch }}.ini builddir
-        meson test -C builddir -v
+        meson compile -C builddir -v
 
     - name: Upload Logs
       if: ${{ always() }}
