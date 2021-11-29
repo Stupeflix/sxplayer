@@ -314,10 +314,24 @@ static int pix_fmt_ff2vt(enum AVPixelFormat ff_pix_fmt, OSType *cv_pix_fmt, int 
         *cv_pix_fmt = color_range == AVCOL_RANGE_JPEG ? kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
                                                       : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
         break;
+    case AV_PIX_FMT_NV16:
+        *cv_pix_fmt = kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange;
+        break;
+    case AV_PIX_FMT_NV20:
+        *cv_pix_fmt = kCVPixelFormatType_444YpCbCr8BiPlanarVideoRange;
+        break;
     case AV_PIX_FMT_P010:
         *cv_pix_fmt = color_range == AVCOL_RANGE_JPEG ? kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
                                                       : kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange;
         break;
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 9, 100)
+    case AV_PIX_FMT_P210:
+        *cv_pix_fmt = kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange;
+        break;
+    case AV_PIX_FMT_P410:
+        *cv_pix_fmt = kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange;
+        break;
+#endif
     default:
         return AVERROR(EINVAL);
     }
@@ -382,8 +396,14 @@ static enum AVPixelFormat select_pix_fmt(const enum AVPixelFormat *pix_fmts,
 {
     static const enum AVPixelFormat supported_pix_fmts[] = {
         AV_PIX_FMT_NV12,
+        AV_PIX_FMT_NV16,
+        AV_PIX_FMT_NV20,
         AV_PIX_FMT_BGRA,
         AV_PIX_FMT_P010,
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 9, 100)
+        AV_PIX_FMT_P210,
+        AV_PIX_FMT_P410,
+#endif
     };
     enum AVPixelFormat best = AV_PIX_FMT_NONE;
     for (int i = 0; i < FF_ARRAY_ELEMS(supported_pix_fmts); i++) {

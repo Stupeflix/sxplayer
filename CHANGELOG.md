@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Honor video color range in VideoToolbox
+- Support for 4:2:2 and 4:4:4 pixel formats (8 and 10 bits) in VideoToolbox
+  decoder
 
 ## [9.11.1] - 2022-02-10
 ### Fixed
