@@ -122,6 +122,9 @@ static CFDictionaryRef decoder_config_create(CMVideoCodecType codec_type,
                          CFSTR("EnableHardwareAcceleratedVideoDecoder"),
                          kCFBooleanTrue);
 
+    if (avctx->codec_id != AV_CODEC_ID_H264 && avctx->codec_id != AV_CODEC_ID_HEVC)
+        return config_info;
+
     if (avctx->extradata_size) {
         CFMutableDictionaryRef avc_info;
 
@@ -432,6 +435,18 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
     switch (avctx->codec_id) {
     case AV_CODEC_ID_H264:       cm_codec_type = kCMVideoCodecType_H264;       break;
     case AV_CODEC_ID_HEVC:       cm_codec_type = kCMVideoCodecType_HEVC;       break;
+    case AV_CODEC_ID_PRORES:
+        switch (avctx->codec_tag) {
+        case MKTAG('a','p','c','n'): cm_codec_type = kCMVideoCodecType_AppleProRes422;      break;
+        case MKTAG('a','p','c','h'): cm_codec_type = kCMVideoCodecType_AppleProRes422HQ;    break;
+        case MKTAG('a','p','c','s'): cm_codec_type = kCMVideoCodecType_AppleProRes422LT;    break;
+        case MKTAG('a','p','c','o'): cm_codec_type = kCMVideoCodecType_AppleProRes422Proxy; break;
+        case MKTAG('a','p','4','x'):
+        case MKTAG('a','p','4','h'): cm_codec_type = kCMVideoCodecType_AppleProRes4444;     break;
+        default:
+            return AVERROR_DECODER_NOT_FOUND;
+        }
+        break;
     default:
         return AVERROR_DECODER_NOT_FOUND;
     }
