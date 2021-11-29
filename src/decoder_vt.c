@@ -376,9 +376,9 @@ static enum AVPixelFormat select_pix_fmt(const enum AVPixelFormat *pix_fmts,
                                          enum AVPixelFormat in_pix_fmt)
 {
     static const enum AVPixelFormat preferred_pix_fmts_8[] = {
-        AV_PIX_FMT_P010,
-        AV_PIX_FMT_BGRA,
         AV_PIX_FMT_NV12,
+        AV_PIX_FMT_BGRA,
+        AV_PIX_FMT_P010,
         AV_PIX_FMT_NONE
     };
     static const enum AVPixelFormat preferred_pix_fmts_10[] = {
