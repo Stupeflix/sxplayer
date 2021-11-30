@@ -17,7 +17,7 @@ jobs:
     - name: Install dependencies
       run: |
         brew install meson ninja
-        brew install glfw3 glew
+        brew install sdl2
         brew install ffmpeg
         brew install pkg-config
 
@@ -43,7 +43,7 @@ jobs:
     - name: Install dependencies
       run: |
         brew install meson ninja
-        brew install glfw3 glew
+        brew install sdl2
         brew install ffmpeg
         brew install pkg-config
 

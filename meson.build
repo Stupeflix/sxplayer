@@ -143,12 +143,8 @@ pkg.generate(
 #
 
 player_deps = lib_deps + [
-  dependency('glfw3', required: get_option('player')),
-  dependency('glew', required: get_option('player')),
+  dependency('sdl2', required: get_option('player')),
 ]
-if host_system == 'darwin'
-  player_deps += dependency('appleframeworks', modules: ['OpenGL'], required: get_option('player'))
-endif
 player_deps_found = true
 foreach dep : player_deps
   player_deps_found = player_deps_found and dep.found()
