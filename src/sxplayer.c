@@ -22,6 +22,8 @@ struct player {
     int64_t duration_i;
     int width;
     int height;
+    int aspect_ratio[2];
+    int viewport[4];
 
     int64_t clock_off;
     int64_t frame_ts;
@@ -33,6 +35,13 @@ struct player {
     int mouse_down;
     int fullscreen;
 };
+
+static int clipi32(int v, int min, int max)
+{
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+}
 
 static int64_t clipi64(int64_t v, int64_t min, int64_t max)
 {
@@ -86,15 +95,30 @@ static void reset_running_time(struct player *p)
     p->clock_off = gettime_relative() - p->frame_ts;
 }
 
+static void get_viewport(int width, int height, const int *aspect_ratio, int *vp)
+{
+    vp[2] = width;
+    vp[3] = width * aspect_ratio[1] / (double)aspect_ratio[0];
+    if (vp[3] > height) {
+        vp[3] = height;
+        vp[2] = height * aspect_ratio[0] / (double)aspect_ratio[1];
+    }
+    vp[0] = (width  - vp[2]) / 2.0;
+    vp[1] = (height - vp[3]) / 2.0;
+}
+
 static void size_callback(struct player *p, int width, int height)
 {
     p->width = width;
     p->height = height;
+    get_viewport(p->width, p->height, p->aspect_ratio, p->viewport);
 }
 
 static void seek_event(struct player *p, int x)
 {
-    const int64_t seek_at64 = p->duration * x / p->width;
+    const int *vp = p->viewport;
+    const int pos = clipi32(x - vp[0], 0, vp[2]);
+    const int64_t seek_at64 = p->duration * pos / vp[2];
     update_time(p, clipi64(seek_at64, 0, p->duration));
 }
 
@@ -118,6 +142,13 @@ static void mouse_pos_callback(struct player *p, SDL_MouseMotionEvent *event)
 
 static void render(struct player *p)
 {
+    const SDL_Rect dst = {
+        .x = p->viewport[0],
+        .y = p->viewport[1],
+        .w = p->viewport[2],
+        .h = p->viewport[3],
+    };
+
     struct sxplayer_frame *frame;
     if (p->next_frame_requested) {
         frame = sxplayer_get_next_frame(p->sxplayer_ctx);
@@ -139,7 +170,7 @@ static void render(struct player *p)
     if (!frame) {
         SDL_RenderClear(p->renderer);
         if (p->texture)
-            SDL_RenderCopy(p->renderer, p->texture, NULL, NULL);
+            SDL_RenderCopy(p->renderer, p->texture, NULL, &dst);
         return;
     }
 
@@ -164,7 +195,7 @@ static void render(struct player *p)
 
     SDL_UpdateTexture(p->texture, NULL, frame->datap[0], frame->linesize);
     SDL_RenderClear(p->renderer);
-    SDL_RenderCopy(p->renderer, p->texture, NULL, NULL);
+    SDL_RenderCopy(p->renderer, p->texture, NULL, &dst);
 
     sxplayer_release_frame(frame);
 }
@@ -257,6 +288,9 @@ int main(int ac, char **av)
     p.duration_i      = llrint(p.duration_f * p.framerate[0] / (double)p.framerate[1]);
     p.width           = info.width;
     p.height          = info.height;
+    p.aspect_ratio[0] = info.width;
+    p.aspect_ratio[1] = info.height;
+    get_viewport(p.width, p.height, p.aspect_ratio, p.viewport);
     p.clock_off       = INT64_MIN;
 
 #ifdef SDL_MAIN_HANDLED
