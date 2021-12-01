@@ -31,6 +31,7 @@ struct player {
     int seeking;
     int next_frame_requested;
     int mouse_down;
+    int fullscreen;
 };
 
 static int64_t clipi64(int64_t v, int64_t min, int64_t max)
@@ -178,6 +179,10 @@ static int key_callback(struct player *p, SDL_KeyboardEvent *event)
     case SDLK_SPACE:
         p->paused ^= 1;
         reset_running_time(p);
+        break;
+    case SDLK_f:
+        p->fullscreen ^= 1;
+        SDL_SetWindowFullscreen(p->window, p->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
         break;
     case SDLK_LEFT:
         update_time(p, clipi64(p->frame_ts - 10 * 1000000, 0, p->duration));
