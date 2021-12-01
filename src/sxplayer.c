@@ -185,6 +185,14 @@ static int key_callback(struct player *p, SDL_KeyboardEvent *event)
     case SDLK_RIGHT:
         update_time(p, clipi64(p->frame_ts + 10 * 1000000, 0, p->duration));
         break;
+    case SDLK_o:
+        p->paused = 1;
+        set_frame_index(p, clipi64(p->frame_index - 1, 0, p->duration_i));
+        break;
+    case SDLK_p:
+        p->paused = 1;
+        set_frame_index(p, clipi64(p->frame_index + 1, 0, p->duration_i));
+        break;
     case SDLK_s:
     case SDLK_PERIOD:
         p->paused = 1;
