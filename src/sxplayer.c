@@ -180,10 +180,10 @@ static int key_callback(struct player *p, SDL_KeyboardEvent *event)
         reset_running_time(p);
         break;
     case SDLK_LEFT:
-        update_time(p, clipi64(p->frame_ts - 5 * 1000000, 0, p->duration));
+        update_time(p, clipi64(p->frame_ts - 10 * 1000000, 0, p->duration));
         break;
     case SDLK_RIGHT:
-        update_time(p, clipi64(p->frame_ts + 5 * 1000000, 0, p->duration));
+        update_time(p, clipi64(p->frame_ts + 10 * 1000000, 0, p->duration));
         break;
     case SDLK_s:
     case SDLK_PERIOD:
