@@ -154,7 +154,9 @@ static void render(struct player *p)
         frame = sxplayer_get_next_frame(p->sxplayer_ctx);
         if (frame) {
             printf("Stepped to frame t=%f\n", frame->ts);
-            set_frame_ts(p, frame->ts * 1000000);
+            p->frame_ts = frame->ts * 1000000;
+            p->frame_index = llrint((p->frame_ts * p->framerate[0]) / (double)(p->framerate[1] * 1000000));
+            p->frame_time = frame->ts;
         }
         p->next_frame_requested = 0;
     } else {
