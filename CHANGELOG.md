@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Player has been ported from GLEW/GLFW3 to SDL2
 
+### Fixed
+- Fix VideoToolbox automatic 8-bit pixel format selection
+
 ## [9.10.0] - 2021-10-18
 ### Added
 - Add VideoToolbox automatic pixel format selection and P010 support
