@@ -378,32 +378,18 @@ static enum AVPixelFormat select_pix_fmt(const enum AVPixelFormat *pix_fmts,
                                          int nb_pix_fmts,
                                          enum AVPixelFormat in_pix_fmt)
 {
-    static const enum AVPixelFormat preferred_pix_fmts_8[] = {
+    static const enum AVPixelFormat supported_pix_fmts[] = {
         AV_PIX_FMT_NV12,
         AV_PIX_FMT_BGRA,
         AV_PIX_FMT_P010,
-        AV_PIX_FMT_NONE
     };
-    static const enum AVPixelFormat preferred_pix_fmts_10[] = {
-        AV_PIX_FMT_P010,
-        AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_NV12,
-        AV_PIX_FMT_NONE
-    };
-    const enum AVPixelFormat *preferred_pix_fmts = NULL;
-
-    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(in_pix_fmt);
-    const int depth = desc ? desc->comp[0].depth : 8;
-    switch (depth) {
-    case 10: preferred_pix_fmts = preferred_pix_fmts_10; break;
-    default: preferred_pix_fmts = preferred_pix_fmts_8;  break;
+    enum AVPixelFormat best = AV_PIX_FMT_NONE;
+    for (int i = 0; i < FF_ARRAY_ELEMS(supported_pix_fmts); i++) {
+        const enum AVPixelFormat p = supported_pix_fmts[i];
+        if (is_pix_fmt_allowed(pix_fmts, nb_pix_fmts, p))
+            best = av_find_best_pix_fmt_of_2(best, p, in_pix_fmt, 0, NULL);
     }
-
-    for (int i = 0; preferred_pix_fmts[i] != AV_PIX_FMT_NONE; i++) {
-        if (is_pix_fmt_allowed(pix_fmts, nb_pix_fmts, preferred_pix_fmts[i]))
-            return preferred_pix_fmts[i];
-    }
-    return AV_PIX_FMT_NONE;
+    return best;
 }
 
 static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *opts)
