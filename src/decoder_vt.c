@@ -208,7 +208,7 @@ static int push_async_frame(struct decoder_ctx *dec_ctx,
     frame->height  = vt->out_h;
     frame->format  = avctx->pix_fmt;
     frame->pts     = async_frame->pts;
-    frame->color_range = AVCOL_RANGE_MPEG;
+    frame->color_range     = avctx->color_range;
     frame->color_primaries = avctx->color_primaries;
     frame->color_trc       = avctx->color_trc;
     frame->colorspace      = avctx->colorspace;
@@ -304,17 +304,19 @@ static void decode_callback(void *opaque,
     update_nb_queue(dec_ctx, vt, -1);
 }
 
-static int pix_fmt_ff2vt(enum AVPixelFormat ff_pix_fmt, OSType *cv_pix_fmt)
+static int pix_fmt_ff2vt(enum AVPixelFormat ff_pix_fmt, OSType *cv_pix_fmt, int color_range)
 {
     switch (ff_pix_fmt) {
     case AV_PIX_FMT_BGRA:
         *cv_pix_fmt = kCVPixelFormatType_32BGRA;
         break;
     case AV_PIX_FMT_NV12:
-        *cv_pix_fmt = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+        *cv_pix_fmt = color_range == AVCOL_RANGE_JPEG ? kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+                                                      : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
         break;
     case AV_PIX_FMT_P010:
-        *cv_pix_fmt = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange;
+        *cv_pix_fmt = color_range == AVCOL_RANGE_JPEG ? kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+                                                      : kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange;
         break;
     default:
         return AVERROR(EINVAL);
@@ -342,7 +344,7 @@ static int parse_allowed_pix_fmts(const char *pix_fmts_str,
         if (pix_fmt == AV_PIX_FMT_NONE)
             continue;
         OSType cv_pix_fmt;
-        int ret = pix_fmt_ff2vt(pix_fmt, &cv_pix_fmt);
+        int ret = pix_fmt_ff2vt(pix_fmt, &cv_pix_fmt, 0);
         if (ret < 0)
             continue;
         pix_fmts = av_realloc_f(pix_fmts, nb_pix_fmts + 1, sizeof(pix_fmt));
@@ -473,7 +475,7 @@ static int vtdec_init(struct decoder_ctx *dec_ctx, const struct sxplayer_opts *o
     }
 
     OSType vt_pix_fmt;
-    ret = pix_fmt_ff2vt(pix_fmt, &vt_pix_fmt);
+    ret = pix_fmt_ff2vt(pix_fmt, &vt_pix_fmt, avctx->color_range);
     av_assert0(ret == 0);
 
     buf_attr = buffer_attributes_create(vt->out_w, vt->out_h, vt_pix_fmt);
