@@ -463,25 +463,24 @@ static int op_info(struct async_context *actx, struct message *msg)
         return ret;
     }
 
-    int64_t duration = o->end_time64 >= 0 ? o->end_time64 : AV_NOPTS_VALUE;
+    int64_t end_time = o->end_time64 >= 0 ? o->end_time64 : AV_NOPTS_VALUE;
     const int64_t probe_duration = sxpi_demuxing_probe_duration(actx->demuxer);
 
     av_assert0(AV_NOPTS_VALUE < 0);
-    if (probe_duration != AV_NOPTS_VALUE && (duration <= 0 ||
-                                             probe_duration < duration)) {
+    if (probe_duration != AV_NOPTS_VALUE && (end_time <= 0 || probe_duration < end_time)) {
         LOG(actx, INFO, "fix trim_duration from %f to %f",
-            duration       * av_q2d(AV_TIME_BASE_Q),
+            end_time       * av_q2d(AV_TIME_BASE_Q),
             probe_duration * av_q2d(AV_TIME_BASE_Q));
-        duration = probe_duration;
+        end_time = probe_duration;
     }
-    if (duration == AV_NOPTS_VALUE)
-        duration = 0;
+    if (end_time == AV_NOPTS_VALUE)
+        end_time = 0;
     const AVStream *st = sxpi_demuxing_get_stream(actx->demuxer);
     const int is_image = sxpi_demuxing_is_image(actx->demuxer);
     struct info_message info = {
         .width    = st->codecpar->width,
         .height   = st->codecpar->height,
-        .duration = duration,
+        .duration = end_time,
         .is_image = is_image,
         .timebase = st->time_base,
     };
