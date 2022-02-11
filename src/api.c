@@ -293,6 +293,10 @@ static int set_context_fields(struct sxplayer_ctx *s)
         o->filters ? o->filters : "");
 
     if (o->skip) {
+        if (o->start_time) {
+            LOG(s, ERROR, "skip and start_time are the same option");
+            return AVERROR(EINVAL);
+        }
         LOG(s, WARNING, "The skip option is deprecated, use start_time instead");
         o->start_time = o->skip;
     }
