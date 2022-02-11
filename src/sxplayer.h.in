@@ -281,7 +281,7 @@ SXAPI void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer
 SXAPI int sxplayer_set_option(struct sxplayer_ctx *s, const char *key, ...);
 
 /**
- * Get the media duration (clipped to trim_duration if set).
+ * Get the media duration (clipped to end_time if set).
  *
  * The duration is expressed in seconds.
  */
