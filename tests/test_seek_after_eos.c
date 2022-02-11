@@ -7,9 +7,6 @@
 #define FLAG_TRIM_DURATION (1<<1)
 #define FLAG_AUDIO         (1<<2)
 
-#define TESTVAL_SKIP           60.0
-#define TESTVAL_TRIM_DURATION  10.0
-
 int main(int ac, char **av)
 {
     if (ac < 3) {
