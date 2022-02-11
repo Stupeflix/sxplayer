@@ -47,7 +47,7 @@ struct sxplayer_opts {
     int use_pkt_duration;
 
     int64_t skip64;
-    int64_t trim_duration64;
+    int64_t end_time64;
     int64_t dist_time_seek_trigger64;
 };
 

@@ -353,8 +353,7 @@ int sxpi_filtering_init(void *log_ctx,
     ctx->max_pixels = o->max_pixels;
     ctx->audio_texture = o->audio_texture;
     ctx->st_timebase = stream->time_base;
-    ctx->max_pts = o->trim_duration64 > 0 ? av_rescale_q(o->skip64 + o->trim_duration64, AV_TIME_BASE_Q, ctx->st_timebase)
-                                          : AV_NOPTS_VALUE;
+    ctx->max_pts = o->end_time64 > 0 ? av_rescale_q(o->end_time64, AV_TIME_BASE_Q, ctx->st_timebase) : AV_NOPTS_VALUE;
 
     int ret = avcodec_parameters_from_context(ctx->codecpar, avctx);
     if (ret < 0)

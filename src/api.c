@@ -259,7 +259,8 @@ void sxplayer_free(struct sxplayer_ctx **ss)
  */
 static int64_t get_media_time(const struct sxplayer_opts *o, int64_t t)
 {
-    return o->skip64 + (o->trim_duration64 == AV_NOPTS_VALUE ? t : FFMIN(t, o->trim_duration64));
+    const int64_t mt = o->skip64 + t;
+    return o->end_time64 == AV_NOPTS_VALUE ? mt : FFMIN(mt, o->end_time64);
 }
 
 static int set_context_fields(struct sxplayer_ctx *s)
@@ -291,12 +292,14 @@ static int set_context_fields(struct sxplayer_ctx *s)
 
     o->skip64 = TIME2INT64(o->skip);
     o->dist_time_seek_trigger64 = TIME2INT64(o->dist_time_seek_trigger);
-    o->trim_duration64 = o->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->trim_duration);
 
-    TRACE(s, "rescaled values: skip=%s dist:%s dur:%s",
+    const int64_t trim_duration64 = o->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->trim_duration);
+    o->end_time64 = trim_duration64 != AV_NOPTS_VALUE ? o->skip64 + trim_duration64 : AV_NOPTS_VALUE;
+
+    TRACE(s, "rescaled values: skip=%s dist:%s end_time:%s",
           PTS2TIMESTR(o->skip64),
           PTS2TIMESTR(o->dist_time_seek_trigger64),
-          PTS2TIMESTR(o->trim_duration64));
+          PTS2TIMESTR(o->end_time64));
 
     av_assert0(!s->actx);
     s->actx = sxpi_async_alloc_context();

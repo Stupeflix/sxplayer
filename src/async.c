@@ -463,8 +463,7 @@ static int op_info(struct async_context *actx, struct message *msg)
         return ret;
     }
 
-    int64_t duration = o->trim_duration64 >= 0 ? o->skip64 + o->trim_duration64
-                                               : AV_NOPTS_VALUE;
+    int64_t duration = o->end_time64 >= 0 ? o->end_time64 : AV_NOPTS_VALUE;
     const int64_t probe_duration = sxpi_demuxing_probe_duration(actx->demuxer);
 
     av_assert0(AV_NOPTS_VALUE < 0);
