@@ -468,7 +468,7 @@ static int op_info(struct async_context *actx, struct message *msg)
 
     av_assert0(AV_NOPTS_VALUE < 0);
     if (probe_duration != AV_NOPTS_VALUE && (end_time <= 0 || probe_duration < end_time)) {
-        LOG(actx, INFO, "fix trim_duration from %f to %f",
+        LOG(actx, INFO, "fix end_time from %f to %f",
             end_time       * av_q2d(AV_TIME_BASE_Q),
             probe_duration * av_q2d(AV_TIME_BASE_Q));
         end_time = probe_duration;

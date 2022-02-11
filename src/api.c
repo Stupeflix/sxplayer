@@ -285,9 +285,9 @@ static int set_context_fields(struct sxplayer_ctx *s)
         o->auto_hwaccel = 0;
     }
 
-    LOG(s, INFO, "avselect:%d start_time:%f trim_duration:%f "
+    LOG(s, INFO, "avselect:%d start_time:%f end_time:%f "
         "dist_time_seek_trigger:%f queues:[%d %d %d] filters:'%s'",
-        o->avselect, o->start_time, o->trim_duration,
+        o->avselect, o->start_time, o->end_time,
         o->dist_time_seek_trigger,
         o->max_nb_packets, o->max_nb_frames, o->max_nb_sink,
         o->filters ? o->filters : "");
