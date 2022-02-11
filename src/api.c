@@ -68,7 +68,7 @@ static const AVOption sxplayer_options[] = {
     { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SXPLAYER_SELECT_VIDEO}, 0, NB_SXPLAYER_MEDIA_SELECTION-1 },
     { "start_time",             NULL, OFFSET(start_time),             AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
     { "end_time",               NULL, OFFSET(end_time),               AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
-    { "skip",                   NULL, OFFSET(start_time),             AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
+    { "skip",                   NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
     { "trim_duration",          NULL, OFFSET(trim_duration),          AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
     { "dist_time_seek_trigger", NULL, OFFSET(dist_time_seek_trigger), AV_OPT_TYPE_DOUBLE,    {.dbl=1.5},    -1, DBL_MAX },
     { "max_nb_packets",         NULL, OFFSET(max_nb_packets),         AV_OPT_TYPE_INT,       {.i64=5},       1, 100 },
@@ -292,6 +292,11 @@ static int set_context_fields(struct sxplayer_ctx *s)
         o->max_nb_packets, o->max_nb_frames, o->max_nb_sink,
         o->filters ? o->filters : "");
 
+    if (o->skip) {
+        LOG(s, WARNING, "The skip option is deprecated, use start_time instead");
+        o->start_time = o->skip;
+    }
+
     o->start_time64 = TIME2INT64(o->start_time);
     o->dist_time_seek_trigger64 = TIME2INT64(o->dist_time_seek_trigger);
     o->end_time64 = o->end_time < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->end_time);
@@ -299,8 +304,10 @@ static int set_context_fields(struct sxplayer_ctx *s)
     /* Translate trim_duration to end_time */
     if (o->end_time64 == AV_NOPTS_VALUE) {
         const int64_t trim_duration64 = o->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->trim_duration);
-        if (trim_duration64 != AV_NOPTS_VALUE)
+        if (trim_duration64 != AV_NOPTS_VALUE) {
+            LOG(s, WARNING, "The trim_duration option is deprecated, use end_time instead");
             o->end_time64 = o->start_time64 + trim_duration64;
+        }
     } else if (o->trim_duration >= 0) {
         LOG(s, ERROR, "trim_duration and end_time parameter are mutually exclusive");
         return AVERROR(EINVAL);

@@ -250,8 +250,8 @@ SXAPI void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer
  *   avselect                 integer   select audio or video stream (see SXPLAYER_SELECT_*)
  *   start_time               double    start time of the video
  *   end_time                 double    end time of the video
- *   skip                     double    alias for start_time
- *   trim_duration            double    equivalent to end_time-start_time
+ *   skip                     double    alias for start_time (deprecated)
+ *   trim_duration            double    equivalent to end_time-start_time (deprecated)
  *   dist_time_seek_trigger   double    how much time forward will trigger a seek
  *   max_nb_frames            integer   maximum number of frames in the queue
  *   filters                  string    custom user filters (software decoding only)
