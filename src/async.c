@@ -397,9 +397,9 @@ static int op_start(struct async_context *actx)
     if (actx->request_seek != AV_NOPTS_VALUE) {
         TRACE(actx, "request seek is set to %s", PTS2TIMESTR(actx->request_seek));
         seek_to = actx->request_seek;
-    } else if (o->skip64) {
-        TRACE(actx, "skip is set to %s", PTS2TIMESTR(actx->o->skip64));
-        seek_to = o->skip64;
+    } else if (o->start_time64) {
+        TRACE(actx, "start_time is set to %s", PTS2TIMESTR(actx->o->start_time64));
+        seek_to = o->start_time64;
     }
 
     if (seek_to != AV_NOPTS_VALUE && !is_seek_possible(actx)) {

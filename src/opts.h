@@ -25,7 +25,7 @@
 
 struct sxplayer_opts {
     int avselect;                           // select audio or video
-    double skip;                            // see public header
+    double start_time;                      // see public header
     double end_time;                        // see public header
     double trim_duration;                   // see public header
     double dist_time_seek_trigger;          // see public header
@@ -47,7 +47,7 @@ struct sxplayer_opts {
     int stream_idx;
     int use_pkt_duration;
 
-    int64_t skip64;
+    int64_t start_time64;
     int64_t end_time64;
     int64_t dist_time_seek_trigger64;
 };

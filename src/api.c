@@ -66,9 +66,9 @@ struct sxplayer_ctx {
 #define OFFSET(x) offsetof(struct sxplayer_ctx, opts.x)
 static const AVOption sxplayer_options[] = {
     { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SXPLAYER_SELECT_VIDEO}, 0, NB_SXPLAYER_MEDIA_SELECTION-1 },
-    { "start_time",             NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
+    { "start_time",             NULL, OFFSET(start_time),             AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
     { "end_time",               NULL, OFFSET(end_time),               AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
-    { "skip",                   NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
+    { "skip",                   NULL, OFFSET(start_time),             AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
     { "trim_duration",          NULL, OFFSET(trim_duration),          AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
     { "dist_time_seek_trigger", NULL, OFFSET(dist_time_seek_trigger), AV_OPT_TYPE_DOUBLE,    {.dbl=1.5},    -1, DBL_MAX },
     { "max_nb_packets",         NULL, OFFSET(max_nb_packets),         AV_OPT_TYPE_INT,       {.i64=5},       1, 100 },
@@ -261,7 +261,7 @@ void sxplayer_free(struct sxplayer_ctx **ss)
  */
 static int64_t get_media_time(const struct sxplayer_opts *o, int64_t t)
 {
-    const int64_t mt = o->skip64 + t;
+    const int64_t mt = o->start_time64 + t;
     return o->end_time64 == AV_NOPTS_VALUE ? mt : FFMIN(mt, o->end_time64);
 }
 
@@ -285,14 +285,14 @@ static int set_context_fields(struct sxplayer_ctx *s)
         o->auto_hwaccel = 0;
     }
 
-    LOG(s, INFO, "avselect:%d skip:%f trim_duration:%f "
+    LOG(s, INFO, "avselect:%d start_time:%f trim_duration:%f "
         "dist_time_seek_trigger:%f queues:[%d %d %d] filters:'%s'",
-        o->avselect, o->skip, o->trim_duration,
+        o->avselect, o->start_time, o->trim_duration,
         o->dist_time_seek_trigger,
         o->max_nb_packets, o->max_nb_frames, o->max_nb_sink,
         o->filters ? o->filters : "");
 
-    o->skip64 = TIME2INT64(o->skip);
+    o->start_time64 = TIME2INT64(o->start_time);
     o->dist_time_seek_trigger64 = TIME2INT64(o->dist_time_seek_trigger);
     o->end_time64 = o->end_time < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->end_time);
 
@@ -300,19 +300,19 @@ static int set_context_fields(struct sxplayer_ctx *s)
     if (o->end_time64 == AV_NOPTS_VALUE) {
         const int64_t trim_duration64 = o->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->trim_duration);
         if (trim_duration64 != AV_NOPTS_VALUE)
-            o->end_time64 = o->skip64 + trim_duration64;
+            o->end_time64 = o->start_time64 + trim_duration64;
     } else if (o->trim_duration >= 0) {
         LOG(s, ERROR, "trim_duration and end_time parameter are mutually exclusive");
         return AVERROR(EINVAL);
     }
 
     if (o->end_time64 != AV_NOPTS_VALUE && o->end_time64 < 0) {
-        LOG(s, ERROR, "Invalid end time (%g): must be greater or equal to skip (%g)", o->end_time, o->skip);
+        LOG(s, ERROR, "Invalid end time (%g): must be greater or equal to start_time (%g)", o->end_time, o->start_time);
         return AVERROR(EINVAL);
     }
 
-    TRACE(s, "rescaled values: skip=%s dist:%s end_time:%s",
-          PTS2TIMESTR(o->skip64),
+    TRACE(s, "rescaled values: start_time=%s dist:%s end_time:%s",
+          PTS2TIMESTR(o->start_time64),
           PTS2TIMESTR(o->dist_time_seek_trigger64),
           PTS2TIMESTR(o->end_time64));
 
@@ -745,13 +745,13 @@ struct sxplayer_frame *sxplayer_get_frame_ms(struct sxplayer_ctx *s, int64_t t64
     if (s->last_pushed_frame_ts == AV_NOPTS_VALUE) {
 
         /* If prefetch wasn't done (async not started), and we requested a time
-         * that is beyond the initial skip, we request an appropriate seek
+         * that is beyond the initial start_time, we request an appropriate seek
          * before we start the decoding process in order to save one seek and
-         * some decoding (a seek for the initial skip, then another one soon
+         * some decoding (a seek for the initial start_time, then another one soon
          * after to reach the requested time). */
-        if (!sxpi_sxpi_async_started(s->actx) && vt > o->skip64) {
-            TRACE(s, "no prefetch, but requested time (%s) beyond initial skip (%s)",
-                  PTS2TIMESTR(vt), PTS2TIMESTR(o->skip64));
+        if (!sxpi_sxpi_async_started(s->actx) && vt > o->start_time64) {
+            TRACE(s, "no prefetch, but requested time (%s) beyond initial start_time (%s)",
+                  PTS2TIMESTR(vt), PTS2TIMESTR(o->start_time64));
             sxpi_async_seek(s->actx, vt);
         }
 
