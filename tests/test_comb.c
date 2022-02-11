@@ -21,8 +21,8 @@ static int action_prefetch(struct sxplayer_ctx *s, int opt_test_flags)
     return sxplayer_start(s);
 }
 
-#define FLAG_SKIP          (1<<0)
-#define FLAG_TRIM_DURATION (1<<1)
+#define FLAG_START_TIME    (1<<0)
+#define FLAG_END_TIME      (1<<1)
 #define FLAG_AUDIO         (1<<2)
 
 static int action_fetch_info(struct sxplayer_ctx *s, int opt_test_flags)
@@ -46,17 +46,17 @@ static int action_fetch_info(struct sxplayer_ctx *s, int opt_test_flags)
 #define SOURCE_SPF  1024    /* samples per frame, must match AUDIO_NBSAMPLES */
 #define SOURCE_FREQ 44100
 
-#define TESTVAL_SKIP           7.12
-#define TESTVAL_TRIM_DURATION 53.43
+#define TESTVAL_START_TIME  7.12
+#define TESTVAL_END_TIME   60.43
 
 static int check_frame(struct sxplayer_frame *f, double t, int opt_test_flags)
 {
-    const double skip          = (opt_test_flags & FLAG_SKIP)          ? TESTVAL_SKIP          :  0;
-    const double trim_duration = (opt_test_flags & FLAG_TRIM_DURATION) ? TESTVAL_TRIM_DURATION : -1;
-    const double playback_time = av_clipd(t, 0, trim_duration < 0 ? DBL_MAX : trim_duration);
+    const double start_time    = (opt_test_flags & FLAG_START_TIME) ? TESTVAL_START_TIME :  0;
+    const double end_time      = (opt_test_flags & FLAG_END_TIME)   ? TESTVAL_END_TIME   : -1;
+    const double playback_time = av_clipd(t, 0, end_time < 0 ? DBL_MAX : end_time);
 
     const double frame_ts = f ? f->ts : -1;
-    const double estimated_time_from_ts = frame_ts - skip;
+    const double estimated_time_from_ts = frame_ts - start_time;
     const double diff_ts = fabs(playback_time - estimated_time_from_ts);
 
     if (!f) {
@@ -72,25 +72,25 @@ static int check_frame(struct sxplayer_frame *f, double t, int opt_test_flags)
         const int frame_id = r<<(N*2) | g<<N | b;
 
         const double video_ts = frame_id * 1. / SOURCE_FPS;
-        const double estimated_time_from_color = video_ts - skip;
+        const double estimated_time_from_color = video_ts - start_time;
         const double diff_color = fabs(playback_time - estimated_time_from_color);
 
         if (diff_color > 1./SOURCE_FPS) {
-            fprintf(stderr, "requested t=%f (clipped to %f with trim_duration=%f),\n"
-                    "got video_ts=%f (frame id #%d), corresponding to t=%f (with skip=%f)\n"
+            fprintf(stderr, "requested t=%f (clipped to %f with end_time=%f),\n"
+                    "got video_ts=%f (frame id #%d), corresponding to t=%f (with start_time=%f)\n"
                     "diff_color: %f\n",
-                    t, playback_time, trim_duration,
-                    video_ts, frame_id, estimated_time_from_color, skip,
+                    t, playback_time, end_time,
+                    video_ts, frame_id, estimated_time_from_color, start_time,
                     diff_color);
             return -1;
         }
     }
     if (diff_ts > 1./SOURCE_FPS) {
-        fprintf(stderr, "requested t=%f (clipped to %f with trim_duration=%f),\n"
-                "got frame_ts=%f, corresponding to t=%f (with skip=%f)\n"
+        fprintf(stderr, "requested t=%f (clipped to %f with end_time=%f),\n"
+                "got frame_ts=%f, corresponding to t=%f (with start_time=%f)\n"
                 "diff_ts: %f\n",
-                t, playback_time, trim_duration,
-                frame_ts, estimated_time_from_ts, skip,
+                t, playback_time, end_time,
+                frame_ts, estimated_time_from_ts, start_time,
                 diff_ts);
         return -1;
     }
@@ -188,8 +188,8 @@ static const struct {
 static void print_comb_name(uint64_t comb, int opt_test_flags)
 {
     printf(":: test-%s-", (opt_test_flags & FLAG_AUDIO) ? "audio" : "video");
-    if (opt_test_flags & FLAG_SKIP)          printf("skip-");
-    if (opt_test_flags & FLAG_TRIM_DURATION) printf("trimdur-");
+    if (opt_test_flags & FLAG_START_TIME)    printf("start_time-");
+    if (opt_test_flags & FLAG_END_TIME)      printf("end_time-");
     for (int i = 0; i < NB_ACTIONS; i++) {
         const int action = GET_ACTION(comb, i);
         if (!action)
@@ -211,9 +211,9 @@ static int exec_comb(const char *filename, uint64_t comb, int opt_test_flags, in
 
     print_comb_name(comb, opt_test_flags);
 
-    if (opt_test_flags & FLAG_SKIP)          sxplayer_set_option(s, "skip",          TESTVAL_SKIP);
-    if (opt_test_flags & FLAG_TRIM_DURATION) sxplayer_set_option(s, "trim_duration", TESTVAL_TRIM_DURATION);
-    if (opt_test_flags & FLAG_AUDIO)         sxplayer_set_option(s, "avselect",      SXPLAYER_SELECT_AUDIO);
+    if (opt_test_flags & FLAG_START_TIME) sxplayer_set_option(s, "start_time", TESTVAL_START_TIME);
+    if (opt_test_flags & FLAG_END_TIME)   sxplayer_set_option(s, "end_time",   TESTVAL_END_TIME);
+    if (opt_test_flags & FLAG_AUDIO)      sxplayer_set_option(s, "avselect",   SXPLAYER_SELECT_AUDIO);
 
     for (int i = 0; i < NB_ACTIONS; i++) {
         const int action = GET_ACTION(comb, i);
