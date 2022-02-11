@@ -311,10 +311,10 @@ static int set_context_fields(struct sxplayer_ctx *s)
         return AVERROR(EINVAL);
     }
 
-    TRACE(s, "rescaled values: start_time=%s dist:%s end_time:%s",
+    TRACE(s, "rescaled values: start_time=%s end_time=%s dist=%s",
           PTS2TIMESTR(o->start_time64),
-          PTS2TIMESTR(o->dist_time_seek_trigger64),
-          PTS2TIMESTR(o->end_time64));
+          PTS2TIMESTR(o->end_time64),
+          PTS2TIMESTR(o->dist_time_seek_trigger64));
 
     av_assert0(!s->actx);
     s->actx = sxpi_async_alloc_context();
