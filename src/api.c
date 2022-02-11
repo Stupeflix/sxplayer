@@ -66,6 +66,8 @@ struct sxplayer_ctx {
 #define OFFSET(x) offsetof(struct sxplayer_ctx, opts.x)
 static const AVOption sxplayer_options[] = {
     { "avselect",               NULL, OFFSET(avselect),               AV_OPT_TYPE_INT,       {.i64=SXPLAYER_SELECT_VIDEO}, 0, NB_SXPLAYER_MEDIA_SELECTION-1 },
+    { "start_time",             NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
+    { "end_time",               NULL, OFFSET(end_time),               AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
     { "skip",                   NULL, OFFSET(skip),                   AV_OPT_TYPE_DOUBLE,    {.dbl= 0},      0, DBL_MAX },
     { "trim_duration",          NULL, OFFSET(trim_duration),          AV_OPT_TYPE_DOUBLE,    {.dbl=-1},     -1, DBL_MAX },
     { "dist_time_seek_trigger", NULL, OFFSET(dist_time_seek_trigger), AV_OPT_TYPE_DOUBLE,    {.dbl=1.5},    -1, DBL_MAX },
@@ -292,9 +294,22 @@ static int set_context_fields(struct sxplayer_ctx *s)
 
     o->skip64 = TIME2INT64(o->skip);
     o->dist_time_seek_trigger64 = TIME2INT64(o->dist_time_seek_trigger);
+    o->end_time64 = o->end_time < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->end_time);
 
-    const int64_t trim_duration64 = o->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->trim_duration);
-    o->end_time64 = trim_duration64 != AV_NOPTS_VALUE ? o->skip64 + trim_duration64 : AV_NOPTS_VALUE;
+    /* Translate trim_duration to end_time */
+    if (o->end_time64 == AV_NOPTS_VALUE) {
+        const int64_t trim_duration64 = o->trim_duration < 0 ? AV_NOPTS_VALUE : TIME2INT64(o->trim_duration);
+        if (trim_duration64 != AV_NOPTS_VALUE)
+            o->end_time64 = o->skip64 + trim_duration64;
+    } else if (o->trim_duration >= 0) {
+        LOG(s, ERROR, "trim_duration and end_time parameter are mutually exclusive");
+        return AVERROR(EINVAL);
+    }
+
+    if (o->end_time64 != AV_NOPTS_VALUE && o->end_time64 < 0) {
+        LOG(s, ERROR, "Invalid end time (%g): must be greater or equal to skip (%g)", o->end_time, o->skip);
+        return AVERROR(EINVAL);
+    }
 
     TRACE(s, "rescaled values: skip=%s dist:%s end_time:%s",
           PTS2TIMESTR(o->skip64),

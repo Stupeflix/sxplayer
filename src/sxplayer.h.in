@@ -253,6 +253,8 @@ SXAPI void sxplayer_set_log_callback(struct sxplayer_ctx *s, void *arg, sxplayer
  *   key                      type      description
  *   ----------------------------------------------
  *   avselect                 integer   select audio or video stream (see SXPLAYER_SELECT_*)
+ *   start_time               double    start time of the video
+ *   end_time                 double    end time of the video
  *   skip                     double    time to skip in the specified input
  *   trim_duration            double    duration of the video (starting at skip)
  *   dist_time_seek_trigger   double    how much time forward will trigger a seek

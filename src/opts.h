@@ -26,6 +26,7 @@
 struct sxplayer_opts {
     int avselect;                           // select audio or video
     double skip;                            // see public header
+    double end_time;                        // see public header
     double trim_duration;                   // see public header
     double dist_time_seek_trigger;          // see public header
     int max_nb_frames;                      // maximum number of frames in the queue
