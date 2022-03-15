@@ -394,6 +394,10 @@ static enum AVPixelFormat select_pix_fmt(const enum AVPixelFormat *pix_fmts,
                                          int nb_pix_fmts,
                                          enum AVPixelFormat in_pix_fmt)
 {
+    /* If file probing wasn't able to detect the pixel format, we force it to NV12 if available */
+    if (in_pix_fmt == AV_PIX_FMT_NONE && is_pix_fmt_allowed(pix_fmts, nb_pix_fmts, AV_PIX_FMT_NV12))
+        return AV_PIX_FMT_NV12;
+
     static const enum AVPixelFormat supported_pix_fmts[] = {
         AV_PIX_FMT_NV12,
         AV_PIX_FMT_NV16,
