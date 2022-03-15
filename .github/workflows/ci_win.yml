@@ -126,21 +126,21 @@ jobs:
     - name: Setup
       shell: cmd
       run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson setup builddir --backend vs --buildtype release --default-library static ^
         --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig"
 
     - name: Build
       shell: cmd
       run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson compile -C builddir
 
     - name: Test
       shell: cmd
       run: |
         set PATH=D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\bin;%PATH%
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson test -C builddir
 
     - name: Upload Logs
@@ -180,21 +180,21 @@ jobs:
     - name: Setup
       shell: cmd
       run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson setup builddir --backend vs --buildtype release --default-library shared ^
         --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig"
 
     - name: Build
       shell: cmd
       run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson compile -C builddir
 
     - name: Test
       shell: cmd
       run: |
         set PATH=D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\bin;%PATH%
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 && ^
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson test -C builddir
 
     - name: Upload Logs
