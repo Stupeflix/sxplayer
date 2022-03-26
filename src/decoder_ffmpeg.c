@@ -68,7 +68,7 @@ static int init_mediacodec(struct decoder_ctx *ctx)
         av_assert0(0);
     }
 
-    AVCodec *codec = avcodec_find_decoder_by_name(codec_name);
+    const AVCodec *codec = avcodec_find_decoder_by_name(codec_name);
     if (!codec)
         return AVERROR_DECODER_NOT_FOUND;
 
@@ -132,7 +132,7 @@ static int init_vaapi(struct decoder_ctx *ctx)
     avctx->hw_device_ctx = hw_device_ctx_ref;
     avctx->thread_count = 0;
 
-    AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
+    const AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
     ret = avcodec_open2(avctx, codec, NULL);
     if (ret < 0) {
         av_buffer_unref(&avctx->hw_device_ctx);
@@ -146,7 +146,7 @@ static int ffdec_init_sw(struct decoder_ctx *ctx, const struct sxplayer_opts *op
     AVCodecContext *avctx = ctx->avctx;
     avctx->thread_count = 0;
 
-    AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
+    const AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
     return avcodec_open2(avctx, codec, NULL);
 }
 
