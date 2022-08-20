@@ -19,6 +19,7 @@
  */
 
 #include <stdarg.h>
+#include <libavutil/mem.h>
 #include <libavutil/time.h>
 
 #include "log.h"
