@@ -113,7 +113,7 @@ jobs:
       shell: bash
       run: |
         pip install meson
-        choco install pkgconfiglite
+        choco install --allow-empty-checksums pkgconfiglite
 
     - name: Install dependencies via vcpkg
       uses: lukka/run-vcpkg@v6
@@ -167,7 +167,7 @@ jobs:
       shell: bash
       run: |
         pip install meson
-        choco install pkgconfiglite
+        choco install --allow-empty-checksums pkgconfiglite
 
     - name: Install dependencies via vcpkg
       uses: lukka/run-vcpkg@v6
