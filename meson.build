@@ -24,7 +24,7 @@ install_rpath = get_option('rpath') ? get_option('prefix') / get_option('libdir'
 trim_prefix = run_command([
   find_program('python'), '-c', 'import sys,os;print(os.path.relpath(*sys.argv[1:3]))',
   meson.current_source_dir(),
-  meson.build_root(),
+  meson.project_build_root(),
 ]).stdout().strip()
 
 add_project_arguments(
