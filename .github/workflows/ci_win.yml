@@ -100,6 +100,9 @@ jobs:
   msvc-static:
 
     runs-on: windows-latest
+    env:
+      VCPKG_TRIPLET: x64-windows
+      VCPKG_INSTALL_PACKAGES: ffmpeg[ffmpeg]
 
     steps:
     - uses: actions/checkout@v2
@@ -115,20 +118,31 @@ jobs:
         pip install meson
         choco install --allow-empty-checksums pkgconfiglite
 
-    - name: Install dependencies via vcpkg
-      uses: lukka/run-vcpkg@v6
+    - name: Get vcpkg cache key
+      shell: bash
+      id: get-vcpkg-cache-key
+      run: |
+        VCPKG_COMMIT_ID=$(git -C C:/vcpkg rev-parse HEAD)
+        echo "::set-output name=key::$(echo $VCPKG_COMMIT_ID ${{env.VCPKG_TRIPLET}} ${{env.VCPKG_INSTALL_PACKAGES}} | md5sum | cut -f1 -d" ")"
+
+    - name: Restore vcpkg binary cache archives
+      id: restore_vcpkg_binary_cache
+      uses: actions/cache@v2
       with:
-        vcpkgGitCommitId: e2e6dbdaa45c40fe2e3ec7753b40d92d1dcab16e
-        vcpkgTriplet: x64-windows
-        vcpkgArguments: ffmpeg[ffmpeg]
-        cleanAfterBuild: false
+        path: C:\Users\runneradmin\AppData\Local\vcpkg\archives
+        key: ${{ steps.get-vcpkg-cache-key.outputs.key }}
+
+    - name: Install dependencies
+      run: |
+        cd C:\vcpkg
+        .\vcpkg.exe install --triplet ${{env.VCPKG_TRIPLET}} ${{env.VCPKG_INSTALL_PACKAGES}}
 
     - name: Setup
       shell: cmd
       run: |
         "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson setup builddir --backend vs --buildtype release --default-library static ^
-        --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig"
+        --pkg-config-path "C:\vcpkg\installed\x64-windows\lib\pkgconfig"
 
     - name: Build
       shell: cmd
@@ -139,7 +153,7 @@ jobs:
     - name: Test
       shell: cmd
       run: |
-        set PATH=D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\bin;%PATH%
+        set PATH=C:\vcpkg\installed\x64-windows\bin;%PATH%
         "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson test -C builddir
 
@@ -154,6 +168,9 @@ jobs:
   msvc-shared:
 
     runs-on: windows-latest
+    env:
+      VCPKG_TRIPLET: x64-windows
+      VCPKG_INSTALL_PACKAGES: ffmpeg[ffmpeg]
 
     steps:
     - uses: actions/checkout@v2
@@ -169,20 +186,31 @@ jobs:
         pip install meson
         choco install --allow-empty-checksums pkgconfiglite
 
-    - name: Install dependencies via vcpkg
-      uses: lukka/run-vcpkg@v6
+    - name: Get vcpkg cache key
+      shell: bash
+      id: get-vcpkg-cache-key
+      run: |
+        VCPKG_COMMIT_ID=$(git -C C:/vcpkg rev-parse HEAD)
+        echo "::set-output name=key::$(echo $VCPKG_COMMIT_ID ${{env.VCPKG_TRIPLET}} ${{env.VCPKG_INSTALL_PACKAGES}} | md5sum | cut -f1 -d" ")"
+
+    - name: Restore vcpkg binary cache archives
+      id: restore_vcpkg_binary_cache
+      uses: actions/cache@v2
       with:
-        vcpkgGitCommitId: e2e6dbdaa45c40fe2e3ec7753b40d92d1dcab16e
-        vcpkgTriplet: x64-windows
-        vcpkgArguments: ffmpeg[ffmpeg]
-        cleanAfterBuild: false
+        path: C:\Users\runneradmin\AppData\Local\vcpkg\archives
+        key: ${{ steps.get-vcpkg-cache-key.outputs.key }}
+
+    - name: Install dependencies
+      run: |
+        cd C:\vcpkg
+        .\vcpkg.exe install --triplet ${{env.VCPKG_TRIPLET}} ${{env.VCPKG_INSTALL_PACKAGES}}
 
     - name: Setup
       shell: cmd
       run: |
         "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson setup builddir --backend vs --buildtype release --default-library shared ^
-        --pkg-config-path "D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\lib\pkgconfig"
+        --pkg-config-path "C:\vcpkg\installed\x64-windows\lib\pkgconfig"
 
     - name: Build
       shell: cmd
@@ -193,7 +221,7 @@ jobs:
     - name: Test
       shell: cmd
       run: |
-        set PATH=D:\a\sxplayer\sxplayer\vcpkg\installed\x64-windows\bin;%PATH%
+        set PATH=C:\vcpkg\installed\x64-windows\bin;%PATH%
         "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" x64 && ^
         meson test -C builddir
 
