@@ -25,7 +25,7 @@ trim_prefix = run_command([
   find_program('python'), '-c', 'import sys,os;print(os.path.relpath(*sys.argv[1:3]))',
   meson.current_source_dir(),
   meson.project_build_root(),
-]).stdout().strip()
+], check: true).stdout().strip()
 
 add_project_arguments(
   cc.get_supported_arguments([
