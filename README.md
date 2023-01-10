@@ -1,5 +1,9 @@
 # sxplayer
 
+**Warning**: this repository has moved to https://github.com/gopro/sxplayer
+
+---
+
 ![tests Linux](https://github.com/stupeflix/sxplayer/workflows/tests%20Linux/badge.svg)
 ![tests Mac](https://github.com/stupeflix/sxplayer/workflows/tests%20Mac/badge.svg)
 ![tests Windows](https://github.com/stupeflix/sxplayer/workflows/tests%20Windows/badge.svg)
